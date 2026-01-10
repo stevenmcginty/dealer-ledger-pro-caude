@@ -425,6 +425,50 @@ export interface EmailTemplate {
 export type NewEmailTemplate = Omit<EmailTemplate, 'id' | 'createdAt'>;
 export type EmailTemplateUpdate = Partial<NewEmailTemplate>;
 
+// CRM Settings
+export interface CRMSettings {
+    id: string;
+    // Gmail Integration
+    gmailConnected: boolean;
+    gmailEmail?: string;
+    gmailAccessToken?: string;
+    gmailRefreshToken?: string;
+    gmailTokenExpiry?: number;
+
+    // Auto-response Settings
+    autoResponseEnabled: boolean;
+    autoResponseDelay: number; // minutes
+    autoResponseTemplate?: string;
+
+    // AI Settings
+    aiEnabled: boolean;
+    aiModel: 'gemini' | 'openai';
+    aiAutoAnalyze: boolean;
+    aiAutoRespond: boolean;
+    aiRequireApproval: boolean;
+
+    // Lead Settings
+    autoCreateLeads: boolean;
+    defaultLeadOwner?: string;
+    leadNotifications: boolean;
+
+    // WhatsApp Integration
+    whatsappConnected: boolean;
+    whatsappPhoneId?: string;
+    whatsappBusinessId?: string;
+    whatsappAccessToken?: string;
+
+    // Twilio Integration
+    twilioConnected: boolean;
+    twilioAccountSid?: string;
+    twilioAuthToken?: string;
+    twilioPhoneNumber?: string;
+
+    createdAt: number;
+    updatedAt: number;
+}
+export type CRMSettingsUpdate = Partial<Omit<CRMSettings, 'id' | 'createdAt'>>;
+
 export interface DataContextState {
     user: any;
     googleUser: any;
@@ -456,6 +500,7 @@ export interface DataContextState {
     leads: Lead[];
     inboxEmails: InboxEmail[];
     emailTemplates: EmailTemplate[];
+    crmSettings: CRMSettings | null;
     selectedLeadId: string | null;
 
     isLoading: boolean;
@@ -532,6 +577,10 @@ export interface DataContextState {
     deleteEmailTemplate: (id: string) => Promise<void>;
     setSelectedLeadId: (id: string | null) => void;
     convertLeadToSale: (leadId: string, saleData: NewSalesDocument) => Promise<void>;
+    updateCRMSettings: (data: CRMSettingsUpdate) => Promise<void>;
+    connectGmail: () => Promise<void>;
+    disconnectGmail: () => Promise<void>;
+    sendEmail: (to: string, subject: string, body: string, leadId?: string) => Promise<void>;
 
     handleGoogleSignIn: () => void;
     handleGoogleSignOut: () => void;

@@ -1,27 +1,41 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useData } from '../../hooks/useData';
+import { Card, Button, Badge, Input } from '../ui';
 import Spinner from '../common/Spinner';
-import { CalendarIcon, ExclamationTriangleIcon, CheckCircleIcon } from '../icons';
+import { CalendarIcon, ExclamationTriangleIcon, CheckCircleIcon, PhoneIcon, ChatBubbleLeftRightIcon } from '../icons';
 
 const IntegrationsPage = () => {
-    const { 
-        googleUser, 
-        handleGoogleSignIn, 
+    const {
+        googleUser,
+        handleGoogleSignIn,
         handleGoogleSignOut,
         refreshGoogleCalendarEvents,
         googleSyncError,
         googleConnectionMessage,
+        crmSettings,
+        updateCRMSettings,
     } = useData();
 
     const [isConnecting, setIsConnecting] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [showTwilioSetup, setShowTwilioSetup] = useState(false);
+    const [showWhatsAppSetup, setShowWhatsAppSetup] = useState(false);
+
+    // Twilio form
+    const [twilioAccountSid, setTwilioAccountSid] = useState('');
+    const [twilioAuthToken, setTwilioAuthToken] = useState('');
+    const [twilioPhoneNumber, setTwilioPhoneNumber] = useState('');
+
+    // WhatsApp form
+    const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
+    const [whatsappBusinessId, setWhatsappBusinessId] = useState('');
+    const [whatsappAccessToken, setWhatsappAccessToken] = useState('');
 
     const onConnectClick = () => {
         setIsConnecting(true);
         handleGoogleSignIn();
-        // The connection state will be updated by the DataContext callback
-        setTimeout(() => setIsConnecting(false), 10000); // Failsafe timeout
+        setTimeout(() => setIsConnecting(false), 10000);
     };
 
     const onRefreshClick = async () => {
@@ -30,57 +44,91 @@ const IntegrationsPage = () => {
         setIsRefreshing(false);
     };
 
+    const handleSaveTwilio = async () => {
+        await updateCRMSettings({
+            twilioConnected: true,
+            twilioAccountSid,
+            twilioAuthToken,
+            twilioPhoneNumber,
+        });
+        setShowTwilioSetup(false);
+    };
+
+    const handleDisconnectTwilio = async () => {
+        if (confirm('Are you sure you want to disconnect Twilio?')) {
+            await updateCRMSettings({
+                twilioConnected: false,
+                twilioAccountSid: undefined,
+                twilioAuthToken: undefined,
+                twilioPhoneNumber: undefined,
+            });
+        }
+    };
+
+    const handleSaveWhatsApp = async () => {
+        await updateCRMSettings({
+            whatsappConnected: true,
+            whatsappPhoneId,
+            whatsappBusinessId,
+            whatsappAccessToken,
+        });
+        setShowWhatsAppSetup(false);
+    };
+
+    const handleDisconnectWhatsApp = async () => {
+        if (confirm('Are you sure you want to disconnect WhatsApp?')) {
+            await updateCRMSettings({
+                whatsappConnected: false,
+                whatsappPhoneId: undefined,
+                whatsappBusinessId: undefined,
+                whatsappAccessToken: undefined,
+            });
+        }
+    };
+
     return (
-        <div className="space-y-8 max-w-3xl mx-auto">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-lg font-semibold text-white">Google Calendar Integration</h2>
-                <p className="text-sm text-gray-400 mt-1">Connect your Google account to use Google Calendar as the source for your general tasks and reminders.</p>
-                
-                <div className="mt-6 pt-6 border-t border-gray-700">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-                        <div className="flex items-center gap-4">
-                             <div className="flex-shrink-0 h-12 w-12 flex items-center justify-center rounded-lg bg-gray-700">
-                                <CalendarIcon className="h-7 w-7 text-green-400"/>
-                             </div>
-                             <div>
-                                <h3 className="text-base font-semibold text-white">Google Calendar</h3>
-                                <p className="text-sm text-gray-400">Your single source for general tasks.</p>
-                             </div>
+        <div className="space-y-6">
+            {/* Google Calendar */}
+            <Card>
+                <Card.Header>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-green-500/20">
+                                <CalendarIcon className="w-5 h-5 text-green-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-white">Google Calendar</h3>
+                                <p className="text-sm text-gray-400">Sync tasks and reminders</p>
+                            </div>
                         </div>
-                        <div className="mt-4 sm:mt-0 flex-shrink-0 w-full sm:w-auto">
-                           {googleUser ? (
-                                <div className="text-right">
-                                    <div className="flex items-center justify-end gap-3 bg-gray-700/50 p-3 rounded-lg">
-                                        <img src={googleUser.picture} alt="profile" className="h-10 w-10 rounded-full" />
-                                        <div className="text-sm text-left">
-                                            <p className="text-white font-medium">{googleUser.name}</p>
-                                            <p className="text-gray-400">{googleUser.email}</p>
-                                        </div>
-                                        <div className="flex items-center gap-2 pl-2 border-l border-gray-600">
-                                            <span className="relative flex h-3 w-3">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                                            </span>
-                                            <span className="font-semibold text-green-400 text-sm">Connected</span>
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 flex justify-end items-center gap-3">
-                                        <button onClick={handleGoogleSignOut} className="px-3 py-2 text-sm font-medium text-gray-300 bg-red-800/80 hover:bg-red-700 rounded-md">Disconnect</button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <button 
-                                    onClick={onConnectClick} 
-                                    disabled={isConnecting}
-                                    className="w-full sm:w-auto inline-flex justify-center items-center px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-md disabled:opacity-60"
-                                >
-                                    {isConnecting ? <Spinner className="mr-2"/> : null}
-                                    {isConnecting ? 'Connecting...' : 'Connect to Google'}
-                                </button>
-                            )}
-                        </div>
+                        <Badge variant={googleUser ? 'success' : 'default'}>
+                            {googleUser ? 'Connected' : 'Not Connected'}
+                        </Badge>
                     </div>
-                    {googleConnectionMessage && !googleSyncError && !googleUser &&(
+                </Card.Header>
+                <Card.Body>
+                    {googleUser ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+                                <img src={googleUser.picture} alt="profile" className="h-10 w-10 rounded-full" />
+                                <div className="flex-1">
+                                    <p className="text-white font-medium">{googleUser.name}</p>
+                                    <p className="text-sm text-gray-400">{googleUser.email}</p>
+                                </div>
+                                <Button variant="ghost" onClick={handleGoogleSignOut}>Disconnect</Button>
+                            </div>
+                            <Button onClick={onRefreshClick} disabled={isRefreshing} className="w-full">
+                                {isRefreshing ? <Spinner className="mr-2" /> : null}
+                                Refresh Calendar
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button onClick={onConnectClick} disabled={isConnecting} className="w-full">
+                            {isConnecting ? <Spinner className="mr-2" /> : null}
+                            Connect to Google
+                        </Button>
+                    )}
+                    {googleConnectionMessage && !googleSyncError && !googleUser && (
                         <div className="mt-4 p-3 rounded-lg flex items-center gap-3 bg-green-900/50 border border-green-700">
                             <CheckCircleIcon className="h-5 w-5 text-green-400 flex-shrink-0" />
                             <p className="text-sm text-green-200">{googleConnectionMessage}</p>
@@ -92,20 +140,204 @@ const IntegrationsPage = () => {
                             <p className="text-sm text-red-300">{googleSyncError}</p>
                         </div>
                     )}
+                </Card.Body>
+            </Card>
 
-                    {googleUser && (
-                        <div className="mt-6 pt-6 border-t border-gray-700 text-center">
-                            <button
-                                onClick={onRefreshClick}
-                                disabled={isRefreshing}
-                                className="w-full max-w-xs inline-flex items-center justify-center gap-x-2 rounded-md bg-brand-600 px-4 py-3 text-base font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50"
-                            >
-                                {isRefreshing ? <Spinner /> : 'Refresh Calendar'}
-                            </button>
+            {/* Twilio SMS/Voice */}
+            <Card>
+                <Card.Header>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-red-500/20">
+                                <PhoneIcon className="w-5 h-5 text-red-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-white">Twilio SMS & Voice</h3>
+                                <p className="text-sm text-gray-400">Send SMS and make calls</p>
+                            </div>
+                        </div>
+                        <Badge variant={crmSettings?.twilioConnected ? 'success' : 'default'}>
+                            {crmSettings?.twilioConnected ? 'Connected' : 'Not Connected'}
+                        </Badge>
+                    </div>
+                </Card.Header>
+                <Card.Body>
+                    {crmSettings?.twilioConnected ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+                                <div className="flex-1">
+                                    <p className="text-white font-medium">{crmSettings.twilioPhoneNumber}</p>
+                                    <p className="text-sm text-gray-400">Twilio Phone Number</p>
+                                </div>
+                                <Button variant="ghost" onClick={handleDisconnectTwilio}>Disconnect</Button>
+                            </div>
+                        </div>
+                    ) : showTwilioSetup ? (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">Account SID</label>
+                                <Input
+                                    type="text"
+                                    value={twilioAccountSid}
+                                    onChange={(e) => setTwilioAccountSid(e.target.value)}
+                                    placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">Auth Token</label>
+                                <Input
+                                    type="password"
+                                    value={twilioAuthToken}
+                                    onChange={(e) => setTwilioAuthToken(e.target.value)}
+                                    placeholder="Your auth token"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">Phone Number</label>
+                                <Input
+                                    type="text"
+                                    value={twilioPhoneNumber}
+                                    onChange={(e) => setTwilioPhoneNumber(e.target.value)}
+                                    placeholder="+44xxxxxxxxxx"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <Button onClick={handleSaveTwilio} disabled={!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber}>
+                                    Save & Connect
+                                </Button>
+                                <Button variant="ghost" onClick={() => setShowTwilioSetup(false)}>Cancel</Button>
+                            </div>
+                            <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+                                <p className="text-sm text-gray-400">
+                                    Get your credentials from{' '}
+                                    <a href="https://console.twilio.com" target="_blank" rel="noopener" className="text-brand-400 hover:underline">
+                                        Twilio Console
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-4">
+                            <p className="text-gray-400 mb-4">Send SMS messages and log calls with Twilio</p>
+                            <Button onClick={() => setShowTwilioSetup(true)}>Connect Twilio</Button>
                         </div>
                     )}
-                </div>
-            </div>
+                </Card.Body>
+            </Card>
+
+            {/* WhatsApp Business */}
+            <Card>
+                <Card.Header>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-green-500/20">
+                                <ChatBubbleLeftRightIcon className="w-5 h-5 text-green-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-white">WhatsApp Business</h3>
+                                <p className="text-sm text-gray-400">Send WhatsApp messages</p>
+                            </div>
+                        </div>
+                        <Badge variant={crmSettings?.whatsappConnected ? 'success' : 'default'}>
+                            {crmSettings?.whatsappConnected ? 'Connected' : 'Not Connected'}
+                        </Badge>
+                    </div>
+                </Card.Header>
+                <Card.Body>
+                    {crmSettings?.whatsappConnected ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+                                <div className="flex-1">
+                                    <p className="text-white font-medium">WhatsApp Business Connected</p>
+                                    <p className="text-sm text-gray-400">Phone ID: {crmSettings.whatsappPhoneId}</p>
+                                </div>
+                                <Button variant="ghost" onClick={handleDisconnectWhatsApp}>Disconnect</Button>
+                            </div>
+                        </div>
+                    ) : showWhatsAppSetup ? (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">Phone Number ID</label>
+                                <Input
+                                    type="text"
+                                    value={whatsappPhoneId}
+                                    onChange={(e) => setWhatsappPhoneId(e.target.value)}
+                                    placeholder="Your Phone Number ID"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">Business Account ID</label>
+                                <Input
+                                    type="text"
+                                    value={whatsappBusinessId}
+                                    onChange={(e) => setWhatsappBusinessId(e.target.value)}
+                                    placeholder="Your Business Account ID"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1">Access Token</label>
+                                <Input
+                                    type="password"
+                                    value={whatsappAccessToken}
+                                    onChange={(e) => setWhatsappAccessToken(e.target.value)}
+                                    placeholder="Your permanent access token"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <Button onClick={handleSaveWhatsApp} disabled={!whatsappPhoneId || !whatsappBusinessId || !whatsappAccessToken}>
+                                    Save & Connect
+                                </Button>
+                                <Button variant="ghost" onClick={() => setShowWhatsAppSetup(false)}>Cancel</Button>
+                            </div>
+                            <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+                                <p className="text-sm text-gray-400 mb-2">
+                                    WhatsApp Business API requires Meta Business verification.
+                                </p>
+                                <a
+                                    href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started"
+                                    target="_blank"
+                                    rel="noopener"
+                                    className="text-sm text-brand-400 hover:underline"
+                                >
+                                    View setup guide →
+                                </a>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-4">
+                            <p className="text-gray-400 mb-4">Send WhatsApp messages to leads and customers</p>
+                            <Button onClick={() => setShowWhatsAppSetup(true)}>Connect WhatsApp</Button>
+                        </div>
+                    )}
+                </Card.Body>
+            </Card>
+
+            {/* AutoTrader Integration Placeholder */}
+            <Card>
+                <Card.Header>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-orange-500/20">
+                                <svg className="w-5 h-5 text-orange-400" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-white">AutoTrader</h3>
+                                <p className="text-sm text-gray-400">Sync leads from AutoTrader</p>
+                            </div>
+                        </div>
+                        <Badge variant="default">Coming Soon</Badge>
+                    </div>
+                </Card.Header>
+                <Card.Body>
+                    <div className="text-center py-4">
+                        <p className="text-gray-400">
+                            Direct AutoTrader integration is coming soon. For now, leads from AutoTrader are synced via Gmail.
+                        </p>
+                    </div>
+                </Card.Body>
+            </Card>
         </div>
     );
 };
