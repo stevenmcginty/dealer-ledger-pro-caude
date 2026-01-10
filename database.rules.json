@@ -1,0 +1,18 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')",
+        ".write": "auth != null && (auth.uid == $uid || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+      }
+    },
+    "companies": {
+      "$companyId": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('companyId').val() == $companyId",
+        ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+      }
+    },
+    ".read": false,
+    ".write": false
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Dealer Ledger Pro claude",
+  "description": "github\n",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
