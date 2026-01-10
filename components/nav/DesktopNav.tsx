@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from '../../types';
-import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon } from '../icons';
+import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ViewColumnsIcon, InboxIcon, UserGroupIcon } from '../icons';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 
@@ -54,6 +54,11 @@ const DesktopNav = ({ onLogout }: DesktopNavProps) => {
         { label: "Canvas", view: "canvas" as View, icon: ClipboardIcon },
     ];
     
+    const crmItems = [
+        { label: "Pipeline", view: "pipeline" as View, icon: ViewColumnsIcon },
+        { label: "Inbox", view: "inbox" as View, icon: InboxIcon },
+    ];
+
     const reportingItems = [
         { label: "Ledger", view: "ledger" as View, icon: CalculatorIcon },
         ...(isVatRegistered ? [{ label: "VAT Summary", view: "vat" as View, icon: ChartPieIcon }] : []),
@@ -74,6 +79,12 @@ const DesktopNav = ({ onLogout }: DesktopNavProps) => {
                     <ul className="space-y-2">
                          {navItems.map(item => <NavItem key={item.view} label={item.label} view={item.view} icon={item.icon} isActive={activeView === item.view} onClick={setActiveView} />)}
                     </ul>
+                    <div className="pt-2">
+                        <h3 className="px-2 text-xs font-semibold tracking-wider text-gray-500 uppercase">CRM</h3>
+                        <ul className="mt-2 space-y-2">
+                            {crmItems.map(item => <NavItem key={item.view} label={item.label} view={item.view} icon={item.icon} isActive={activeView === item.view} onClick={setActiveView} />)}
+                        </ul>
+                    </div>
                     <div className="pt-2">
                         <h3 className="px-2 text-xs font-semibold tracking-wider text-gray-500 uppercase">Reporting</h3>
                         <ul className="mt-2 space-y-2">

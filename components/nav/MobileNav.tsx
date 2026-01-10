@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { View } from '../../types';
-import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, PlusIcon, Bars3Icon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ExclamationTriangleIcon } from '../icons';
+import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, PlusIcon, Bars3Icon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ExclamationTriangleIcon, ViewColumnsIcon, InboxIcon } from '../icons';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 
@@ -62,6 +62,8 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
     ];
     
     const moreMenuItems = isServiceBusiness ? [
+        { label: 'Pipeline', view: 'pipeline' as View, icon: ViewColumnsIcon },
+        { label: 'Inbox', view: 'inbox' as View, icon: InboxIcon },
         { label: 'Work Sheets', view: 'workSheets' as View, icon: WrenchScrewdriverIcon },
         { label: 'Work Prep', view: 'workPrep' as View, icon: ClipboardDocumentListIcon },
         { label: 'Canvas', view: 'canvas' as View, icon: ClipboardIcon },
@@ -71,6 +73,8 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
         { label: 'Filing Cabinet', view: 'filingCabinet' as View, icon: ArchiveBoxIcon },
         { label: 'Settings', view: 'settings' as View, icon: Cog6ToothIcon },
     ] : [
+        { label: 'Pipeline', view: 'pipeline' as View, icon: ViewColumnsIcon },
+        { label: 'Inbox', view: 'inbox' as View, icon: InboxIcon },
         { label: 'Garage', view: 'garage' as View, icon: BuildingStorefrontIcon },
         { label: 'Sales', view: 'sales' as View, icon: DocumentTextIcon },
         { label: 'Income', view: 'income' as View, icon: BanknotesIcon },

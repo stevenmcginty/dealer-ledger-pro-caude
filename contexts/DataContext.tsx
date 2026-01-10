@@ -1,7 +1,7 @@
 
 
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
-import { DataContextState, ToDoItem, BusinessDetails } from '../types';
+import { DataContextState, ToDoItem, BusinessDetails, Lead, InboxEmail, EmailTemplate, LeadStage } from '../types';
 import * as dataService from '../services/dataService';
 import { User, onAuthStateChanged } from '../services/firebase';
 import * as syncManager from '../services/syncManager';
@@ -31,6 +31,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
     const [canvasItems, setCanvasItems] = useState<any[]>([]);
     const [financialAccounts, setFinancialAccounts] = useState<any[]>([]);
     const [uploadBatches, setUploadBatches] = useState<any[]>([]);
+
+    // CRM States
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [inboxEmails, setInboxEmails] = useState<InboxEmail[]>([]);
+    const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+    const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
     // Loading & Error States
     const [isLoading, setIsLoading] = useState(true);
@@ -84,6 +90,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
             dataService.subscribeToCanvasItems(companyId, setCanvasItems),
             dataService.subscribeToFinancialAccounts(companyId, setFinancialAccounts),
             dataService.subscribeToUploadBatches(companyId, setUploadBatches),
+            // CRM Subscriptions
+            dataService.subscribeToLeads(companyId, setLeads),
+            dataService.subscribeToInboxEmails(companyId, setInboxEmails),
+            dataService.subscribeToEmailTemplates(companyId, setEmailTemplates),
         ];
 
         setIsLoading(false);
@@ -179,7 +189,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         canvasItems,
         financialAccounts,
         uploadBatches,
-        
+
+        // CRM State
+        leads,
+        inboxEmails,
+        emailTemplates,
+        selectedLeadId,
+
         isLoading,
         error,
         googleSyncError,
@@ -239,7 +255,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         updateFinancialAccount: (id, data) => dataService.updateFinancialAccount(companyId!, id, data),
         deleteFinancialAccount: (id) => dataService.deleteFinancialAccount(companyId!, id),
         deleteUploadBatch: (id) => dataService.deleteUploadBatch(companyId!, id),
-        
+
+        // CRM Actions
+        addLead: (data) => dataService.addLead(companyId!, data),
+        updateLead: (id, data) => dataService.updateLead(companyId!, id, data),
+        deleteLead: (id) => dataService.deleteLead(companyId!, id),
+        updateLeadStage: (id, stage) => dataService.updateLeadStage(companyId!, id, stage),
+        addLeadActivity: (leadId, activity) => dataService.addLeadActivity(companyId!, leadId, activity),
+        addInboxEmail: (data) => dataService.addInboxEmail(companyId!, data),
+        updateInboxEmail: (id, data) => dataService.updateInboxEmail(companyId!, id, data),
+        deleteInboxEmail: (id) => dataService.deleteInboxEmail(companyId!, id),
+        addEmailTemplate: (data) => dataService.addEmailTemplate(companyId!, data),
+        updateEmailTemplate: (id, data) => dataService.updateEmailTemplate(companyId!, id, data),
+        deleteEmailTemplate: (id) => dataService.deleteEmailTemplate(companyId!, id),
+        setSelectedLeadId,
+        convertLeadToSale: (leadId, saleData) => dataService.convertLeadToSale(companyId!, leadId, saleData),
+
         handleGoogleSignIn,
         handleGoogleSignOut,
         refreshGoogleCalendarEvents,
@@ -262,7 +293,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteDataAndFilesByCategories: (categories) => dataService.deleteDataAndFilesByCategories(companyId!, user.uid, categories),
         batchArchiveDelete: (items) => dataService.batchArchiveDelete(companyId!, items),
         batchRestore: (manifest) => dataService.batchRestore(companyId!, manifest),
-    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, theme, mergedTodos, workSheets, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
+    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, theme, mergedTodos, workSheets, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, inboxEmails, emailTemplates, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
 
     return (
         <DataContext.Provider value={value}>

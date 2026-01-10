@@ -1,8 +1,8 @@
 
 
-export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'jobInvoices';
+export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'jobInvoices' | 'pipeline' | 'inbox' | 'leadDetail';
 
-export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer';
+export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'emailComposer' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'createLeadFromEmail' | 'analyzeEmail' | 'addTestEmail';
 
 export type ModalState = { type: ModalType; data?: any } | null;
 
@@ -38,6 +38,7 @@ export interface Vehicle {
     v5cUrls?: string[]; // Multiple V5C pages
     motDueDate?: string;
     firstRegistered?: string;
+    businessId?: string; // Owner's Firebase UID for multi-business routing
     createdAt: number;
 }
 
@@ -321,6 +322,109 @@ export interface GeminiAction {
     responseText: string;
 }
 
+// CRM Types
+export enum LeadStage {
+    NEW = 'New Lead',
+    QUALIFIED = 'Qualified',
+    TEST_DRIVE = 'Test Drive',
+    NEGOTIATION = 'Negotiation',
+    WON = 'Sold',
+    LOST = 'Lost'
+}
+
+export type LeadSource =
+    | 'Website'
+    | 'Walk-in'
+    | 'Referral'
+    | 'Motors.co.uk'
+    | 'CarGurus'
+    | 'AutoTrader'
+    | 'eBay'
+    | 'Facebook'
+    | 'Other';
+
+export type ActivityType =
+    | 'EMAIL_IN'
+    | 'EMAIL_OUT'
+    | 'SMS_IN'
+    | 'SMS_OUT'
+    | 'WHATSAPP_IN'
+    | 'WHATSAPP_OUT'
+    | 'CALL_LOG'
+    | 'NOTE'
+    | 'SYSTEM';
+
+export interface Activity {
+    id: string;
+    type: ActivityType;
+    content: string;
+    timestamp: string;
+    performedBy?: string;
+}
+
+export interface Lead {
+    id: string;
+    ownerId: string; // Firebase user ID for routing
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    source: LeadSource;
+    vehicleOfInterest?: string; // Vehicle reg or description
+    vehicleId?: string; // Link to Vehicle record
+    stage: LeadStage;
+    history: Activity[];
+    value?: number;
+    hasReceivedAutoReply: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+export type NewLead = Omit<Lead, 'id' | 'history' | 'hasReceivedAutoReply'> & {
+    history?: Activity[];
+    hasReceivedAutoReply?: boolean;
+};
+export type LeadUpdate = Partial<NewLead>;
+
+export type EmailStatus =
+    | 'UNREAD'
+    | 'ANALYZING'
+    | 'NEEDS_REVIEW'
+    | 'SCHEDULED'
+    | 'SENT'
+    | 'ARCHIVED';
+
+export interface InboxEmail {
+    id: string;
+    leadId?: string;
+    source: string;
+    senderName: string;
+    senderEmail: string;
+    subject: string;
+    body: string;
+    receivedAt: string;
+    status: EmailStatus;
+    analysis?: {
+        vehicleExtracted?: string;
+        suggestedVehicleId?: string;
+        suggestedOwner?: string;
+        intent?: string;
+    };
+    createdAt: number;
+}
+export type NewInboxEmail = Omit<InboxEmail, 'id' | 'createdAt'>;
+export type InboxEmailUpdate = Partial<NewInboxEmail>;
+
+export interface EmailTemplate {
+    id: string;
+    name: string;
+    category: string;
+    subject: string;
+    body: string;
+    createdAt: number;
+}
+export type NewEmailTemplate = Omit<EmailTemplate, 'id' | 'createdAt'>;
+export type EmailTemplateUpdate = Partial<NewEmailTemplate>;
+
 export interface DataContextState {
     user: any;
     googleUser: any;
@@ -347,7 +451,13 @@ export interface DataContextState {
     canvasItems: CanvasItem[];
     financialAccounts: FinancialAccount[];
     uploadBatches: UploadBatch[];
-    
+
+    // CRM State
+    leads: Lead[];
+    inboxEmails: InboxEmail[];
+    emailTemplates: EmailTemplate[];
+    selectedLeadId: string | null;
+
     isLoading: boolean;
     error: string | null;
     googleSyncError: string | null;
@@ -407,7 +517,22 @@ export interface DataContextState {
     updateFinancialAccount: (id: string, data: Partial<NewFinancialAccount>) => Promise<void>;
     deleteFinancialAccount: (id: string) => Promise<void>;
     deleteUploadBatch: (id: string) => Promise<void>;
-    
+
+    // CRM Actions
+    addLead: (data: NewLead) => Promise<string>;
+    updateLead: (id: string, data: LeadUpdate) => Promise<void>;
+    deleteLead: (id: string) => Promise<void>;
+    updateLeadStage: (id: string, stage: LeadStage) => Promise<void>;
+    addLeadActivity: (leadId: string, activity: Omit<Activity, 'id'>) => Promise<void>;
+    addInboxEmail: (data: NewInboxEmail) => Promise<string>;
+    updateInboxEmail: (id: string, data: InboxEmailUpdate) => Promise<void>;
+    deleteInboxEmail: (id: string) => Promise<void>;
+    addEmailTemplate: (data: NewEmailTemplate) => Promise<string>;
+    updateEmailTemplate: (id: string, data: EmailTemplateUpdate) => Promise<void>;
+    deleteEmailTemplate: (id: string) => Promise<void>;
+    setSelectedLeadId: (id: string | null) => void;
+    convertLeadToSale: (leadId: string, saleData: NewSalesDocument) => Promise<void>;
+
     handleGoogleSignIn: () => void;
     handleGoogleSignOut: () => void;
     refreshGoogleCalendarEvents: () => Promise<void>;

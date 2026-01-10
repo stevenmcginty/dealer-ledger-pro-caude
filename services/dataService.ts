@@ -4,15 +4,17 @@ import { db, storage, auth } from './firebase';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/database';
 import 'firebase/compat/storage';
-import { 
-    Vehicle, NewVehicle, VehicleUpdate, Receipt, NewReceipt, ReceiptUpdate, SalesDocument, 
-    NewSalesDocument, StatementTransaction, NewStatementTransaction, StatementTransactionUpdate, 
-    FinanceCompany, NewFinanceCompany, ExpenseCategory, NewExpenseCategory, SalesDocumentUpdate, 
-    BusinessDetails, ToDoItem, NewToDoItem, ToDoItemUpdate, WorkSheet, NewWorkSheet, Customer, 
-    NewCustomer, MiscInvoice, NewMiscInvoice, Payment, InformalVehicle, NewInformalVehicle, 
-    GarageCost, NewGarageCost, Supplier, NewSupplier, SupplierUpdate, CanvasItem, NewCanvasItem, 
-    CanvasItemUpdate, MiscInvoiceUpdate, FinancialAccount, NewFinancialAccount, UploadBatch, 
-    JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate
+import {
+    Vehicle, NewVehicle, VehicleUpdate, Receipt, NewReceipt, ReceiptUpdate, SalesDocument,
+    NewSalesDocument, StatementTransaction, NewStatementTransaction, StatementTransactionUpdate,
+    FinanceCompany, NewFinanceCompany, ExpenseCategory, NewExpenseCategory, SalesDocumentUpdate,
+    BusinessDetails, ToDoItem, NewToDoItem, ToDoItemUpdate, WorkSheet, NewWorkSheet, Customer,
+    NewCustomer, MiscInvoice, NewMiscInvoice, Payment, InformalVehicle, NewInformalVehicle,
+    GarageCost, NewGarageCost, Supplier, NewSupplier, SupplierUpdate, CanvasItem, NewCanvasItem,
+    CanvasItemUpdate, MiscInvoiceUpdate, FinancialAccount, NewFinancialAccount, UploadBatch,
+    JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate,
+    Lead, NewLead, LeadUpdate, LeadStage, Activity, InboxEmail, NewInboxEmail, InboxEmailUpdate,
+    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate
 } from '../types';
 import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
 import type { User } from './firebase';
@@ -39,6 +41,10 @@ export const FOLDER_ROOTS = (companyId: string) => ({
     suppliers: `${companyRoot(companyId)}/suppliers`,
     financialAccounts: `${companyRoot(companyId)}/financialAccounts`,
     uploadBatches: `${companyRoot(companyId)}/uploadBatches`,
+    // CRM Collections
+    leads: `${companyRoot(companyId)}/leads`,
+    inboxEmails: `${companyRoot(companyId)}/inboxEmails`,
+    emailTemplates: `${companyRoot(companyId)}/emailTemplates`,
 });
 
 // --- User & Company Management ---
@@ -184,6 +190,11 @@ export const subscribeToSuppliers = (companyId: string, cb: (data: Supplier[]) =
 export const subscribeToCanvasItems = (companyId: string, cb: (data: CanvasItem[]) => void) => createSubscription<CanvasItem>(FOLDER_ROOTS(companyId).canvas, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToFinancialAccounts = (companyId: string, cb: (data: FinancialAccount[]) => void) => createSubscription<FinancialAccount>(FOLDER_ROOTS(companyId).financialAccounts, cb, (a, b) => a.name.localeCompare(b.name));
 export const subscribeToUploadBatches = (companyId: string, cb: (data: UploadBatch[]) => void) => createSubscription<UploadBatch>(FOLDER_ROOTS(companyId).uploadBatches, cb, (a, b) => b.uploadedAt - a.uploadedAt);
+
+// CRM Subscriptions
+export const subscribeToLeads = (companyId: string, cb: (data: Lead[]) => void) => createSubscription<Lead>(FOLDER_ROOTS(companyId).leads, cb, (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+export const subscribeToInboxEmails = (companyId: string, cb: (data: InboxEmail[]) => void) => createSubscription<InboxEmail>(FOLDER_ROOTS(companyId).inboxEmails, cb, (a, b) => b.createdAt - a.createdAt);
+export const subscribeToEmailTemplates = (companyId: string, cb: (data: EmailTemplate[]) => void) => createSubscription<EmailTemplate>(FOLDER_ROOTS(companyId).emailTemplates, cb, (a, b) => a.name.localeCompare(b.name));
 
 
 // --- Write Operations ---
@@ -1454,3 +1465,149 @@ export const batchRestore = async (companyId: string, manifest: { items: any[] }
 
 
 export const getDefaultCategoryIcon = (): string => 'TagIcon';
+
+
+// --- CRM Operations ---
+
+// Lead Operations
+export const addLead = async (companyId: string, data: NewLead): Promise<string> => {
+    const roots = FOLDER_ROOTS(companyId);
+    const newKey = db.ref(roots.leads).push().key;
+    if (!newKey) throw new Error("Failed to create key for new lead.");
+
+    const now = new Date().toISOString();
+    const leadData: Omit<Lead, 'id'> = {
+        ...data,
+        history: data.history || [],
+        hasReceivedAutoReply: data.hasReceivedAutoReply || false,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    await db.ref(`${roots.leads}/${newKey}`).set(leadData);
+    return newKey;
+};
+
+export const updateLead = async (companyId: string, id: string, data: LeadUpdate): Promise<void> => {
+    const updates: any = { ...data, updatedAt: new Date().toISOString() };
+    await db.ref(`${FOLDER_ROOTS(companyId).leads}/${id}`).update(updates);
+};
+
+export const deleteLead = async (companyId: string, id: string): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).leads}/${id}`).remove();
+};
+
+export const updateLeadStage = async (companyId: string, id: string, stage: LeadStage): Promise<void> => {
+    const updates = {
+        stage,
+        updatedAt: new Date().toISOString(),
+    };
+    await db.ref(`${FOLDER_ROOTS(companyId).leads}/${id}`).update(updates);
+};
+
+export const addLeadActivity = async (companyId: string, leadId: string, activity: Omit<Activity, 'id'>): Promise<void> => {
+    const leadRef = db.ref(`${FOLDER_ROOTS(companyId).leads}/${leadId}`);
+    const snapshot = await leadRef.get();
+
+    if (!snapshot.exists()) throw new Error("Lead not found");
+
+    const lead = snapshot.val() as Lead;
+    const newActivity: Activity = {
+        id: db.ref().push().key || Date.now().toString(),
+        ...activity,
+    };
+
+    const updatedHistory = [...(lead.history || []), newActivity];
+    await leadRef.update({
+        history: updatedHistory,
+        updatedAt: new Date().toISOString(),
+    });
+};
+
+// Inbox Email Operations
+export const addInboxEmail = async (companyId: string, data: NewInboxEmail): Promise<string> => {
+    const roots = FOLDER_ROOTS(companyId);
+    const newKey = db.ref(roots.inboxEmails).push().key;
+    if (!newKey) throw new Error("Failed to create key for new inbox email.");
+
+    await db.ref(`${roots.inboxEmails}/${newKey}`).set({
+        ...data,
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+    });
+    return newKey;
+};
+
+export const updateInboxEmail = async (companyId: string, id: string, data: InboxEmailUpdate): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).inboxEmails}/${id}`).update(data);
+};
+
+export const deleteInboxEmail = async (companyId: string, id: string): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).inboxEmails}/${id}`).remove();
+};
+
+// Email Template Operations
+export const addEmailTemplate = async (companyId: string, data: NewEmailTemplate): Promise<string> => {
+    const roots = FOLDER_ROOTS(companyId);
+    const newKey = db.ref(roots.emailTemplates).push().key;
+    if (!newKey) throw new Error("Failed to create key for new email template.");
+
+    await db.ref(`${roots.emailTemplates}/${newKey}`).set({
+        ...data,
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+    });
+    return newKey;
+};
+
+export const updateEmailTemplate = async (companyId: string, id: string, data: EmailTemplateUpdate): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).emailTemplates}/${id}`).update(data);
+};
+
+export const deleteEmailTemplate = async (companyId: string, id: string): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).emailTemplates}/${id}`).remove();
+};
+
+// Convert Lead to Sale - creates a sales document and marks lead as won
+export const convertLeadToSale = async (
+    companyId: string,
+    leadId: string,
+    saleData: NewSalesDocument
+): Promise<{ saleId: string }> => {
+    const roots = FOLDER_ROOTS(companyId);
+    const updates: { [key: string]: any } = {};
+
+    // Create the sales document
+    const saleKey = db.ref(roots.salesDocuments).push().key;
+    if (!saleKey) throw new Error("Failed to create key for sales document.");
+
+    updates[`${roots.salesDocuments}/${saleKey}`] = {
+        ...saleData,
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+    };
+
+    // Update lead to WON stage
+    const now = new Date().toISOString();
+    updates[`${roots.leads}/${leadId}/stage`] = LeadStage.WON;
+    updates[`${roots.leads}/${leadId}/updatedAt`] = now;
+
+    // Add system activity to lead history
+    const leadRef = db.ref(`${roots.leads}/${leadId}`);
+    const leadSnap = await leadRef.get();
+    if (leadSnap.exists()) {
+        const lead = leadSnap.val() as Lead;
+        const conversionActivity: Activity = {
+            id: db.ref().push().key || Date.now().toString(),
+            type: 'SYSTEM',
+            content: `Lead converted to sale. Invoice #${saleData.invoiceNumber}`,
+            timestamp: now,
+        };
+        updates[`${roots.leads}/${leadId}/history`] = [...(lead.history || []), conversionActivity];
+    }
+
+    // Update vehicle status if linked
+    if (saleData.vehicleId) {
+        updates[`${roots.vehicles}/${saleData.vehicleId}/status`] = 'Sold';
+    }
+
+    await db.ref().update(updates);
+    return { saleId: saleKey };
+};

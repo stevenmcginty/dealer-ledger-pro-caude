@@ -1,15 +1,14 @@
-
-// IMPORTANT: Add 'config.ts' to your .gitignore file to prevent these keys 
-// from being uploaded to GitHub.
+// Configuration loaded from environment variables
+// Create a .env.local file with your actual keys (see .env.example)
 
 export const CONFIG = {
   // Firebase Configuration
-  FIREBASE_API_KEY: "AIzaSyCa6A8l2GpyA8AlALRITT38FvVY7gQPfSs",
-  
+  FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY || '',
+
   // Google Integration
-  GOOGLE_CLIENT_ID: "802021635889-mm3dsvvi93j9oetit8njh4ri2479kb34.apps.googleusercontent.com",
-  
+  GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
+
   // Admin Privileges
-  ADMIN_EMAIL: "stevenmcginty@gmail.com",
-  ADMIN_UID: "lxfhLVwuqxOFmBX1me8QUNMoBo42"
+  ADMIN_EMAIL: import.meta.env.VITE_ADMIN_EMAIL || '',
+  ADMIN_UID: import.meta.env.VITE_ADMIN_UID || '',
 };

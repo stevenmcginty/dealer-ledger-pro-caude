@@ -33,6 +33,9 @@ import GaragePage from './pages/GaragePage';
 import CanvasPage from './pages/CanvasPage';
 import JobInvoicesPage from './pages/JobInvoicesPage';
 import WorkPrepPage from './pages/WorkPrepPage';
+import PipelinePage from './pages/PipelinePage';
+import InboxPage from './pages/InboxPage';
+import LeadDetailPage from './pages/LeadDetailPage';
 
 
 const LedgerCore = () => {
@@ -112,7 +115,10 @@ const LedgerCore = () => {
         settings: 'Settings',
         accountant: 'Accountant Reports',
         canvas: 'AI Canvas',
-        jobInvoices: 'Jobs & Invoices'
+        jobInvoices: 'Jobs & Invoices',
+        pipeline: 'Pipeline',
+        inbox: 'Inbox',
+        leadDetail: 'Lead Details'
       };
       return titles[view];
   }
@@ -122,6 +128,7 @@ const LedgerCore = () => {
       return {
         expenses: { label: 'Add Receipt', action: () => openModal('expense') },
         jobInvoices: { label: 'Add Quote', action: () => openModal('jobInvoice') },
+        pipeline: { label: 'Add Lead', action: () => openModal('lead') },
       }
     }
     return {
@@ -130,6 +137,7 @@ const LedgerCore = () => {
         expenses: { label: 'Add Receipt', action: () => openModal('expense') },
         workSheets: { label: 'Add Work Sheet', action: () => openModal('workSheet') },
         income: { label: 'Add Invoice', action: () => openModal('miscInvoice') },
+        pipeline: { label: 'Add Lead', action: () => openModal('lead') },
     }
   }, [isServiceBusiness, view, openModal]);
   
@@ -178,6 +186,9 @@ const LedgerCore = () => {
       case 'settings': return <SettingsPage />;
       case 'accountant': return <AccountantPage />;
       case 'canvas': return <CanvasPage />;
+      case 'pipeline': return <PipelinePage />;
+      case 'inbox': return <InboxPage />;
+      case 'leadDetail': return <LeadDetailPage />;
       default: return <div>Not implemented</div>;
     }
   };

@@ -49,6 +49,13 @@ import DeleteWorkSheetConfirmModal from './DeleteWorkSheetConfirmModal';
 import BulkReceiptWizard from '../expenses/BulkReceiptWizard';
 import ArchiveDrawer from '../filing-cabinet/ArchiveModal';
 import RestoreDrawer from '../filing-cabinet/RestoreModal';
+import LeadForm from '../crm/LeadForm';
+import AddNoteModal from '../crm/AddNoteModal';
+import LogCallModal from '../crm/LogCallModal';
+import CreateLeadFromEmailModal from '../crm/CreateLeadFromEmailModal';
+import EmailComposer from '../crm/EmailComposer';
+import AddTestEmailModal from '../crm/AddTestEmailModal';
+import ConvertToSaleModal from '../crm/ConvertToSaleModal';
 
 const DeleteJobInvoiceConfirmModal = ({ invoice }: { invoice: JobInvoice }) => {
     const { deleteJobInvoice } = useData();
@@ -103,7 +110,14 @@ const ModalManager = () => {
         if (id) {
             await data.updateSalesDocument(id, formData as SalesDocumentUpdate);
         } else {
-            await data.addSalesDocument(formData as NewSalesDocument);
+            // Check if this is a lead conversion (opened from ConvertToSaleModal)
+            const leadContext = modal?.data?.leadContext;
+            if (leadContext?.leadId) {
+                // Use convertLeadToSale to create sale AND update lead status
+                await data.convertLeadToSale(leadContext.leadId, formData as NewSalesDocument);
+            } else {
+                await data.addSalesDocument(formData as NewSalesDocument);
+            }
         }
         closeModal();
     };
@@ -301,7 +315,21 @@ const ModalManager = () => {
                 return <ArchiveDrawer items={modal.data} onClose={closeModal} companyId={companyId} />;
             case 'restoreDrawer':
                 return <RestoreDrawer onClose={closeModal} companyId={companyId} userId={userId} />;
-            default: 
+            case 'lead':
+                return <LeadForm lead={modal.data?.editingLead} onClose={closeModal} />;
+            case 'addNote':
+                return <AddNoteModal lead={modal.data.lead} onClose={closeModal} />;
+            case 'logCall':
+                return <LogCallModal lead={modal.data.lead} onClose={closeModal} />;
+            case 'createLeadFromEmail':
+                return <CreateLeadFromEmailModal email={modal.data.email} onClose={closeModal} />;
+            case 'emailComposer':
+                return <EmailComposer email={modal.data?.email} lead={modal.data?.lead} replyTo={modal.data?.replyTo} onClose={closeModal} />;
+            case 'addTestEmail':
+                return <AddTestEmailModal onClose={closeModal} />;
+            case 'convertToSale':
+                return <ConvertToSaleModal lead={modal.data.lead} onClose={closeModal} />;
+            default:
                 return null;
         }
     };
@@ -323,7 +351,15 @@ const ModalManager = () => {
             case 'customerManager':
             case 'archiveDrawer':
             case 'restoreDrawer':
+            case 'lead':
+            case 'addNote':
+            case 'logCall':
+            case 'createLeadFromEmail':
+            case 'addTestEmail':
+            case 'convertToSale':
                 return 'lg';
+            case 'emailComposer':
+                return '2xl';
             default:
                 return 'lg';
         }

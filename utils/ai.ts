@@ -3,17 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { fileToBase64 } from './helpers';
 import { GeminiAction, StatementTransaction, Vehicle } from '../types';
 
-// Safe access to process.env.API_KEY to avoid ReferenceError in browser if process is undefined
-let apiKey = "";
-try {
-    // @ts-ignore
-    if (typeof process !== 'undefined' && process.env) {
-        // @ts-ignore
-        apiKey = process.env.API_KEY || "";
-    }
-} catch (e) {
-    console.warn("Could not access process.env.API_KEY");
-}
+// Load Gemini API key from Vite environment variables
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 const ai = new GoogleGenAI({ apiKey });
 
@@ -228,4 +219,115 @@ export const analyzeCanvasUpload = async (file: File): Promise<{ headline: strin
     });
 
     return JSON.parse(response.text || '{}');
+};
+
+export type EmailIntent = 'availability' | 'pricing' | 'test_drive' | 'trade_in' | 'finance' | 'general';
+
+export interface EmailAnalysisResult {
+    vehicleExtracted?: string;
+    suggestedVehicleId?: string;
+    intent: EmailIntent;
+    suggestedTemplate?: string;
+    phoneNumber?: string;
+    urgency?: 'low' | 'medium' | 'high';
+}
+
+export const analyzeIncomingEmail = async (
+    email: { subject: string; body: string; senderEmail: string },
+    inventory: Vehicle[]
+): Promise<EmailAnalysisResult> => {
+    const vehicleList = inventory.map(v => ({
+        id: v.id,
+        reg: v.reg,
+        make: v.make,
+        model: v.model,
+        year: v.year,
+    }));
+
+    const prompt = `Analyze this incoming email from a potential car buyer.
+
+Email Subject: ${email.subject}
+Email Body: ${email.body}
+Sender: ${email.senderEmail}
+
+Available Vehicles:
+${JSON.stringify(vehicleList, null, 2)}
+
+Extract:
+1. vehicleExtracted - The vehicle they're asking about (make/model/reg if mentioned)
+2. suggestedVehicleId - Match to a vehicle ID from the list if possible
+3. intent - One of: availability, pricing, test_drive, trade_in, finance, general
+4. phoneNumber - Extract any phone number mentioned in the email
+5. urgency - low/medium/high based on language used
+
+Return JSON.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        vehicleExtracted: { type: Type.STRING },
+                        suggestedVehicleId: { type: Type.STRING },
+                        intent: { type: Type.STRING },
+                        phoneNumber: { type: Type.STRING },
+                        urgency: { type: Type.STRING },
+                    }
+                }
+            }
+        });
+
+        const result = JSON.parse(response.text || '{}');
+        return {
+            vehicleExtracted: result.vehicleExtracted || undefined,
+            suggestedVehicleId: result.suggestedVehicleId || undefined,
+            intent: result.intent || 'general',
+            phoneNumber: result.phoneNumber || undefined,
+            urgency: result.urgency || 'medium',
+        };
+    } catch (error) {
+        console.error('Error analyzing email:', error);
+        return { intent: 'general' };
+    }
+};
+
+export const generateEmailReply = async (
+    originalEmail: { subject: string; body: string; senderName: string },
+    template: string,
+    vehicle?: Vehicle,
+    businessName?: string
+): Promise<string> => {
+    const vehicleInfo = vehicle
+        ? `Vehicle: ${vehicle.make} ${vehicle.model} (${vehicle.year}) - ${vehicle.reg}`
+        : '';
+
+    const prompt = `Generate a professional email reply for a car dealership.
+
+Original Email:
+Subject: ${originalEmail.subject}
+From: ${originalEmail.senderName}
+Body: ${originalEmail.body}
+
+${vehicleInfo}
+
+Template Style: ${template}
+Business Name: ${businessName || 'Our Dealership'}
+
+Write a friendly, professional reply. Keep it concise but helpful. Return only the email body text.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+        });
+
+        return response.text || '';
+    } catch (error) {
+        console.error('Error generating email reply:', error);
+        return '';
+    }
 };
