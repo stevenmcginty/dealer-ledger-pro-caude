@@ -55,12 +55,24 @@ const App = () => {
         navigate('landing');
     };
 
+    // Auto-redirect logged-in users to app (especially useful on mobile)
+    useEffect(() => {
+        if (!authLoading && user && route === 'landing') {
+            navigate('app');
+        }
+    }, [authLoading, user, route]);
+
     if (authLoading) {
         return <div className="bg-gray-950 flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-white" /></div>;
     }
 
-    // Landing page - always accessible
+    // Landing page - only for non-logged-in users
     if (route === 'landing') {
+        // If logged in, redirect to app
+        if (user) {
+            navigate('app');
+            return null;
+        }
         return (
             <LandingPage
                 onLogin={handleLogin}

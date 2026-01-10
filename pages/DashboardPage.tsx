@@ -294,19 +294,70 @@ const VehiclePrepView = () => {
     );
 };
 
+// --- Quick Stats Section (Mobile-first) ---
+const QuickStats = () => {
+    const { vehicles, todos, leads } = useData();
+
+    const stats = useMemo(() => {
+        const inStock = vehicles.filter(v => v.status === 'Available' || v.status === 'In Stock').length;
+        const depositPaid = vehicles.filter(v => v.status === 'Deposit Paid').length;
+        const prepTasks = todos.filter(t => t.type === 'prep' && !t.isComplete).length;
+        const dueTasks = todos.filter(t => t.type === 'general' && !t.isComplete && t.dueDate).length;
+        const activeLeads = leads?.filter(l => l.stage !== 'Sold' && l.stage !== 'Lost').length || 0;
+        const warrantyClaims = todos.filter(t => t.type === 'warranty' && !t.isComplete).length;
+
+        return { inStock, depositPaid, prepTasks, dueTasks, activeLeads, warrantyClaims };
+    }, [vehicles, todos, leads]);
+
+    return (
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3">
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-green-400">{stats.inStock}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">In Stock</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-cyan-400">{stats.depositPaid}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Deposits</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-purple-400">{stats.activeLeads}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Leads</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-amber-400">{stats.prepTasks}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Prep Jobs</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <p className="text-2xl sm:text-3xl font-bold text-blue-400">{stats.dueTasks}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Tasks Due</p>
+            </div>
+            <div className="bg-gray-800 rounded-xl p-3 text-center">
+                <p className={`text-2xl sm:text-3xl font-bold ${stats.warrantyClaims > 0 ? 'text-red-400' : 'text-gray-500'}`}>{stats.warrantyClaims}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">Warranty</p>
+            </div>
+        </div>
+    );
+};
+
 // --- Main Dashboard Page ---
 const DashboardPage = () => {
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1">
-                <CalendarTasksSection />
-            </div>
-            <div className="lg:col-span-2 space-y-6">
-                <WarrantyClaimsView />
-                <div>
-                    <h2 className="text-xl font-bold text-white mb-4">Vehicle Prep</h2>
-                    <div className="bg-gray-800 rounded-lg shadow-lg">
-                         <VehiclePrepView />
+        <div className="space-y-4 sm:space-y-6">
+            {/* Quick Stats - Always visible at top */}
+            <QuickStats />
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+                <div className="lg:col-span-1">
+                    <CalendarTasksSection />
+                </div>
+                <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+                    <WarrantyClaimsView />
+                    <div>
+                        <h2 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4">Vehicle Prep</h2>
+                        <div className="bg-gray-800 rounded-lg shadow-lg">
+                             <VehiclePrepView />
+                        </div>
                     </div>
                 </div>
             </div>
