@@ -159,8 +159,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                     <section className="relative pt-32 pb-20 px-4 overflow-hidden">
                         {/* Background effects */}
                         <div className="absolute inset-0 bg-gradient-to-b from-brand-600/10 via-transparent to-transparent" />
-                        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-500/20 rounded-full blur-3xl" />
-                        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
+                        <div className="absolute top-1/4 left-1/4 w-48 h-48 sm:w-96 sm:h-96 bg-brand-500/20 rounded-full blur-3xl" />
+                        <div className="absolute bottom-1/4 right-1/4 w-48 h-48 sm:w-96 sm:h-96 bg-purple-500/10 rounded-full blur-3xl" />
 
                         <div className="relative max-w-7xl mx-auto text-center">
                             <div className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500/10 border border-brand-500/20 rounded-full text-brand-400 text-sm mb-8">
@@ -197,7 +197,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                             </div>
 
                             {/* Stats */}
-                            <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 max-w-2xl mx-auto">
                                 <div className="text-center">
                                     <div className="text-3xl sm:text-4xl font-bold text-white">{animatedStats.dealers}+</div>
                                     <div className="text-sm text-gray-500">Active Dealers</div>

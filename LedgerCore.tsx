@@ -10,10 +10,8 @@ import { View, NewCanvasItem, CanvasItem } from './types';
 import DesktopNav from './components/nav/DesktopNav';
 import MobileNav from './components/nav/MobileNav';
 import NotificationBell from './components/nav/NotificationBell';
-import GeminiFAB from './components/assistant/GeminiFAB';
 import Spinner from './components/common/Spinner';
 import ModalManager from './components/common/ModalManager';
-import AssistantManager from './components/assistant/AssistantManager';
 import PermissionDeniedHandler from './components/auth/PermissionDeniedHandler';
 import { CarIcon, PlusIcon, ExclamationTriangleIcon, WrenchScrewdriverIcon, ClipboardDocumentListIcon, ArrowUpTrayIcon, ClipboardIcon, CalendarIcon } from './components/icons';
 
@@ -39,7 +37,7 @@ import LeadDetailPage from './pages/LeadDetailPage';
 
 
 const LedgerCore = () => {
-  const { view, openModal, setView, toggleAssistant, triggerCanvasUpload } = useUI();
+  const { view, openModal, setView, triggerCanvasUpload } = useUI();
   const { isLoading, error, businessDetails, theme, vehicles, addCanvasItem, isServiceBusiness, isVatRegistered } = useData();
   const { width } = useWindowSize();
   const [isMobile, setIsMobile] = useState(true);
@@ -224,19 +222,19 @@ const LedgerCore = () => {
   }
 
   return (
-    <div className={`flex min-h-screen bg-gray-950 text-gray-100 theme-${theme} print:hidden`}>
+    <div className={`flex h-screen overflow-hidden bg-gray-950 text-gray-100 theme-${theme} print:hidden`}>
       {!isMobile && <DesktopNav onLogout={handleLogout} />}
-      
-      <main className="flex-1 flex flex-col">
+
+      <main className="flex-1 flex flex-col min-h-0">
          <header className="md:hidden p-4 flex items-center justify-between border-b border-gray-700/50">
-             <div className="flex items-center gap-3">
+             <div className="flex items-center gap-3 min-w-0 flex-1">
                 <CarIcon className={`h-8 w-8 text-brand-400 flex-shrink-0`} />
-                <div>
-                    <h1 className="text-lg font-bold text-white leading-tight">{businessDetails?.name || 'Dealer Ledger'}</h1>
+                <div className="min-w-0">
+                    <h1 className="text-lg font-bold text-white leading-tight truncate">{businessDetails?.name || 'Dealer Ledger'}</h1>
                     <p className="text-xs text-gray-400">{getPageTitle()}</p>
                 </div>
              </div>
-             <div className="flex items-center gap-2">
+             <div className="flex items-center gap-2 flex-shrink-0">
                 {view === 'dashboard' && (
                   <div className="relative" ref={addMenuRef}>
                       <button
@@ -343,7 +341,7 @@ const LedgerCore = () => {
             </div>
         </header>
 
-         <div className="flex-1 p-4 md:p-6 pb-96">
+         <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-6">
             <div className="max-w-7xl mx-auto">
                 {renderView()}
             </div>
@@ -352,9 +350,7 @@ const LedgerCore = () => {
       
       {isMobile && <MobileNav onLogout={handleLogout} />}
 
-      <GeminiFAB onClick={toggleAssistant} />
       <ModalManager />
-      <AssistantManager />
     </div>
   );
 };

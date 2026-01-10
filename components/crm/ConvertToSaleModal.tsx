@@ -114,7 +114,7 @@ const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }
                 {/* Lead Summary */}
                 <div className="p-4 bg-gray-800/50 rounded-lg space-y-2">
                     <h3 className="text-sm font-medium text-gray-300">Lead Details</h3>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
                         <div>
                             <span className="text-gray-500">Customer:</span>
                             <span className="ml-2 text-white">{customerName}</span>

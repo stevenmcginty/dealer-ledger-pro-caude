@@ -250,26 +250,26 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
                     </div>
                 </div>
             )}
-             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                 <div className="flex-1" />
-                 <div className="flex-shrink-0 w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <button type="button" onClick={() => openModal('categoryManager')} className="w-full sm:w-auto inline-flex justify-center items-center gap-x-2 rounded-md bg-gray-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600">
-                        Manage Categories
+             <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+                 <div className="hidden sm:block flex-1" />
+                 <div className="flex-shrink-0 w-full sm:w-auto flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2">
+                    <button type="button" onClick={() => openModal('categoryManager')} className="flex-1 sm:flex-initial inline-flex justify-center items-center gap-x-2 rounded-md bg-gray-700 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-gray-600">
+                        Categories
                     </button>
-                    <button 
-                        type="button" 
-                        onClick={() => bulkInputRef.current?.click()} 
-                        className="w-full sm:w-auto inline-flex justify-center items-center gap-x-2 rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-500"
+                    <button
+                        type="button"
+                        onClick={() => bulkInputRef.current?.click()}
+                        className="flex-1 sm:flex-initial inline-flex justify-center items-center gap-x-2 rounded-md bg-purple-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-purple-500"
                     >
-                        <DocumentTextIcon className="-ml-1 h-5 w-5" /> Bulk Upload Receipts
+                        <DocumentTextIcon className="-ml-1 h-4 w-4 sm:h-5 sm:w-5" /> <span className="hidden sm:inline">Bulk Upload</span><span className="sm:hidden">Bulk</span>
                     </button>
-                    <div className="relative w-full sm:w-56" ref={uploadMenuRef}>
+                    <div className="relative flex-1 sm:flex-initial sm:w-56" ref={uploadMenuRef}>
                         <button
                             type="button"
                             onClick={() => setUploadMenuOpen(!isUploadMenuOpen)}
-                            className="w-full justify-center inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500"
+                            className="w-full justify-center inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-brand-500"
                         >
-                            <ArrowUpTrayIcon className="-ml-1 h-5 w-5" /> Upload Statement
+                            <ArrowUpTrayIcon className="-ml-1 h-4 w-4 sm:h-5 sm:w-5" /> <span className="hidden sm:inline">Upload Statement</span><span className="sm:hidden">Upload</span>
                         </button>
                         {isUploadMenuOpen && (
                             <div className="absolute right-0 mt-2 w-full origin-top-right rounded-md bg-gray-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
@@ -321,7 +321,7 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
 
             <div className="w-full sm:w-auto overflow-x-auto">
                  <div className="border-b border-gray-700">
-                    <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                    <nav className="-mb-px flex space-x-4 sm:space-x-8" aria-label="Tabs">
                         {tabs.map((tab) => (
                             <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`${tab.id === activeTab ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}>
                                 <span>{tab.name}</span>

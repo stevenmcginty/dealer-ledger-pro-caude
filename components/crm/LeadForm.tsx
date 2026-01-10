@@ -149,7 +149,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ lead, onClose }) => {
                         )}
 
                         {/* Name Row */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <Input
                                 label="First Name"
                                 value={formData.firstName}
@@ -167,7 +167,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ lead, onClose }) => {
                         </div>
 
                         {/* Contact Row */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <Input
                                 label="Email"
                                 type="email"
@@ -230,7 +230,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ lead, onClose }) => {
                         />
 
                         {/* Value and Stage Row */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <Input
                                 label="Estimated Value (£)"
                                 type="number"
