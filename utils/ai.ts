@@ -40,7 +40,7 @@ export const getCategorySuggestionForTx = async (description: string, categories
     }
 }
 
-export const scanVehicleInvoice = async (file: File): Promise<Partial<Vehicle> & { deliveryCharge?: number, deliveryVat?: number, vendor?: string }> => {
+export const scanVehicleInvoice = async (file: File): Promise<Partial<Vehicle> & { grandTotal?: number, totalDeliveryCost?: number, deliveryVat?: number, vendor?: string }> => {
     const base64Data = await fileToBase64(file);
     const mimeType = file.type;
 
@@ -49,7 +49,7 @@ export const scanVehicleInvoice = async (file: File): Promise<Partial<Vehicle> &
         contents: {
             parts: [
                 { inlineData: { mimeType, data: base64Data } },
-                { text: "Extract vehicle details from this invoice. Return JSON." }
+                { text: "Analyze this vehicle purchase invoice. 1. Find the 'grandTotal' (The final amount at the bottom including hammer price, indemnity fees, and VAT). 2. Find the 'totalDeliveryCost' (The specific line item amount for delivery/transport, including its VAT). 3. Extract vehicle details." }
             ]
         },
         config: {
@@ -66,9 +66,9 @@ export const scanVehicleInvoice = async (file: File): Promise<Partial<Vehicle> &
                     mileage: { type: Type.NUMBER },
                     engineSize: { type: Type.STRING },
                     firstRegistered: { type: Type.STRING },
-                    purchasePrice: { type: Type.NUMBER },
+                    grandTotal: { type: Type.NUMBER, description: "The final total amount of the invoice including all fees and taxes." },
                     purchaseDate: { type: Type.STRING },
-                    deliveryCharge: { type: Type.NUMBER },
+                    totalDeliveryCost: { type: Type.NUMBER, description: "The gross amount for delivery or transport if present." },
                     deliveryVat: { type: Type.NUMBER },
                     vendor: { type: Type.STRING },
                 }
@@ -328,6 +328,209 @@ Write a friendly, professional reply. Keep it concise but helpful. Return only t
         return response.text || '';
     } catch (error) {
         console.error('Error generating email reply:', error);
+        return '';
+    }
+};
+
+// ============== AUTO-RESPONSE FUNCTIONS ==============
+
+export interface EmailComplexityResult {
+    isComplex: boolean;
+    complexityScore: number;       // 0-100
+    reason: string;
+    suggestedAction: 'auto_respond' | 'human_review' | 'skip';
+    detectedKeywords: string[];
+}
+
+/**
+ * Analyze email complexity to determine if AI can safely auto-respond
+ */
+export const analyzeEmailComplexity = async (
+    email: { subject: string; body: string },
+    settings?: {
+        simpleIntents?: string[];
+        complexKeywords?: string[];
+    }
+): Promise<EmailComplexityResult> => {
+    const prompt = `Analyze this car dealership enquiry email and determine if it can be safely auto-responded to by AI.
+
+Email Subject: ${email.subject}
+Email Body: ${email.body}
+
+RULES FOR AUTO-RESPONSE (these are SAFE for AI to handle):
+- Simple availability questions ("Is the car still available?")
+- Basic pricing enquiries ("What's the price?", "How much?")
+- Test drive requests ("Can I book a test drive?", "When can I view?")
+- General interest expressions ("I'm interested in...", "Can you send more info?")
+- Opening hours questions
+- Short/empty messages asking for basic info
+- Location/address enquiries
+
+RULES FOR HUMAN REVIEW (AI should NOT auto-respond to these):
+- Finance calculations or specific monthly payment questions
+- Trade-in/part exchange valuations requiring assessment
+- Detailed warranty questions with specific scenarios
+- Legal or compliance questions
+- Complaints, disputes, or expressions of unhappiness
+- Multiple complex questions in one email
+- Questions about car history, accidents, or HPI checks
+- Specific mechanical or technical questions
+- Negotiation attempts or "best price" requests
+- Questions requiring specific knowledge the AI doesn't have
+
+Analyze the email and return your assessment.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        isComplex: { type: Type.BOOLEAN },
+                        complexityScore: { type: Type.NUMBER },
+                        reason: { type: Type.STRING },
+                        suggestedAction: { type: Type.STRING },
+                        detectedKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    }
+                }
+            }
+        });
+
+        const result = JSON.parse(response.text || '{}');
+        return {
+            isComplex: result.isComplex ?? false,
+            complexityScore: result.complexityScore ?? 50,
+            reason: result.reason || 'Unable to determine',
+            suggestedAction: result.suggestedAction || 'human_review',
+            detectedKeywords: result.detectedKeywords || [],
+        };
+    } catch (error) {
+        console.error('Error analyzing email complexity:', error);
+        // Default to human review on error (safer)
+        return {
+            isComplex: true,
+            complexityScore: 100,
+            reason: 'Error analyzing email - defaulting to human review',
+            suggestedAction: 'human_review',
+            detectedKeywords: [],
+        };
+    }
+};
+
+export interface EnhancedEmailAnalysis extends EmailAnalysisResult {
+    complexity: EmailComplexityResult;
+    suggestedAutoResponse?: string;
+}
+
+/**
+ * Enhanced email analysis for auto-response system
+ * Combines vehicle matching, intent detection, and complexity analysis
+ */
+export const analyzeEmailForAutoResponse = async (
+    email: { subject: string; body: string; senderEmail: string; senderName: string },
+    inventory: Vehicle[],
+    businessDetails: { name: string; phone?: string; address?: string }
+): Promise<EnhancedEmailAnalysis> => {
+    // Run both analyses in parallel for performance
+    const [basicAnalysis, complexityAnalysis] = await Promise.all([
+        analyzeIncomingEmail(email, inventory),
+        analyzeEmailComplexity({ subject: email.subject, body: email.body })
+    ]);
+
+    let suggestedAutoResponse: string | undefined;
+
+    // Only generate auto-response if it's a simple enquiry
+    if (!complexityAnalysis.isComplex && complexityAnalysis.suggestedAction === 'auto_respond') {
+        // Find the matched vehicle
+        const matchedVehicle = basicAnalysis.suggestedVehicleId
+            ? inventory.find(v => v.id === basicAnalysis.suggestedVehicleId)
+            : undefined;
+
+        suggestedAutoResponse = await generateAutoResponseEmail(
+            email,
+            basicAnalysis.intent,
+            matchedVehicle,
+            businessDetails
+        );
+    }
+
+    return {
+        ...basicAnalysis,
+        complexity: complexityAnalysis,
+        suggestedAutoResponse,
+    };
+};
+
+/**
+ * Generate an auto-response email for simple enquiries
+ */
+export const generateAutoResponseEmail = async (
+    originalEmail: { subject: string; body: string; senderName: string },
+    intent: EmailIntent,
+    vehicle?: Vehicle,
+    businessDetails?: { name: string; phone?: string; address?: string }
+): Promise<string> => {
+    const businessName = businessDetails?.name || 'Our Dealership';
+    const businessPhone = businessDetails?.phone || '';
+    const businessAddress = businessDetails?.address || '';
+
+    const vehicleInfo = vehicle
+        ? `
+Vehicle Details:
+- ${vehicle.year} ${vehicle.make} ${vehicle.model}
+- Registration: ${vehicle.reg}
+- Mileage: ${vehicle.mileage?.toLocaleString() || 'Please enquire'} miles
+- Colour: ${vehicle.color || 'Please enquire'}`
+        : '';
+
+    const intentContext: Record<EmailIntent, string> = {
+        availability: 'They are asking if a vehicle is still available.',
+        pricing: 'They are asking about price or cost.',
+        test_drive: 'They want to book a test drive or viewing.',
+        trade_in: 'They mentioned a trade-in (but this is complex - keep response simple).',
+        finance: 'They mentioned finance (but this is complex - keep response simple).',
+        general: 'This is a general enquiry.',
+    };
+
+    const prompt = `Generate a professional, friendly auto-response email for a UK car dealership.
+
+CONTEXT:
+- Customer Name: ${originalEmail.senderName}
+- Original Subject: ${originalEmail.subject}
+- Original Message: ${originalEmail.body}
+- Customer Intent: ${intentContext[intent]}
+${vehicleInfo}
+
+BUSINESS INFO:
+- Dealership: ${businessName}
+${businessPhone ? `- Phone: ${businessPhone}` : ''}
+${businessAddress ? `- Address: ${businessAddress}` : ''}
+
+REQUIREMENTS:
+1. Be warm, professional, and helpful
+2. Use the customer's first name if available
+3. Address their specific question briefly
+4. If a vehicle was identified, confirm it's currently available (or say you'll check)
+5. Invite them to call, email back, or visit for more information
+6. Keep it under 150 words
+7. Don't make specific promises about prices, finance, or trade-in values
+8. Sign off with the dealership name
+9. Write in British English
+
+Return ONLY the email body text (no subject line, no "Subject:" prefix).`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: { parts: [{ text: prompt }] },
+        });
+
+        return response.text?.trim() || '';
+    } catch (error) {
+        console.error('Error generating auto-response:', error);
         return '';
     }
 };

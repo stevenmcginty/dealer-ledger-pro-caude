@@ -167,20 +167,21 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
         const result = await ai.scanVehicleInvoice(compressedFile);
 
         let successMessage = 'Success!';
-        if (result.deliveryCharge && result.deliveryCharge > 0) {
-            const deliveryAmount = (result.deliveryCharge || 0) + (result.deliveryVat || 0);
+        const totalDeliveryCost = result.totalDeliveryCost || 0;
+
+        if (totalDeliveryCost > 0) {
             setScannedDeliveryDetails({
-                amount: deliveryAmount,
+                amount: totalDeliveryCost,
                 vat: result.deliveryVat || 0,
                 vendor: result.vendor || 'Auction House',
                 date: result.purchaseDate || new Date().toISOString().split('T')[0],
             });
-            successMessage = 'Success! Delivery charge noted.';
+            successMessage = 'Success! Delivery extracted separately.';
         }
-        
+
         const firstRegDate = result.firstRegistered ? robustDateParser(result.firstRegistered) : null;
         const purchaseDate = result.purchaseDate ? robustDateParser(result.purchaseDate) : null;
-        
+
         setFormData(prev => ({
             ...prev,
             make: result.make || prev.make,
@@ -194,7 +195,13 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
             mileage: result.mileage || prev.mileage,
             engineSize: result.engineSize || prev.engineSize,
         }));
-        if(result.purchasePrice) setPriceStr(String(result.purchasePrice));
+
+        // Calculate purchase price: Grand Total minus Delivery Cost
+        // This ensures indemnity and auction fees remain in the vehicle purchase price
+        if (result.grandTotal) {
+            const calculatedPrice = result.grandTotal - totalDeliveryCost;
+            setPriceStr(String(calculatedPrice));
+        }
         setScanProgress({ step: 'success', message: successMessage });
 
     } catch (error: any) {
