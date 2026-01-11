@@ -13,6 +13,9 @@ type Route = 'landing' | 'login' | 'app';
 
 const getInitialRoute = (): Route => {
     const path = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('mode') === 'screenshot') return 'app';
+
     if (path === '/app' || path.startsWith('/app/')) return 'app';
     if (path === '/login') return 'login';
     return 'landing';
@@ -102,9 +105,11 @@ const App = () => {
         );
     }
 
-    // App route - requires authentication
+    // App route - requires authentication (or screenshot mode)
     if (route === 'app') {
-        if (!user) {
+        const isScreenshotMode = new URLSearchParams(window.location.search).get('mode') === 'screenshot';
+
+        if (!user && !isScreenshotMode) {
             // Not logged in, show login
             return (
                 <div className="relative">
@@ -119,8 +124,13 @@ const App = () => {
             );
         }
 
+        // In screenshot mode, use a mock user if not logged in
+        const appUser = user || (isScreenshotMode ? { uid: 'demo', email: 'demo@example.com' } as any : null);
+
+        if (!appUser) return null;
+
         return (
-            <DataProvider user={user}>
+            <DataProvider user={appUser}>
                 <UIProvider>
                     <LedgerCore />
                 </UIProvider>
