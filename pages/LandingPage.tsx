@@ -9,7 +9,10 @@ import {
     CheckCircleIcon,
     ChartPieIcon,
     CalendarIcon,
-    EnvelopeIcon
+    EnvelopeIcon,
+    ClockIcon,
+    BanknotesIcon,
+    WrenchScrewdriverIcon
 } from '../components/icons';
 
 interface LandingPageProps {
@@ -17,6 +20,204 @@ interface LandingPageProps {
     onNavigate: (page: 'home' | 'pricing' | 'demo' | 'contact') => void;
     currentPage: 'home' | 'pricing' | 'demo' | 'contact';
 }
+
+// Rich Dashboard Mockup Component
+const DashboardMockup = () => {
+    const vehicles = [
+        { reg: 'YK73 HJT', make: 'BMW', model: '320d M Sport', price: 18500, status: 'Available', days: 12 },
+        { reg: 'PE72 XYZ', make: 'Audi', model: 'A4 S-Line', price: 22750, status: 'Reserved', days: 5 },
+        { reg: 'LM71 ABC', make: 'Mercedes', model: 'C200 AMG', price: 24995, status: 'Available', days: 8 },
+    ];
+
+    const stats = [
+        { label: 'Stock Value', value: '£187,450', change: '+12%', up: true },
+        { label: 'This Month', value: '£34,200', change: '+8%', up: true },
+        { label: 'Pending', value: '£12,500', change: '3 deals', up: true },
+    ];
+
+    return (
+        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="bg-gray-800/50 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-brand-500/20 flex items-center justify-center">
+                        <CarIcon className="w-4 h-4 text-brand-400" />
+                    </div>
+                    <span className="text-sm font-semibold text-white">Dashboard</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-xs text-gray-400">Live</span>
+                </div>
+            </div>
+
+            {/* Stats Row */}
+            <div className="grid grid-cols-3 gap-px bg-gray-800">
+                {stats.map((stat, i) => (
+                    <div key={i} className="bg-gray-900 p-4 text-center">
+                        <div className="text-lg font-bold text-white">{stat.value}</div>
+                        <div className="text-xs text-gray-500">{stat.label}</div>
+                        <div className={`text-xs mt-1 ${stat.up ? 'text-green-400' : 'text-red-400'}`}>{stat.change}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Vehicle List */}
+            <div className="p-4 space-y-2">
+                {vehicles.map((v, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-brand-500/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-xs font-bold text-gray-400">
+                                {v.make.substring(0, 2)}
+                            </div>
+                            <div>
+                                <div className="text-sm font-semibold text-white">{v.make} {v.model}</div>
+                                <div className="text-xs text-gray-500">{v.reg} • {v.days} days in stock</div>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-sm font-bold text-brand-400">£{v.price.toLocaleString()}</div>
+                            <div className={`text-xs px-2 py-0.5 rounded-full ${v.status === 'Available' ? 'bg-green-500/10 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                                {v.status}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Rich Expenses Mockup Component
+const ExpensesMockup = () => {
+    const receipts = [
+        { vendor: 'BCA Auction', category: 'Vehicle Purchase', amount: 8750, date: '12 Jan', icon: CarIcon, color: 'rose' },
+        { vendor: 'Halfords Trade', category: 'Parts & Repairs', amount: 234.50, date: '11 Jan', icon: WrenchScrewdriverIcon, color: 'sky' },
+        { vendor: 'Shell Garage', category: 'Fuel', amount: 89.40, date: '10 Jan', icon: BanknotesIcon, color: 'orange' },
+        { vendor: 'RAC Transport', category: 'Delivery', amount: 175, date: '9 Jan', icon: CarIcon, color: 'pink' },
+    ];
+
+    return (
+        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="bg-gray-800/50 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                        <CreditCardIcon className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <span className="text-sm font-semibold text-white">Expenses</span>
+                </div>
+                <div className="text-xs text-gray-400">This Month: <span className="text-white font-semibold">£9,248.90</span></div>
+            </div>
+
+            {/* Receipt List */}
+            <div className="p-4 space-y-2">
+                {receipts.map((r, i) => {
+                    const Icon = r.icon;
+                    const colorClasses: Record<string, string> = {
+                        rose: 'bg-rose-500/10 text-rose-400',
+                        sky: 'bg-sky-500/10 text-sky-400',
+                        orange: 'bg-orange-500/10 text-orange-400',
+                        pink: 'bg-pink-500/10 text-pink-400',
+                    };
+                    return (
+                        <div key={i} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colorClasses[r.color]}`}>
+                                    <Icon className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="text-sm font-semibold text-white">{r.vendor}</div>
+                                    <div className="text-xs text-gray-500">{r.category}</div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-sm font-bold text-white">£{r.amount.toLocaleString()}</div>
+                                <div className="text-xs text-gray-500">{r.date}</div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Quick Add */}
+            <div className="px-4 pb-4">
+                <div className="flex items-center gap-2 p-3 bg-brand-500/10 border border-brand-500/20 rounded-lg text-brand-400 text-sm cursor-pointer hover:bg-brand-500/20 transition-colors">
+                    <SparklesIcon className="w-4 h-4" />
+                    <span>AI Scan Receipt</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Connected Calendar Mockup Component
+const CalendarMockup = () => {
+    const today = new Date();
+    const appointments = [
+        { time: '10:00', title: 'Test Drive - BMW 320d', customer: 'James Wilson', type: 'test-drive' },
+        { time: '14:30', title: 'Vehicle Handover', customer: 'Sarah Mitchell', type: 'handover' },
+        { time: '16:00', title: 'Valuation Appointment', customer: 'Mark Thompson', type: 'valuation' },
+    ];
+
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dates = [13, 14, 15, 16, 17, 18, 19];
+
+    return (
+        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="bg-gray-800/50 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
+                        <CalendarIcon className="w-4 h-4 text-violet-400" />
+                    </div>
+                    <span className="text-sm font-semibold text-white">Calendar</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded bg-[#4285F4] flex items-center justify-center">
+                        <span className="text-[8px] font-bold text-white">G</span>
+                    </div>
+                    <span className="text-xs text-green-400">Connected</span>
+                </div>
+            </div>
+
+            {/* Mini Calendar */}
+            <div className="p-4 border-b border-gray-800">
+                <div className="flex justify-between mb-3">
+                    <span className="text-sm font-semibold text-white">January 2025</span>
+                    <div className="flex gap-1">
+                        <div className="w-6 h-6 rounded bg-gray-800 flex items-center justify-center text-gray-400 hover:text-white cursor-pointer">&lt;</div>
+                        <div className="w-6 h-6 rounded bg-gray-800 flex items-center justify-center text-gray-400 hover:text-white cursor-pointer">&gt;</div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-7 gap-1 text-center">
+                    {days.map((d, i) => (
+                        <div key={i} className="text-xs text-gray-500 py-1">{d}</div>
+                    ))}
+                    {dates.map((d, i) => (
+                        <div key={i} className={`text-xs py-2 rounded-lg cursor-pointer transition-colors ${d === 15 ? 'bg-brand-500 text-white font-bold' : 'text-gray-400 hover:bg-gray-800'}`}>
+                            {d}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Appointments */}
+            <div className="p-4 space-y-2">
+                <div className="text-xs text-gray-500 mb-2">Today's Appointments</div>
+                {appointments.map((apt, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2 bg-gray-800/50 rounded-lg border-l-2 border-brand-500">
+                        <div className="text-xs font-mono text-brand-400 w-12">{apt.time}</div>
+                        <div className="flex-1">
+                            <div className="text-sm font-medium text-white">{apt.title}</div>
+                            <div className="text-xs text-gray-500">{apt.customer}</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentPage }) => {
     const [isScrolled, setIsScrolled] = useState(false);
@@ -89,31 +290,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
     ];
 
     const comparisons = [
-        { name: 'Dealer Management System', price: '199/mo', features: 4 },
-        { name: 'CRM Software', price: '79/mo', features: 3 },
-        { name: 'Accounting Software', price: '35/mo', features: 2 },
-        { name: 'Email Marketing', price: '29/mo', features: 1 },
-    ];
-
-    const showcaseFeatures = [
-        {
-            title: "Smart Stock Management",
-            description: "Track every vehicle from acquisition to sale. VIN decoding, automatic stock numbering, and profit tracking built-in.",
-            image: "/screenshots/stock.png",
-            align: "right"
-        },
-        {
-            title: "Expense Tracking Made Simple",
-            description: "Log expenses on the go. Categorize costs, attach receipts, and see exactly where your money is going.",
-            image: "/screenshots/expenses.png",
-            align: "left"
-        },
-        {
-            title: "VAT & Financial Reporting",
-            description: "Keep the tax man happy with automatic VAT calculations, margin scheme support, and one-click accountant exports.",
-            image: "/screenshots/vat.png",
-            align: "right"
-        }
+        { name: 'Dealer Management System', price: '£199/mo', features: 4 },
+        { name: 'CRM Software', price: '£79/mo', features: 3 },
+        { name: 'Accounting Software', price: '£35/mo', features: 2 },
+        { name: 'Email Marketing', price: '£29/mo', features: 1 },
     ];
 
     return (
@@ -283,33 +463,95 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                         </div>
                     </section>
 
-                    {/* Showcase Section (Alternating) */}
+                    {/* Showcase Section - Interactive Mockups */}
                     <section className="py-24 px-4 bg-gray-900/30 border-y border-gray-800/50">
-                        <div className="max-w-7xl mx-auto space-y-32">
-                            {showcaseFeatures.map((feature, idx) => (
-                                <div key={idx} className={`flex flex-col ${feature.align === 'left' ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-12 lg:gap-24`}>
-                                    <div className="flex-1 space-y-6">
-                                        <h3 className="text-3xl md:text-4xl font-bold text-white leading-tight">{feature.title}</h3>
-                                        <p className="text-lg text-gray-400 leading-relaxed">{feature.description}</p>
-                                        <div className="pt-4">
-                                            <button onClick={onLogin} className="group flex items-center gap-2 text-brand-400 font-semibold hover:text-brand-300 transition-colors">
-                                                Learn more about {feature.title.split(' ')[0]}
-                                                <span className="group-hover:translate-x-1 transition-transform">→</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 w-full">
-                                        <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-800 bg-gray-900 group">
-                                            <div className="absolute inset-0 bg-gradient-to-tr from-brand-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10" />
-                                            <img
-                                                src={feature.image}
-                                                alt={feature.title}
-                                                className="w-full h-auto shadow-lg transform transition-transform duration-700 group-hover:scale-[1.02]"
-                                            />
-                                        </div>
-                                    </div>
+                        <div className="max-w-7xl mx-auto">
+                            <div className="text-center mb-16">
+                                <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-white">
+                                    See It In Action
+                                </h2>
+                                <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+                                    Real-time dashboards, intelligent expense tracking, and seamless calendar integration
+                                </p>
+                            </div>
+
+                            {/* Dashboard Showcase */}
+                            <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16 mb-32">
+                                <div className="flex-1 space-y-6">
+                                    <h3 className="text-3xl md:text-4xl font-bold text-white leading-tight">Smart Stock Management</h3>
+                                    <p className="text-lg text-gray-400 leading-relaxed">
+                                        Track every vehicle from acquisition to sale. Real-time stock values, days-in-stock tracking,
+                                        and instant profit calculations at your fingertips.
+                                    </p>
+                                    <ul className="space-y-3">
+                                        {['VIN decoding & auto-fill', 'MOT & service reminders', 'Profit margin tracking'].map((item, i) => (
+                                            <li key={i} className="flex items-center gap-3 text-gray-300">
+                                                <CheckCircleIcon className="w-5 h-5 text-brand-400 flex-shrink-0" />
+                                                {item}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button onClick={onLogin} className="group flex items-center gap-2 text-brand-400 font-semibold hover:text-brand-300 transition-colors pt-2">
+                                        Start managing stock
+                                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                                    </button>
                                 </div>
-                            ))}
+                                <div className="flex-1 w-full max-w-md">
+                                    <DashboardMockup />
+                                </div>
+                            </div>
+
+                            {/* Expenses Showcase */}
+                            <div className="flex flex-col lg:flex-row-reverse items-center gap-12 lg:gap-16 mb-32">
+                                <div className="flex-1 space-y-6">
+                                    <h3 className="text-3xl md:text-4xl font-bold text-white leading-tight">Expense Tracking Made Simple</h3>
+                                    <p className="text-lg text-gray-400 leading-relaxed">
+                                        Log expenses on the go with AI-powered receipt scanning. Automatic categorisation,
+                                        VAT extraction, and bank statement reconciliation.
+                                    </p>
+                                    <ul className="space-y-3">
+                                        {['AI receipt scanning', 'Auto-categorisation', 'Bank reconciliation'].map((item, i) => (
+                                            <li key={i} className="flex items-center gap-3 text-gray-300">
+                                                <CheckCircleIcon className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                                                {item}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button onClick={onLogin} className="group flex items-center gap-2 text-brand-400 font-semibold hover:text-brand-300 transition-colors pt-2">
+                                        Track expenses smarter
+                                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                                    </button>
+                                </div>
+                                <div className="flex-1 w-full max-w-md">
+                                    <ExpensesMockup />
+                                </div>
+                            </div>
+
+                            {/* Calendar Showcase */}
+                            <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+                                <div className="flex-1 space-y-6">
+                                    <h3 className="text-3xl md:text-4xl font-bold text-white leading-tight">Connected Calendar</h3>
+                                    <p className="text-lg text-gray-400 leading-relaxed">
+                                        Sync with Google Calendar for seamless appointment management. Test drives, viewings,
+                                        and handovers all in one place.
+                                    </p>
+                                    <ul className="space-y-3">
+                                        {['Google Calendar sync', 'Test drive scheduling', 'Customer reminders'].map((item, i) => (
+                                            <li key={i} className="flex items-center gap-3 text-gray-300">
+                                                <CheckCircleIcon className="w-5 h-5 text-violet-400 flex-shrink-0" />
+                                                {item}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button onClick={onLogin} className="group flex items-center gap-2 text-brand-400 font-semibold hover:text-brand-300 transition-colors pt-2">
+                                        Connect your calendar
+                                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                                    </button>
+                                </div>
+                                <div className="flex-1 w-full max-w-md">
+                                    <CalendarMockup />
+                                </div>
+                            </div>
                         </div>
                     </section>
 
@@ -370,7 +612,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                                     ))}
                                     <div className="flex items-center justify-between p-5 bg-gray-800 border border-gray-700 rounded-xl shadow-lg">
                                         <div className="font-bold text-white">Total Monthly Cost</div>
-                                        <div className="text-2xl font-bold text-red-400">342/mo</div>
+                                        <div className="text-2xl font-bold text-red-400">£342/mo</div>
                                     </div>
                                 </div>
 
@@ -383,12 +625,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                                         <h3 className="text-3xl font-bold text-white mb-2">Dealer Ledger Pro</h3>
                                         <p className="text-gray-400 mb-8">Everything included. No hidden fees.</p>
                                         <div className="mb-8">
-                                            <span className="text-6xl font-bold text-white">49</span>
+                                            <span className="text-6xl font-bold text-white">£49</span>
                                             <span className="text-gray-400 text-xl">/month</span>
                                         </div>
                                         <div className="text-green-400 font-bold mb-8 flex items-center justify-center gap-2">
                                             <CheckCircleIcon className="w-5 h-5" />
-                                            Save 293/month (86%)
+                                            Save £293/month (86%)
                                         </div>
                                         <button
                                             onClick={onLogin}
@@ -445,7 +687,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                                 <h3 className="text-xl font-bold text-white mb-2">Starter</h3>
                                 <p className="text-gray-400 text-sm mb-6">Perfect for small dealerships</p>
                                 <div className="mb-6">
-                                    <span className="text-4xl font-bold text-white">29</span>
+                                    <span className="text-4xl font-bold text-white">£29</span>
                                     <span className="text-gray-400">/month</span>
                                 </div>
                                 <ul className="space-y-4 mb-8">
@@ -469,7 +711,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                                 <h3 className="text-xl font-bold text-white mb-2">Professional</h3>
                                 <p className="text-gray-400 text-sm mb-6">For growing dealerships</p>
                                 <div className="mb-6">
-                                    <span className="text-4xl font-bold text-white">49</span>
+                                    <span className="text-4xl font-bold text-white">£49</span>
                                     <span className="text-gray-400">/month</span>
                                 </div>
                                 <ul className="space-y-4 mb-8">
@@ -493,7 +735,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                                 <h3 className="text-xl font-bold text-white mb-2">Enterprise</h3>
                                 <p className="text-gray-400 text-sm mb-6">For multi-site operations</p>
                                 <div className="mb-6">
-                                    <span className="text-4xl font-bold text-white">99</span>
+                                    <span className="text-4xl font-bold text-white">£99</span>
                                     <span className="text-gray-400">/month</span>
                                 </div>
                                 <ul className="space-y-4 mb-8">
