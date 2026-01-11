@@ -21,7 +21,16 @@ interface UIProviderProps {
 }
 
 export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
-    const [view, setView] = useState<View>('dashboard');
+    const getInitialView = (): View => {
+        const path = window.location.pathname.substring(1);
+        const validViews: string[] = ['stock', 'expenses', 'vat', 'sales', 'dashboard'];
+        if (validViews.includes(path)) {
+            return path as View;
+        }
+        return 'dashboard';
+    };
+
+    const [view, setView] = useState<View>(getInitialView);
     const [modal, setModal] = useState<ModalState>(null);
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [canvasUploadTriggerFn, setCanvasUploadTriggerFn] = useState<(() => void) | null>(null);

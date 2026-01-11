@@ -53,6 +53,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         let mounted = true;
         
         const init = async () => {
+            if (user.uid === 'demo') {
+                if (mounted) {
+                    setCompanyId('demo-company');
+                    setIsLoading(false);
+                    // Load Mock Data
+                    setVehicles([
+                        { id: '1', reg: 'AB12 CDE', make: 'Audi', model: 'A4', price: 15000, status: 'In Stock', purchaseDate: '2025-01-15' },
+                        { id: '2', reg: 'XY55 ZZZ', make: 'BMW', model: '3 Series', price: 18500, status: 'Sold', purchaseDate: '2025-02-01' },
+                        { id: '3', reg: 'GH88 JKL', make: 'Mercedes', model: 'C-Class', price: 22000, status: 'Prep', purchaseDate: '2025-02-10' },
+                    ]);
+                    setExpenseCategories([
+                        { id: '1', name: 'Parts', color: 'bg-blue-500', icon: 'WrenchIcon' },
+                        { id: '2', name: 'Fuel', color: 'bg-green-500', icon: 'TruckIcon' },
+                        { id: '3', name: 'Transport', color: 'bg-yellow-500', icon: 'MapIcon' },
+                    ]);
+                    setReceipts([
+                        { id: '1', date: '2025-02-15', amount: 150.00, supplier: 'Euro Car Parts', categoryId: '1', description: 'Brake Pads' },
+                        { id: '2', date: '2025-02-16', amount: 65.00, supplier: 'Shell', categoryId: '2', description: 'Diesel' },
+                    ]);
+                    setBusinessDetails({
+                        companyName: 'Prestige Motors Ltd',
+                        vatNumber: 'GB123456789',
+                        operatingMode: 'dealership',
+                        isVatRegistered: true,
+                        theme: 'blue'
+                    } as any);
+                }
+                return;
+            }
+
             try {
                 setIsLoading(true);
                 const cid = await dataService.getCompanyForUser(user);
@@ -68,7 +98,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
 
     // 2. Subscribe to data once Company ID is available
     useEffect(() => {
-        if (!companyId) return;
+        if (!companyId || user.uid === 'demo') return;
 
         // Start listeners
         const unsubs = [
@@ -101,7 +131,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         return () => {
             unsubs.forEach(unsub => unsub());
         };
-    }, [companyId]);
+    }, [companyId, user.uid]);
 
     // 3. Initialize Google Client
     useEffect(() => {
