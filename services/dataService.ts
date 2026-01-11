@@ -14,7 +14,8 @@ import {
     CanvasItemUpdate, MiscInvoiceUpdate, FinancialAccount, NewFinancialAccount, UploadBatch,
     JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate,
     Lead, NewLead, LeadUpdate, LeadStage, Activity, InboxEmail, NewInboxEmail, InboxEmailUpdate,
-    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate
+    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate,
+    ScheduledAutoResponse, NewScheduledAutoResponse, ScheduledAutoResponseUpdate, AutoRepliedEmail
 } from '../types';
 import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
 import type { User } from './firebase';
@@ -45,6 +46,10 @@ export const FOLDER_ROOTS = (companyId: string) => ({
     leads: `${companyRoot(companyId)}/leads`,
     inboxEmails: `${companyRoot(companyId)}/inboxEmails`,
     emailTemplates: `${companyRoot(companyId)}/emailTemplates`,
+    // Auto-Response Collections
+    scheduledResponses: `${companyRoot(companyId)}/scheduledResponses`,
+    autoRepliedEmails: `${companyRoot(companyId)}/autoRepliedEmails`,
+    crmSettings: `${companyRoot(companyId)}/crmSettings`,
 });
 
 // --- User & Company Management ---
@@ -1566,6 +1571,114 @@ export const deleteEmailTemplate = async (companyId: string, id: string): Promis
     await db.ref(`${FOLDER_ROOTS(companyId).emailTemplates}/${id}`).remove();
 };
 
+// --- Scheduled Auto-Responses ---
+
+export const subscribeToScheduledResponses = (companyId: string, cb: (data: ScheduledAutoResponse[]) => void) =>
+    createSubscription<ScheduledAutoResponse>(
+        FOLDER_ROOTS(companyId).scheduledResponses,
+        cb,
+        (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
+    );
+
+export const addScheduledResponse = async (companyId: string, data: NewScheduledAutoResponse): Promise<string> => {
+    const roots = FOLDER_ROOTS(companyId);
+    const newKey = db.ref(roots.scheduledResponses).push().key;
+    if (!newKey) throw new Error("Failed to create key for scheduled response.");
+    await db.ref(`${roots.scheduledResponses}/${newKey}`).set({
+        ...data,
+        createdAt: firebase.database.ServerValue.TIMESTAMP,
+    });
+    return newKey;
+};
+
+export const updateScheduledResponse = async (companyId: string, id: string, data: ScheduledAutoResponseUpdate): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).scheduledResponses}/${id}`).update(data);
+};
+
+export const deleteScheduledResponse = async (companyId: string, id: string): Promise<void> => {
+    await db.ref(`${FOLDER_ROOTS(companyId).scheduledResponses}/${id}`).remove();
+};
+
+export const getPendingScheduledResponses = async (companyId: string): Promise<ScheduledAutoResponse[]> => {
+    const snapshot = await db.ref(FOLDER_ROOTS(companyId).scheduledResponses)
+        .orderByChild('status')
+        .equalTo('pending')
+        .once('value');
+
+    if (!snapshot.exists()) return [];
+
+    const now = new Date();
+    const results: ScheduledAutoResponse[] = [];
+
+    snapshot.forEach((child) => {
+        const response = { id: child.key!, ...child.val() } as ScheduledAutoResponse;
+        // Only return responses that are due
+        if (new Date(response.scheduledFor) <= now) {
+            results.push(response);
+        }
+    });
+
+    return results;
+};
+
+// --- Auto-Replied Emails (Track who has received auto-replies) ---
+
+export const subscribeToAutoRepliedEmails = (companyId: string, cb: (data: AutoRepliedEmail[]) => void) =>
+    createSubscription<AutoRepliedEmail>(
+        FOLDER_ROOTS(companyId).autoRepliedEmails,
+        cb,
+        (a, b) => a.email.localeCompare(b.email)
+    );
+
+export const hasEmailReceivedAutoReply = async (companyId: string, email: string): Promise<boolean> => {
+    const normalizedEmail = email.toLowerCase().trim();
+    const snapshot = await db.ref(FOLDER_ROOTS(companyId).autoRepliedEmails)
+        .orderByChild('email')
+        .equalTo(normalizedEmail)
+        .once('value');
+
+    return snapshot.exists();
+};
+
+export const recordAutoReply = async (
+    companyId: string,
+    email: string,
+    inboxEmailId: string,
+    leadId?: string
+): Promise<string> => {
+    const roots = FOLDER_ROOTS(companyId);
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if already exists (double-check)
+    const exists = await hasEmailReceivedAutoReply(companyId, normalizedEmail);
+    if (exists) {
+        throw new Error(`Auto-reply already sent to ${normalizedEmail}`);
+    }
+
+    const newKey = db.ref(roots.autoRepliedEmails).push().key;
+    if (!newKey) throw new Error("Failed to create key for auto-replied email record.");
+
+    await db.ref(`${roots.autoRepliedEmails}/${newKey}`).set({
+        email: normalizedEmail,
+        firstAutoReplyAt: new Date().toISOString(),
+        inboxEmailId,
+        leadId: leadId || null,
+    });
+
+    return newKey;
+};
+
+export const getAutoRepliedEmails = async (companyId: string): Promise<AutoRepliedEmail[]> => {
+    const snapshot = await db.ref(FOLDER_ROOTS(companyId).autoRepliedEmails).once('value');
+    if (!snapshot.exists()) return [];
+
+    const results: AutoRepliedEmail[] = [];
+    snapshot.forEach((child) => {
+        results.push({ id: child.key!, ...child.val() });
+    });
+    return results;
+};
+
 // Convert Lead to Sale - creates a sales document and marks lead as won
 export const convertLeadToSale = async (
     companyId: string,
@@ -1611,3 +1724,26 @@ export const convertLeadToSale = async (
     await db.ref().update(updates);
     return { saleId: saleKey };
 };
+
+// --- CRM Settings ---
+export const getCRMSettings = async (companyId: string): Promise<any> => {
+    const snapshot = await db.ref(FOLDER_ROOTS(companyId).crmSettings).once('value');
+    return snapshot.val() || {};
+};
+
+export const updateCRMSettings = async (companyId: string, data: any): Promise<void> => {
+    await db.ref(FOLDER_ROOTS(companyId).crmSettings).update({
+        ...data,
+        updatedAt: firebase.database.ServerValue.TIMESTAMP,
+    });
+};
+
+export const subscribeToCRMSettings = (companyId: string, cb: (settings: any) => void) => {
+    const settingsRef = db.ref(FOLDER_ROOTS(companyId).crmSettings);
+    const listener = (snap: firebase.database.DataSnapshot) => cb(snap.val() || {});
+    settingsRef.on('value', listener);
+    return () => settingsRef.off('value', listener);
+};
+
+export const unsubscribeFromCRMSettings = (companyId: string) =>
+    db.ref(FOLDER_ROOTS(companyId).crmSettings).off();
