@@ -27,12 +27,16 @@ const DashboardMockup = () => {
         { reg: 'YK73 HJT', make: 'BMW', model: '320d M Sport', price: 18500, status: 'Available', days: 12 },
         { reg: 'PE72 XYZ', make: 'Audi', model: 'A4 S-Line', price: 22750, status: 'Reserved', days: 5 },
         { reg: 'LM71 ABC', make: 'Mercedes', model: 'C200 AMG', price: 24995, status: 'Available', days: 8 },
+        { reg: 'KX24 MNO', make: 'Land Rover', model: 'Defender 110', price: 68000, status: 'Available', days: 2 },
+        { reg: 'GL19 PQR', make: 'Volkswagen', model: 'Golf R', price: 29500, status: 'Deposit Paid', days: 15 },
+        { reg: 'RE23 STU', make: 'Tesla', model: 'Model 3 Perf', price: 34000, status: 'Available', days: 4 },
+        { reg: 'FD21 VWX', make: 'Ford', model: 'Ranger Wildtrak', price: 28500, status: 'Prep', days: 1 },
     ];
 
     const stats = [
-        { label: 'Stock Value', value: '£187,450', change: '+12%', up: true },
-        { label: 'This Month', value: '£34,200', change: '+8%', up: true },
-        { label: 'Pending', value: '£12,500', change: '3 deals', up: true },
+        { label: 'Stock Value', value: '£226,245', change: '+15%', up: true },
+        { label: 'This Month', value: '£84,200', change: '+18%', up: true },
+        { label: 'Pending', value: '£38,500', change: '5 deals', up: true },
     ];
 
     return (
@@ -91,6 +95,8 @@ const DashboardMockup = () => {
 // Rich Expenses Mockup Component
 const ExpensesMockup = () => {
     const receipts = [
+        { vendor: 'Sales Invoice #2025-001', category: 'Vehicle Sale', amount: 18500, date: '12 Jan', icon: DocumentTextIcon, color: 'emerald' },
+        { vendor: 'Lloyds Bank', category: 'Deposit Received', amount: 4500, date: '12 Jan', icon: BanknotesIcon, color: 'indigo' },
         { vendor: 'BCA Auction', category: 'Vehicle Purchase', amount: 8750, date: '12 Jan', icon: CarIcon, color: 'rose' },
         { vendor: 'Halfords Trade', category: 'Parts & Repairs', amount: 234.50, date: '11 Jan', icon: WrenchScrewdriverIcon, color: 'sky' },
         { vendor: 'Shell Garage', category: 'Fuel', amount: 89.40, date: '10 Jan', icon: BanknotesIcon, color: 'orange' },
@@ -105,9 +111,9 @@ const ExpensesMockup = () => {
                     <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                         <CreditCardIcon className="w-4 h-4 text-emerald-400" />
                     </div>
-                    <span className="text-sm font-semibold text-white">Expenses</span>
+                    <span className="text-sm font-semibold text-white">Expenses & Income</span>
                 </div>
-                <div className="text-xs text-gray-400">This Month: <span className="text-white font-semibold">£9,248.90</span></div>
+                <div className="text-xs text-gray-400">Net Profit: <span className="text-green-400 font-bold">£14,248.90</span></div>
             </div>
 
             {/* Receipt List */}
@@ -119,6 +125,8 @@ const ExpensesMockup = () => {
                         sky: 'bg-sky-500/10 text-sky-400',
                         orange: 'bg-orange-500/10 text-orange-400',
                         pink: 'bg-pink-500/10 text-pink-400',
+                        emerald: 'bg-emerald-500/10 text-emerald-400',
+                        indigo: 'bg-indigo-500/10 text-indigo-400',
                     };
                     return (
                         <div key={i} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
@@ -155,7 +163,9 @@ const ExpensesMockup = () => {
 const CalendarMockup = () => {
     const today = new Date();
     const appointments = [
+        { time: '09:00', title: 'MOT Due - Ford Ranger', customer: 'Prep Task', type: 'prep', isPrep: true },
         { time: '10:00', title: 'Test Drive - BMW 320d', customer: 'James Wilson', type: 'test-drive' },
+        { time: '11:30', title: 'Valet Booking - Golf R', customer: 'Prep Task', type: 'prep', isPrep: true },
         { time: '14:30', title: 'Vehicle Handover', customer: 'Sarah Mitchell', type: 'handover' },
         { time: '16:00', title: 'Valuation Appointment', customer: 'Mark Thompson', type: 'valuation' },
     ];
@@ -204,10 +214,15 @@ const CalendarMockup = () => {
 
             {/* Appointments */}
             <div className="p-4 space-y-2">
-                <div className="text-xs text-gray-500 mb-2">Today's Appointments</div>
+                <div className="text-xs text-gray-500 mb-2">Today's Schedule</div>
                 {appointments.map((apt, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2 bg-gray-800/50 rounded-lg border-l-2 border-brand-500">
-                        <div className="text-xs font-mono text-brand-400 w-12">{apt.time}</div>
+                    <div key={i} className={`flex items-center gap-3 p-2 bg-gray-800/50 rounded-lg border-l-2 ${apt.isPrep ? 'border-amber-500' : 'border-brand-500'}`}>
+                        {apt.isPrep && (
+                            <div className="w-5 h-5 flex items-center justify-center">
+                                <div className="w-4 h-4 border-2 border-gray-600 rounded" />
+                            </div>
+                        )}
+                        <div className="text-xs font-mono text-gray-400 w-10">{apt.time}</div>
                         <div className="flex-1">
                             <div className="text-sm font-medium text-white">{apt.title}</div>
                             <div className="text-xs text-gray-500">{apt.customer}</div>

@@ -32,12 +32,16 @@ const DashboardMockup = ({ isMobile = false }) => {
         { reg: 'YK73 HJT', make: 'BMW', model: '320d M Sport', price: 18500, status: 'Available', days: 12 },
         { reg: 'PE72 XYZ', make: 'Audi', model: 'A4 S-Line', price: 22750, status: 'Reserved', days: 5 },
         { reg: 'LM71 ABC', make: 'Mercedes', model: 'C200 AMG', price: 24995, status: 'Available', days: 8 },
+        { reg: 'KX24 MNO', make: 'Land Rover', model: 'Defender 110', price: 68000, status: 'Available', days: 2 },
+        { reg: 'GL19 PQR', make: 'Volkswagen', model: 'Golf R', price: 29500, status: 'Deposit Paid', days: 15 },
+        { reg: 'RE23 STU', make: 'Tesla', model: 'Model 3 Perf', price: 34000, status: 'Available', days: 4 },
+        { reg: 'FD21 VWX', make: 'Ford', model: 'Ranger Wildtrak', price: 28500, status: 'Prep', days: 1 },
     ];
 
     const stats = [
-        { label: 'Stock Value', value: '£187,450', change: '+12%' },
-        { label: 'This Month', value: '£34,200', change: '+8%' },
-        { label: 'Pending', value: '£12,500', change: '3 deals' },
+        { label: 'Stock Value', value: '£226,245', change: '+15%' },
+        { label: 'This Month', value: '£84,200', change: '+18%' },
+        { label: 'Pending', value: '£38,500', change: '5 deals' },
     ];
 
     return (
@@ -92,6 +96,8 @@ const DashboardMockup = ({ isMobile = false }) => {
 
 const ExpensesMockup = ({ isMobile = false }) => {
     const receipts = [
+        { vendor: 'Sales Invoice #2025-001', category: 'Vehicle Sale', amount: 18500, icon: DocumentTextIcon, color: 'emerald' },
+        { vendor: 'Lloyds Bank', category: 'Deposit Received', amount: 4500, icon: BanknotesIcon, color: 'indigo' },
         { vendor: 'BCA Auction', category: 'Vehicle Purchase', amount: 8750, icon: CarIcon, color: 'rose' },
         { vendor: 'Halfords Trade', category: 'Parts & Repairs', amount: 234.50, icon: WrenchScrewdriverIcon, color: 'sky' },
         { vendor: 'Shell Garage', category: 'Fuel', amount: 89.40, icon: BanknotesIcon, color: 'orange' },
@@ -101,6 +107,8 @@ const ExpensesMockup = ({ isMobile = false }) => {
         rose: 'bg-rose-500/10 text-rose-400',
         sky: 'bg-sky-500/10 text-sky-400',
         orange: 'bg-orange-500/10 text-orange-400',
+        emerald: 'bg-emerald-500/10 text-emerald-400',
+        indigo: 'bg-indigo-500/10 text-indigo-400',
     };
 
     return (
@@ -110,9 +118,9 @@ const ExpensesMockup = ({ isMobile = false }) => {
                     <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                         <CreditCardIcon className="w-3 h-3 text-emerald-400" />
                     </div>
-                    <span className="text-xs font-semibold text-white">Expenses</span>
+                    <span className="text-xs font-semibold text-white">Expenses & Income</span>
                 </div>
-                <div className="text-[10px] text-gray-400">This Month: <span className="text-white font-semibold">£9,248</span></div>
+                <div className="text-[10px] text-gray-400">Net Profit: <span className="text-green-400 font-semibold">£14,248</span></div>
             </div>
 
             <div className="flex-1 p-3 space-y-2 overflow-hidden">
@@ -153,12 +161,20 @@ const InvoiceMockup = ({ isMobile = false }) => {
                     <div className="w-6 h-6 rounded-lg bg-violet-500/20 flex items-center justify-center">
                         <DocumentTextIcon className="w-3 h-3 text-violet-400" />
                     </div>
-                    <span className="text-xs font-semibold text-white">Invoice #1047</span>
+                    <span className="text-xs font-semibold text-white">Invoice #2024-001</span>
                 </div>
                 <div className="text-[10px] px-2 py-0.5 bg-green-500/10 text-green-400 rounded-full">Paid</div>
             </div>
 
             <div className="flex-1 p-3 space-y-3">
+                 <div className="flex items-center gap-2 p-2 bg-gray-800/30 rounded border border-gray-700">
+                     <div className="w-8 h-8 rounded bg-brand-600 flex items-center justify-center text-white font-bold text-xs">YC</div>
+                     <div>
+                         <div className="text-[10px] text-gray-400 uppercase tracking-wider">YOURCARDEALERSHIP</div>
+                         <div className="text-[8px] text-gray-500">VAT: 123 456 789</div>
+                     </div>
+                 </div>
+
                 <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50 animate-in fade-in duration-500">
                     <div className="text-[10px] text-gray-500 mb-1">Vehicle</div>
                     <div className="text-sm font-bold text-white">BMW 320d M Sport</div>
@@ -195,6 +211,8 @@ const CRMMockup = ({ isMobile = false }) => {
         { name: 'Sarah Mitchell', vehicle: 'Audi A4', stage: 'Hot', score: 92 },
         { name: 'Mark Thompson', vehicle: 'BMW 320d', stage: 'Warm', score: 75 },
         { name: 'Emma Davies', vehicle: 'Mercedes C200', stage: 'New', score: 60 },
+        { name: 'David Jones', vehicle: 'Land Rover', stage: 'Contacted', score: 45 },
+        { name: 'Lucy Smith', vehicle: 'Volkswagen Golf', stage: 'New', score: 88 },
     ];
 
     return (
@@ -206,11 +224,11 @@ const CRMMockup = ({ isMobile = false }) => {
                     </div>
                     <span className="text-xs font-semibold text-white">Pipeline</span>
                 </div>
-                <div className="text-[10px] text-gray-400">12 active leads</div>
+                <div className="text-[10px] text-gray-400">18 active leads</div>
             </div>
 
             <div className="flex-1 p-3 space-y-2 overflow-hidden">
-                {leads.map((lead, i) => (
+                {leads.slice(0, 4).map((lead, i) => (
                     <div key={i} className="p-2 bg-gray-800/50 rounded-lg border border-gray-700/50 animate-in slide-in-from-bottom-3" style={{ animationDelay: `${i * 150}ms` }}>
                         <div className="flex items-center justify-between mb-1">
                             <div className="text-xs font-semibold text-white">{lead.name}</div>
@@ -236,7 +254,7 @@ const CRMMockup = ({ isMobile = false }) => {
             <div className="p-3 pt-0">
                 <div className="flex items-center justify-center gap-2 p-2 bg-gray-800 rounded-lg text-gray-400 text-[10px]">
                     <EnvelopeIcon className="w-3 h-3" />
-                    <span>3 new enquiries</span>
+                    <span>5 new enquiries</span>
                 </div>
             </div>
         </div>
@@ -289,7 +307,9 @@ const VATMockup = ({ isMobile = false }) => {
 
 const CalendarMockup = ({ isMobile = false }) => {
     const appointments = [
+        { time: '09:00', title: 'MOT Due - Ford Ranger', customer: 'Prep Task', isPrep: true },
         { time: '10:00', title: 'Test Drive - BMW 320d', customer: 'James Wilson' },
+        { time: '11:30', title: 'Valet Booking - Golf R', customer: 'Prep Task', isPrep: true },
         { time: '14:30', title: 'Vehicle Handover', customer: 'Sarah Mitchell' },
         { time: '16:00', title: 'Valuation', customer: 'Mark Thompson' },
     ];
@@ -312,11 +332,16 @@ const CalendarMockup = ({ isMobile = false }) => {
             </div>
 
             <div className="p-3">
-                <div className="text-xs font-semibold text-white mb-2">Today's Appointments</div>
+                <div className="text-xs font-semibold text-white mb-2">Today's Schedule</div>
                 <div className="space-y-2">
-                    {appointments.map((apt, i) => (
-                        <div key={i} className="flex items-center gap-2 p-2 bg-gray-800/50 rounded-lg border-l-2 border-brand-500 animate-in slide-in-from-right-3" style={{ animationDelay: `${i * 150}ms` }}>
-                            <div className="text-[10px] font-mono text-brand-400 w-10">{apt.time}</div>
+                    {appointments.map((apt: any, i) => (
+                        <div key={i} className={`flex items-center gap-2 p-2 bg-gray-800/50 rounded-lg border-l-2 ${apt.isPrep ? 'border-amber-500' : 'border-brand-500'} animate-in slide-in-from-right-3`} style={{ animationDelay: `${i * 150}ms` }}>
+                            {apt.isPrep && (
+                                <div className="w-3 h-3 flex items-center justify-center">
+                                    <div className="w-2 h-2 border border-gray-500 rounded-sm" />
+                                </div>
+                            )}
+                            <div className="text-[10px] font-mono text-gray-400 w-8">{apt.time}</div>
                             <div className="flex-1">
                                 <div className="text-xs font-medium text-white">{apt.title}</div>
                                 <div className="text-[10px] text-gray-500">{apt.customer}</div>

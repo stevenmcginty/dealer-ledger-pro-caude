@@ -59,21 +59,51 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
                     setIsLoading(false);
                     // Load Mock Data
                     setVehicles([
-                        { id: '1', reg: 'AB12 CDE', make: 'Audi', model: 'A4', price: 15000, status: 'In Stock', purchaseDate: '2025-01-15' },
-                        { id: '2', reg: 'XY55 ZZZ', make: 'BMW', model: '3 Series', price: 18500, status: 'Sold', purchaseDate: '2025-02-01' },
-                        { id: '3', reg: 'GH88 JKL', make: 'Mercedes', model: 'C-Class', price: 22000, status: 'Prep', purchaseDate: '2025-02-10' },
+                        { id: '1', reg: 'YK73 HJT', make: 'BMW', model: '320d M Sport', price: 18500, status: 'Available', days: 12, purchaseDate: '2025-01-15', motDueDate: '2025-06-15' },
+                        { id: '2', reg: 'PE72 XYZ', make: 'Audi', model: 'A4 S-Line', price: 22750, status: 'Reserved', days: 5, purchaseDate: '2025-02-01', motDueDate: '2025-08-20' },
+                        { id: '3', reg: 'LM71 ABC', make: 'Mercedes', model: 'C200 AMG', price: 24995, status: 'Available', days: 8, purchaseDate: '2025-02-10', motDueDate: '2025-11-05' },
+                        { id: '4', reg: 'KX24 MNO', make: 'Land Rover', model: 'Defender 110', price: 68000, status: 'Available', days: 2, purchaseDate: '2025-02-14', motDueDate: '2027-02-14' },
+                        { id: '5', reg: 'GL19 PQR', make: 'Volkswagen', model: 'Golf R', price: 29500, status: 'Deposit Paid', days: 15, purchaseDate: '2025-01-12', motDueDate: '2025-05-30' },
+                        { id: '6', reg: 'RE23 STU', make: 'Tesla', model: 'Model 3 Perf', price: 34000, status: 'Available', days: 4, purchaseDate: '2025-02-12', motDueDate: '2026-02-12' },
+                        { id: '7', reg: 'FD21 VWX', make: 'Ford', model: 'Ranger Wildtrak', price: 28500, status: 'Prep', days: 1, purchaseDate: '2025-02-15', motDueDate: '2025-04-10' },
+                        { id: '8', reg: 'AB18 CDE', make: 'BMW', model: 'X5 30d', price: 42000, status: 'Sold', days: 25, purchaseDate: '2024-12-20', motDueDate: '2025-07-22' },
+                        { id: '9', reg: 'XY67 ZZZ', make: 'Mini', model: 'Cooper S', price: 12500, status: 'Available', days: 45, purchaseDate: '2024-12-01', motDueDate: '2025-03-15' },
+                        { id: '10', reg: 'GH69 JKL', make: 'Audi', model: 'Q7 S-Line', price: 38000, status: 'Available', days: 18, purchaseDate: '2025-01-28', motDueDate: '2025-09-01' },
+                        { id: '11', reg: 'JK20 LMN', make: 'Porsche', model: 'Macan S', price: 45000, status: 'Reserved', days: 7, purchaseDate: '2025-02-09', motDueDate: '2025-10-10' },
+                        { id: '12', reg: 'OP22 QRS', make: 'Range Rover', model: 'Evoque', price: 31000, status: 'Prep', days: 3, purchaseDate: '2025-02-13', motDueDate: '2025-12-25' },
                     ]);
                     setExpenseCategories([
-                        { id: '1', name: 'Parts', color: 'bg-blue-500', icon: 'WrenchIcon' },
+                        { id: '1', name: 'Parts & Repairs', color: 'bg-blue-500', icon: 'WrenchIcon' },
                         { id: '2', name: 'Fuel', color: 'bg-green-500', icon: 'TruckIcon' },
                         { id: '3', name: 'Transport', color: 'bg-yellow-500', icon: 'MapIcon' },
+                        { id: '4', name: 'Vehicle Purchase', color: 'bg-purple-500', icon: 'CarIcon' },
+                        { id: '5', name: 'Valeting', color: 'bg-cyan-500', icon: 'SparklesIcon' },
                     ]);
                     setReceipts([
-                        { id: '1', date: '2025-02-15', amount: 150.00, supplier: 'Euro Car Parts', categoryId: '1', description: 'Brake Pads' },
-                        { id: '2', date: '2025-02-16', amount: 65.00, supplier: 'Shell', categoryId: '2', description: 'Diesel' },
+                        { id: '1', date: '2025-02-15', amount: 8750.00, supplier: 'BCA Auction', categoryId: '4', description: 'Purchase of FD21 VWX' },
+                        { id: '2', date: '2025-02-14', amount: 234.50, supplier: 'Halfords Trade', categoryId: '1', description: 'Brake Pads & Discs' },
+                        { id: '3', date: '2025-02-14', amount: 89.40, supplier: 'Shell Garage', categoryId: '2', description: 'Diesel for Ranger' },
+                        { id: '4', date: '2025-02-13', amount: 175.00, supplier: 'RAC Transport', categoryId: '3', description: 'Delivery of RE23 STU' },
+                        { id: '5', date: '2025-02-12', amount: 65.00, supplier: 'Tesco Fuel', categoryId: '2', description: 'Unleaded' },
+                        { id: '6', date: '2025-02-12', amount: 450.00, supplier: 'Clean Car Co', categoryId: '5', description: 'Full Valet x3' },
+                    ]);
+                    setTodos([
+                        { id: '1', type: 'general', description: 'Call James regarding BMW test drive', isComplete: false, dueDate: '2025-02-16', dueTime: '09:00' },
+                        { id: '2', type: 'general', description: 'Submit VAT return for Q4', isComplete: false, dueDate: '2025-02-20' },
+                        { id: '3', type: 'prep', vehicleId: '7', description: 'Full Service', isComplete: false, createdAt: Date.now() },
+                        { id: '4', type: 'prep', vehicleId: '7', description: 'MOT Test', isComplete: false, createdAt: Date.now() },
+                        { id: '5', type: 'prep', vehicleId: '7', description: 'Valet', isComplete: false, createdAt: Date.now() },
+                        { id: '6', type: 'prep', vehicleId: '12', description: 'Alloy Wheel Refurb', isComplete: true, createdAt: Date.now() - 86400000 },
+                    ]);
+                    setLeads([
+                        { id: '1', name: 'Sarah Mitchell', email: 'sarah@example.com', phone: '07700 900123', stage: 'Hot', vehicleInterest: 'Audi A4', notes: 'Looking to buy this week', createdAt: Date.now(), activities: [] },
+                        { id: '2', name: 'Mark Thompson', email: 'mark@example.com', phone: '07700 900456', stage: 'Warm', vehicleInterest: 'BMW 320d', notes: 'Need to arrange finance', createdAt: Date.now() - 100000, activities: [] },
+                        { id: '3', name: 'Emma Davies', email: 'emma@example.com', phone: '07700 900789', stage: 'New', vehicleInterest: 'Mercedes C200', notes: 'Enquired via Autotrader', createdAt: Date.now() - 200000, activities: [] },
+                        { id: '4', name: 'David Jones', email: 'david@example.com', phone: '07700 900321', stage: 'Contacted', vehicleInterest: 'Land Rover', notes: 'Left voicemail', createdAt: Date.now() - 300000, activities: [] },
+                        { id: '5', name: 'Lucy Smith', email: 'lucy@example.com', phone: '07700 900654', stage: 'New', vehicleInterest: 'Volkswagen Golf', notes: 'Wants a test drive Saturday', createdAt: Date.now() - 400000, activities: [] },
                     ]);
                     setBusinessDetails({
-                        companyName: 'Prestige Motors Ltd',
+                        companyName: 'YOURCARDEALERSHIP',
                         vatNumber: 'GB123456789',
                         operatingMode: 'dealership',
                         isVatRegistered: true,
