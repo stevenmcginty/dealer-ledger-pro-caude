@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { onAuthStateChanged, type User } from './services/firebase';
 import LoginPage from './components/auth/LoginPage';
 import LandingPage from './pages/LandingPage';
@@ -8,14 +8,18 @@ import Spinner from './components/common/Spinner';
 import { DataProvider } from './contexts/DataContext';
 import { UIProvider } from './contexts/UIContext';
 
+// Lazy load demo video page
+const DemoVideoPage = lazy(() => import('./pages/DemoVideoPage'));
+
 type LandingPageType = 'home' | 'pricing' | 'demo' | 'contact';
-type Route = 'landing' | 'login' | 'app';
+type Route = 'landing' | 'login' | 'app' | 'demo-video';
 
 const getInitialRoute = (): Route => {
     const path = window.location.pathname;
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('mode') === 'screenshot') return 'app';
 
+    if (path === '/demo-video') return 'demo-video';
     if (path === '/app' || path.startsWith('/app/')) return 'app';
     if (path === '/login') return 'login';
     return 'landing';
@@ -67,6 +71,15 @@ const App = () => {
 
     if (authLoading) {
         return <div className="bg-gray-950 flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-white" /></div>;
+    }
+
+    // Demo video page - no auth required
+    if (route === 'demo-video') {
+        return (
+            <Suspense fallback={<div className="bg-gray-950 flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-white" /></div>}>
+                <DemoVideoPage />
+            </Suspense>
+        );
     }
 
     // Landing page - only for non-logged-in users
