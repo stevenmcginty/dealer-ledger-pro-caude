@@ -242,7 +242,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                             <div className="w-2/5 border-t border-black pt-1">Customer Signature</div>
                             <div className="w-1/5 border-t border-black pt-1">Date</div>
                         </div>
-                        <div className="mt-8 pt-4 border-t border-black text-center text-black text-[9px]">
+                        <div className="mt-8 pt-4 border-t border-black text-center text-black text-[9px]" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                             <p>
                                 {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
                                 {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}

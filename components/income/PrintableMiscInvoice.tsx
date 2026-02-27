@@ -103,7 +103,7 @@ const PrintableMiscInvoice = ({ invoice, businessDetails, onClose, isPreview, on
                                 <p className="text-black whitespace-pre-line">{businessDetails.bankDetails}</p>
                             </div>
                         )}
-                        <footer className="mt-16 pt-2 border-t border-black text-center text-black text-[9px]">
+                        <footer className="mt-16 pt-2 border-t border-black text-center text-black text-[9px]" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                             <p className="text-black">
                                 {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
                                 {businessDetails?.companyNumber && businessDetails?.vatNumber && ' | '}
