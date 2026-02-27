@@ -83,28 +83,43 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
 
         const clone = elementToPrint.cloneNode(true) as HTMLElement;
 
-        // Render at exact A4 proportions so it fits one page
-        clone.style.width = '210mm';
-        clone.style.minHeight = '277mm';
-        clone.style.maxHeight = '277mm';
-        clone.style.padding = '8mm 10mm';
+        // A4 at 96dpi: 794px x 1123px
+        const a4Width = 794;
+        const a4Height = 1123;
+        
+        clone.style.width = a4Width + 'px';
+        clone.style.height = a4Height + 'px';
+        clone.style.padding = '30px 38px';
         clone.style.boxSizing = 'border-box';
         clone.style.display = 'flex';
         clone.style.flexDirection = 'column';
         clone.style.overflow = 'hidden';
+        clone.style.position = 'absolute';
+        clone.style.left = '0';
+        clone.style.top = '0';
         
         pdfRenderer.innerHTML = '';
+        pdfRenderer.style.position = 'absolute';
+        pdfRenderer.style.left = '-9999px';
+        pdfRenderer.style.top = '0';
+        pdfRenderer.style.width = a4Width + 'px';
+        pdfRenderer.style.height = a4Height + 'px';
         pdfRenderer.appendChild(clone);
         pdfRenderer.classList.remove('hidden');
 
         try {
-            const canvas = await html2canvas(clone, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+            const canvas = await html2canvas(clone, { 
+                scale: 3, 
+                useCORS: true, 
+                backgroundColor: '#ffffff',
+                width: a4Width,
+                height: a4Height 
+            });
             const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = pdf.internal.pageSize.getHeight();
             
-            // Single page — fit to A4 exactly
             pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
             pdf.save(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
         } catch (error) {
