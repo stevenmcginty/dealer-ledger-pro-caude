@@ -117,6 +117,28 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             const pdfHeight = pdf.internal.pageSize.getHeight();
             
             pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            
+            // Belt-and-suspenders: write company details directly at the bottom of the PDF
+            // This guarantees the footer is always visible regardless of html2canvas rendering
+            const footerY = pdfHeight - 8;
+            pdf.setFontSize(7);
+            pdf.setTextColor(0, 0, 0);
+            const footerParts: string[] = [];
+            if (businessDetails?.companyNumber) footerParts.push(`Company No: ${businessDetails.companyNumber}`);
+            if (isVatRegistered && businessDetails?.vatNumber) footerParts.push(`VAT No: ${businessDetails.vatNumber}`);
+            if (footerParts.length > 0) {
+                pdf.text(footerParts.join('  |  '), pdfWidth / 2, footerY - 6, { align: 'center' });
+            }
+            if (businessDetails?.address) {
+                pdf.text(businessDetails.address.replace(/\n/g, ', '), pdfWidth / 2, footerY - 3, { align: 'center' });
+            }
+            const contactParts: string[] = [];
+            if (businessDetails?.phone) contactParts.push(`Tel: ${businessDetails.phone}`);
+            if (businessDetails?.email) contactParts.push(`Email: ${businessDetails.email}`);
+            if (contactParts.length > 0) {
+                pdf.text(contactParts.join('  |  '), pdfWidth / 2, footerY, { align: 'center' });
+            }
+            
             pdf.save(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
         } catch (error) {
             console.error("Error generating PDF:", error);
