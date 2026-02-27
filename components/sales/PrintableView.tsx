@@ -269,19 +269,24 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                          <h2 className="font-bold border-b border-black pb-1 mb-1 text-base tracking-wider text-black">Additional Notes/Comments</h2>
                          <p className="text-sm text-black mt-1 whitespace-pre-line">{doc.additionalNotes || 'None'}</p>
                     </section>
-                     {businessDetails?.bankDetails && (
-                         <section className="mt-4">
-                             <h2 className="font-bold border-b border-black pb-1 mb-1 text-base tracking-wider text-black">Payment Details</h2>
-                             <p className="text-sm text-black mt-1 whitespace-pre-line">{businessDetails.bankDetails}</p>
-                        </section>
-                    )}
                     <footer className="absolute bottom-0 left-0 right-0 text-black" style={{ padding: '0 10mm 6mm 10mm' }}>
-                         {businessDetails?.invoiceTerms && <p className="text-[8px] leading-tight text-black whitespace-pre-line">{businessDetails.invoiceTerms}</p>}
-                        <div className="flex justify-between mt-3 text-black">
-                            <div className="w-2/5 border-t border-black pt-1 text-xs">Customer Signature</div>
-                            <div className="w-1/5 border-t border-black pt-1 text-xs">Date</div>
+                        {/* Payment Details + Signature side by side */}
+                        <div className="flex justify-between items-end mb-3">
+                            {businessDetails?.bankDetails ? (
+                                <div className="w-1/2">
+                                    <h2 className="font-bold text-xs border-b border-black pb-0.5 mb-1 tracking-wider text-black">Payment Details</h2>
+                                    <p className="text-[10px] text-black whitespace-pre-line leading-snug">{businessDetails.bankDetails}</p>
+                                </div>
+                            ) : <div />}
+                            <div className="w-2/5 text-right">
+                                <div className="border-t border-black pt-1 text-xs mb-4">Customer Signature</div>
+                                <div className="border-t border-black pt-1 text-xs">Date</div>
+                            </div>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-black text-center text-black text-[9px]">
+                        {/* Warranty terms */}
+                        {businessDetails?.invoiceTerms && <p className="text-[7px] leading-tight text-black whitespace-pre-line mb-2">{businessDetails.invoiceTerms}</p>}
+                        {/* Company details line */}
+                        <div className="pt-2 border-t border-black text-center text-black text-[9px]">
                             <p>
                                 {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
                                 {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}
