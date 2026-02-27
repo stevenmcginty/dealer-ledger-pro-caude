@@ -89,7 +89,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
         
         clone.style.width = a4Width + 'px';
         clone.style.height = a4Height + 'px';
-        clone.style.padding = '30px 38px 210px 38px';
+        clone.style.padding = '23px 38px 265px 38px';
         clone.style.boxSizing = 'border-box';
         clone.style.position = 'relative';
         clone.style.overflow = 'hidden';
@@ -117,28 +117,6 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             const pdfHeight = pdf.internal.pageSize.getHeight();
             
             pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-            
-            // Belt-and-suspenders: write company details directly at the bottom of the PDF
-            // This guarantees the footer is always visible regardless of html2canvas rendering
-            const footerY = pdfHeight - 8;
-            pdf.setFontSize(7);
-            pdf.setTextColor(0, 0, 0);
-            const footerParts: string[] = [];
-            if (businessDetails?.companyNumber) footerParts.push(`Company No: ${businessDetails.companyNumber}`);
-            if (isVatRegistered && businessDetails?.vatNumber) footerParts.push(`VAT No: ${businessDetails.vatNumber}`);
-            if (footerParts.length > 0) {
-                pdf.text(footerParts.join('  |  '), pdfWidth / 2, footerY - 6, { align: 'center' });
-            }
-            if (businessDetails?.address) {
-                pdf.text(businessDetails.address.replace(/\n/g, ', '), pdfWidth / 2, footerY - 3, { align: 'center' });
-            }
-            const contactParts: string[] = [];
-            if (businessDetails?.phone) contactParts.push(`Tel: ${businessDetails.phone}`);
-            if (businessDetails?.email) contactParts.push(`Email: ${businessDetails.email}`);
-            if (contactParts.length > 0) {
-                pdf.text(contactParts.join('  |  '), pdfWidth / 2, footerY, { align: 'center' });
-            }
-            
             pdf.save(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
         } catch (error) {
             console.error("Error generating PDF:", error);
@@ -171,10 +149,10 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             </header>
             
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
-                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 relative" style={{ padding: '8mm 10mm 55mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
-                    <header className="flex justify-between items-start pb-3">
+                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 relative" style={{ padding: '6mm 10mm 70mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
+                    <header className="flex justify-between items-start pb-2">
                         <div className="text-black">
-                            <h1 className="text-3xl font-bold uppercase text-black">{docTitles[doc.documentType]} #{doc.invoiceNumber}</h1>
+                            <h1 className="text-2xl font-bold uppercase text-black">{docTitles[doc.documentType]} #{doc.invoiceNumber}</h1>
                         </div>
                          <div className="text-right">
                              <h2 className="text-lg font-bold text-black">{businessDetails?.name}</h2>
@@ -243,9 +221,9 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                                         <span className="text-black">({formatCurrency(doc.pxValue)})</span>
                                     </div>
                                  )}
-                                 <div className="flex justify-between items-center py-2 border-t-2 border-black mt-2 bg-gray-100 p-2 rounded-md">
-                                    <span className="font-bold text-lg text-black">Balance Due</span>
-                                    <span className="font-bold text-lg text-black">{formatCurrency(doc.balance)}</span>
+                                 <div className="flex justify-between items-center py-1 border-t-2 border-black mt-1 bg-gray-100 px-2 rounded-md">
+                                    <span className="font-bold text-base text-black">Balance Due</span>
+                                    <span className="font-bold text-base text-black">{formatCurrency(doc.balance)}</span>
                                 </div>
                              </div>
                          </div>
@@ -265,35 +243,45 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                              </div>
                          </section>
                     )}
-                    <section className="mt-4">
-                         <h2 className="font-bold border-b border-black pb-1 mb-1 text-base tracking-wider text-black">Additional Notes/Comments</h2>
-                         <p className="text-sm text-black mt-1 whitespace-pre-line">{doc.additionalNotes || 'None'}</p>
+                    <section className="mt-3">
+                         <h2 className="font-bold border-b border-black pb-0.5 mb-1 text-xs tracking-wider text-black">Additional Notes/Comments</h2>
+                         <p className="text-xs text-black whitespace-pre-line">{doc.additionalNotes || 'None'}</p>
                     </section>
-                    <footer className="absolute bottom-0 left-0 right-0 text-black" style={{ padding: '0 10mm 6mm 10mm' }}>
-                        {/* Payment Details + Signature side by side */}
-                        <div className="flex justify-between items-end mb-3">
-                            {businessDetails?.bankDetails ? (
-                                <div className="w-1/2">
-                                    <h2 className="font-bold text-xs border-b border-black pb-0.5 mb-1 tracking-wider text-black">Payment Details</h2>
-                                    <p className="text-[10px] text-black whitespace-pre-line leading-snug">{businessDetails.bankDetails}</p>
+                    <footer className="absolute bottom-0 left-0 right-0 text-black" style={{ padding: '0 10mm 8mm 10mm' }}>
+                        {/* Payment Details (left) + Signature/Date (right) */}
+                        <div className="flex justify-between items-start border-t border-black pt-2 mb-2">
+                            <div className="w-1/2 pr-4">
+                                {businessDetails?.bankDetails && (
+                                    <>
+                                        <h2 className="font-bold text-[10px] mb-0.5 text-black">Payment Details</h2>
+                                        <p className="text-[9px] text-black whitespace-pre-line leading-tight">{businessDetails.bankDetails}</p>
+                                    </>
+                                )}
+                            </div>
+                            <div className="w-2/5">
+                                <div className="mb-6">
+                                    <div className="border-b border-black" style={{ height: '20px' }}></div>
+                                    <p className="text-[9px] text-black mt-0.5">Customer Signature</p>
                                 </div>
-                            ) : <div />}
-                            <div className="w-2/5 text-right">
-                                <div className="border-t border-black pt-1 text-xs mb-4">Customer Signature</div>
-                                <div className="border-t border-black pt-1 text-xs">Date</div>
+                                <div>
+                                    <div className="border-b border-black" style={{ height: '20px' }}></div>
+                                    <p className="text-[9px] text-black mt-0.5">Date</p>
+                                </div>
                             </div>
                         </div>
                         {/* Warranty terms */}
-                        {businessDetails?.invoiceTerms && <p className="text-[7px] leading-tight text-black whitespace-pre-line mb-2">{businessDetails.invoiceTerms}</p>}
-                        {/* Company details line */}
-                        <div className="pt-2 border-t border-black text-center text-black text-[9px]">
+                        {businessDetails?.invoiceTerms && (
+                            <p className="text-[7px] leading-tight text-black whitespace-pre-line mb-2">{businessDetails.invoiceTerms}</p>
+                        )}
+                        {/* Company details */}
+                        <div className="pt-1.5 border-t border-black text-center text-black text-[8px]">
                             <p>
                                 {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
                                 {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}
                                 {isVatRegistered && businessDetails?.vatNumber && `VAT No: ${businessDetails.vatNumber}`}
                             </p>
-                            <p className="mt-0.5">{businessDetails?.address?.replace(/\n/g, ', ')}</p>
-                            <p className="mt-0.5">
+                            <p>{businessDetails?.address?.replace(/\n/g, ', ')}</p>
+                            <p>
                                 {businessDetails?.phone && `Tel: ${businessDetails.phone}`}
                                 {businessDetails?.phone && businessDetails?.email && ' | '}
                                 {businessDetails?.email && `Email: ${businessDetails.email}`}
