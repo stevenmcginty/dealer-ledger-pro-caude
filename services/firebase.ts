@@ -19,17 +19,31 @@ export const firebaseConfig = {
 let authInstance: any;
 let dbInstance: any;
 let storageInstance: any;
+let dbInitialized = false;
 
 try {
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
     }
     authInstance = firebase.auth();
-    dbInstance = firebase.database();
+    // DON'T connect to RTDB on page load — lazy init on first auth
+    // This prevents crawlers/bots from opening WebSocket connections
     storageInstance = firebase.storage();
 } catch (error) {
     console.warn("Firebase initialization failed or API key invalid. Using mock services.", error);
     createMocks();
+}
+
+function initDatabase() {
+    if (dbInitialized) return;
+    dbInitialized = true;
+    try {
+        dbInstance = firebase.database();
+        console.log('[Firebase] RTDB connected (user authenticated)');
+    } catch (error) {
+        console.warn('[Firebase] RTDB init failed:', error);
+        createMocks();
+    }
 }
 
 function createMocks() {
@@ -75,9 +89,43 @@ function createMocks() {
 // Fallback if initialization worked but instances are somehow null (shouldn't happen)
 if (!authInstance) createMocks();
 
+// Listen for auth state — only connect to RTDB when a user logs in
+if (authInstance && authInstance.onAuthStateChanged) {
+    authInstance.onAuthStateChanged((user: any) => {
+        if (user && !dbInitialized) {
+            initDatabase();
+        }
+    });
+}
+
 // Initialize and export services
 export const auth = authInstance;
-export const db = dbInstance;
+// Lazy DB proxy — connects to RTDB only after auth, throws clear error if used before auth
+export const db: any = new Proxy({} as any, {
+    get(_target, prop) {
+        if (!dbInitialized) {
+            initDatabase();
+        }
+        if (!dbInstance) {
+            // Still no DB (no auth yet) — use mock
+            const mockRef: any = {
+                on: () => {},
+                off: () => {},
+                once: () => Promise.resolve({ val: () => null, exists: () => false }),
+                set: () => Promise.resolve(),
+                push: () => ({ key: 'mock-id', set: () => Promise.resolve() }),
+                update: () => Promise.resolve(),
+                remove: () => Promise.resolve(),
+                child: () => mockRef,
+                orderByChild: () => mockRef,
+                equalTo: () => mockRef
+            };
+            if (prop === 'ref') return () => mockRef;
+            return undefined;
+        }
+        return dbInstance[prop];
+    }
+});
 export const storage = storageInstance;
 
 // Safe provider initialization

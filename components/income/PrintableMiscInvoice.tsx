@@ -26,8 +26,19 @@ const PrintableMiscInvoice = ({ invoice, businessDetails, onClose, isPreview, on
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const imgProps = pdf.getImageProperties(imgData);
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        const pdfPageHeight = pdf.internal.pageSize.getHeight();
+        const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+        
+        let heightLeft = imgHeight;
+        let position = 0;
+        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfPageHeight;
+        while (heightLeft > 0) {
+            position -= pdfPageHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
+            heightLeft -= pdfPageHeight;
+        }
         pdf.save(`Misc-Invoice-${invoice.invoiceNumber}.pdf`);
     };
     

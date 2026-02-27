@@ -7,6 +7,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { getValidAccessToken } from './oauth';
 import { processIncomingEmail } from '../autoResponse/process';
+import { getCompanyIds } from '../utils/companyIds';
 
 const db = admin.database();
 
@@ -237,21 +238,22 @@ export const pollAllGmailInboxes = functions
         console.log('Starting Gmail inbox poll...');
 
         try {
-            // Get all companies with Gmail connected
-            const companiesSnap = await db.ref('companies').once('value');
+            // Get company IDs via shallow read (avoids downloading entire DB)
+            const companyIds = await getCompanyIds();
 
-            if (!companiesSnap.exists()) {
+            if (companyIds.length === 0) {
                 console.log('No companies found');
                 return null;
             }
 
+            // Check each company's crmSettings individually (not the whole tree)
             const companies: string[] = [];
-            companiesSnap.forEach((child) => {
-                const crmSettings = child.child('crmSettings').val();
-                if (crmSettings?.gmailConnected) {
-                    companies.push(child.key!);
+            for (const companyId of companyIds) {
+                const settingsSnap = await db.ref(`companies/${companyId}/crmSettings/gmailConnected`).once('value');
+                if (settingsSnap.val() === true) {
+                    companies.push(companyId);
                 }
-            });
+            }
 
             console.log(`Found ${companies.length} companies with Gmail connected`);
 

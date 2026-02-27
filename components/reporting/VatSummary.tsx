@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { DocumentTextIcon, CreditCardIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Date; end: Date } => {
     // Fallback to standard calendar quarters if no anchor date is set or is invalid
@@ -53,6 +55,37 @@ const VatSummary = () => {
   
   const [startDate, setStartDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).start));
   const [endDate, setEndDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).end));
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const summaryRef = useRef<HTMLDivElement>(null);
+
+  const handleExportPdf = async () => {
+    if (!summaryRef.current) return;
+    setExportingPdf(true);
+    try {
+      const canvas = await html2canvas(summaryRef.current, {
+        backgroundColor: '#1f2937',
+        scale: 2,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      // Add title
+      pdf.setFontSize(16);
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFillColor(31, 41, 55);
+      pdf.rect(0, 0, pdfWidth, pdfHeight + 20, 'F');
+      pdf.text(`VAT Summary: ${formatDate(startDate)} - ${formatDate(endDate)}`, 10, 12);
+      
+      pdf.addImage(imgData, 'PNG', 0, 18, pdfWidth, pdfHeight);
+      pdf.save(`VAT-Summary-${startDate}-to-${endDate}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const vatData = useMemo(() => {
     const start = new Date(startDate);
@@ -143,9 +176,10 @@ const VatSummary = () => {
                 <div><label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label><UkDateInput id="start-date" name="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/></div>
                 <div><label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label><UkDateInput id="end-date" name="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/></div>
             </div>
-            <div className="flex items-center gap-2"><button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button><button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button></div>
+            <div className="flex items-center gap-2"><button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button><button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button><button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-md flex items-center gap-1.5">{exportingPdf ? '⏳ Saving...' : '📄 Save PDF'}</button></div>
         </div>
 
+        <div ref={summaryRef} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              <div className="bg-blue-900/50 border-blue-700 p-6 rounded-lg shadow-lg border">
                  <div className="flex items-start justify-between">
@@ -177,6 +211,7 @@ const VatSummary = () => {
             <p className="text-lg font-medium text-white/80">{vatData.vatDue >= 0 ? 'Total VAT Due to HMRC' : 'Total VAT Reclaimable'}</p>
             <p className="mt-2 text-5xl font-bold text-white tracking-tight">{formatCurrency(Math.abs(vatData.vatDue))}</p>
             <p className="mt-2 text-sm text-white/70">Based on the selected period</p>
+        </div>
         </div>
     </div>
   );

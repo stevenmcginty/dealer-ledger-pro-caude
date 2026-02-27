@@ -7,6 +7,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { getValidAccessToken } from '../gmail/oauth';
 import { sendEmailViaGmail } from '../gmail/send';
+import { getCompanyIds } from '../utils/companyIds';
 
 const db = admin.database();
 
@@ -159,10 +160,10 @@ export const processScheduledResponses = functions
         console.log('Processing scheduled responses...');
 
         try {
-            // Get all companies
-            const companiesSnap = await db.ref('companies').once('value');
+            // Get company IDs via shallow read (avoids downloading entire DB)
+            const companyIds = await getCompanyIds();
 
-            if (!companiesSnap.exists()) {
+            if (companyIds.length === 0) {
                 return null;
             }
 
@@ -171,15 +172,14 @@ export const processScheduledResponses = functions
             let totalSent = 0;
             let totalFailed = 0;
 
-            // Iterate through companies
+            // Iterate through companies — read only scheduledResponses per company
             const promises: Promise<void>[] = [];
 
-            companiesSnap.forEach((companySnap) => {
-                const companyId = companySnap.key!;
-                const scheduledResponsesSnap = companySnap.child('scheduledResponses');
+            for (const companyId of companyIds) {
+                const scheduledResponsesSnap = await db.ref(`companies/${companyId}/scheduledResponses`).once('value');
 
                 if (!scheduledResponsesSnap.exists()) {
-                    return;
+                    continue;
                 }
 
                 // Process each pending response
@@ -210,7 +210,7 @@ export const processScheduledResponses = functions
 
                     promises.push(processPromise);
                 });
-            });
+            }
 
             // Wait for all processing to complete
             await Promise.all(promises);

@@ -42,6 +42,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const oauth_1 = require("../gmail/oauth");
 const send_1 = require("../gmail/send");
+const companyIds_1 = require("../utils/companyIds");
 const db = admin.database();
 /**
  * Record that an email address has received an auto-reply
@@ -146,22 +147,21 @@ exports.processScheduledResponses = functions
     .onRun(async (context) => {
     console.log('Processing scheduled responses...');
     try {
-        // Get all companies
-        const companiesSnap = await db.ref('companies').once('value');
-        if (!companiesSnap.exists()) {
+        // Get company IDs via shallow read (avoids downloading entire DB)
+        const companyIds = await (0, companyIds_1.getCompanyIds)();
+        if (companyIds.length === 0) {
             return null;
         }
         const now = new Date().toISOString();
         let totalProcessed = 0;
         let totalSent = 0;
         let totalFailed = 0;
-        // Iterate through companies
+        // Iterate through companies — read only scheduledResponses per company
         const promises = [];
-        companiesSnap.forEach((companySnap) => {
-            const companyId = companySnap.key;
-            const scheduledResponsesSnap = companySnap.child('scheduledResponses');
+        for (const companyId of companyIds) {
+            const scheduledResponsesSnap = await db.ref(`companies/${companyId}/scheduledResponses`).once('value');
             if (!scheduledResponsesSnap.exists()) {
-                return;
+                continue;
             }
             // Process each pending response
             scheduledResponsesSnap.forEach((responseSnap) => {
@@ -187,7 +187,7 @@ exports.processScheduledResponses = functions
                 });
                 promises.push(processPromise);
             });
-        });
+        }
         // Wait for all processing to complete
         await Promise.all(promises);
         console.log(`Scheduled responses: ${totalProcessed} processed, ${totalSent} sent, ${totalFailed} failed`);

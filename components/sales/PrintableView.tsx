@@ -97,9 +97,24 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
             const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfPageHeight = pdf.internal.pageSize.getHeight();
             const imgProps = pdf.getImageProperties(imgData);
-            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            // Handle multi-page: slice the image across pages
+            let heightLeft = imgHeight;
+            let position = 0;
+            
+            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
+            heightLeft -= pdfPageHeight;
+            
+            while (heightLeft > 0) {
+                position -= pdfPageHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
+                heightLeft -= pdfPageHeight;
+            }
+            
             pdf.save(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
         } catch (error) {
             console.error("Error generating PDF:", error);

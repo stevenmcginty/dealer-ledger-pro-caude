@@ -1,12 +1,14 @@
 
-import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { onAuthStateChanged, type User } from './services/firebase';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { onAuthStateChanged, signOut, type User } from './services/firebase';
 import LoginPage from './components/auth/LoginPage';
 import LandingPage from './pages/LandingPage';
 import LedgerCore from './LedgerCore';
 import Spinner from './components/common/Spinner';
 import { DataProvider } from './contexts/DataContext';
 import { UIProvider } from './contexts/UIContext';
+
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // Lazy load demo video page
 const DemoVideoPage = lazy(() => import('./pages/DemoVideoPage'));
@@ -47,6 +49,33 @@ const App = () => {
         });
         return () => unsubscribe();
     }, []);
+
+    // Auto-logout after 30 minutes of inactivity
+    const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const resetInactivityTimer = useCallback(() => {
+        if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+        if (!user) return;
+        inactivityTimer.current = setTimeout(() => {
+            console.log('[App] Logging out due to 30 minutes of inactivity');
+            signOut();
+        }, INACTIVITY_TIMEOUT_MS);
+    }, [user]);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+        const handler = () => resetInactivityTimer();
+
+        events.forEach(e => window.addEventListener(e, handler, { passive: true }));
+        resetInactivityTimer(); // start the timer
+
+        return () => {
+            events.forEach(e => window.removeEventListener(e, handler));
+            if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+        };
+    }, [user, resetInactivityTimer]);
 
     const navigate = (newRoute: Route) => {
         const path = newRoute === 'landing' ? '/' : newRoute === 'login' ? '/login' : '/app';

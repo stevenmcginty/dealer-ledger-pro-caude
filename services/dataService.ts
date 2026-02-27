@@ -160,9 +160,52 @@ export const handleSnapshot = <T,>(snapshot: firebase.database.DataSnapshot, sor
 
 const createSubscription = <T,>(path: string, cb: (data: T[]) => void, sortFn?: (a: T, b: T) => number) => {
     const dataRef = db.ref(path);
-    const listener = (s: firebase.database.DataSnapshot) => cb(handleSnapshot<T>(s, sortFn));
-    dataRef.on('value', listener);
-    return () => dataRef.off('value', listener);
+    const itemsMap = new Map<string, T>();
+    let initialLoadDone = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const rebuildAndNotify = () => {
+        // Debounce during initial child_added burst to avoid 100s of re-renders
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            const arr = Array.from(itemsMap.values());
+            if (sortFn) arr.sort(sortFn);
+            cb(arr);
+        }, initialLoadDone ? 0 : 50);
+    };
+
+    // Use ONLY child listeners — no .once('value') which double-downloads everything.
+    // child_added fires once for each existing child (initial load), then for new ones.
+    const onAdd = dataRef.on('child_added', (snap) => {
+        if (snap.key) {
+            itemsMap.set(snap.key, { id: snap.key, ...snap.val() } as T);
+            rebuildAndNotify();
+        }
+    });
+
+    const onChange = dataRef.on('child_changed', (snap) => {
+        if (snap.key) {
+            itemsMap.set(snap.key, { id: snap.key, ...snap.val() } as T);
+            rebuildAndNotify();
+        }
+    });
+
+    const onRemove = dataRef.on('child_removed', (snap) => {
+        if (snap.key) {
+            itemsMap.delete(snap.key);
+            rebuildAndNotify();
+        }
+    });
+
+    // Mark initial load done after a short delay (all child_added events fire synchronously)
+    setTimeout(() => { initialLoadDone = true; }, 100);
+
+    return () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        dataRef.off('child_added', onAdd);
+        dataRef.off('child_changed', onChange);
+        dataRef.off('child_removed', onRemove);
+    };
 };
 
 // --- Subscriptions ---
