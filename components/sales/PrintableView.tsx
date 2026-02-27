@@ -89,14 +89,10 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
         
         clone.style.width = a4Width + 'px';
         clone.style.height = a4Height + 'px';
-        clone.style.padding = '30px 38px';
+        clone.style.padding = '30px 38px 170px 38px';
         clone.style.boxSizing = 'border-box';
-        clone.style.display = 'flex';
-        clone.style.flexDirection = 'column';
+        clone.style.position = 'relative';
         clone.style.overflow = 'hidden';
-        clone.style.position = 'absolute';
-        clone.style.left = '0';
-        clone.style.top = '0';
         
         pdfRenderer.innerHTML = '';
         pdfRenderer.style.position = 'absolute';
@@ -153,7 +149,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             </header>
             
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
-                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 flex flex-col" style={{ padding: '8mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
+                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 relative" style={{ padding: '8mm 10mm 45mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
                     <header className="flex justify-between items-start pb-3">
                         <div className="text-black">
                             <h1 className="text-3xl font-bold uppercase text-black">{docTitles[doc.documentType]} #{doc.invoiceNumber}</h1>
@@ -257,15 +253,13 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                              <p className="text-sm text-black mt-1 whitespace-pre-line">{businessDetails.bankDetails}</p>
                         </section>
                     )}
-                    {/* Spacer pushes footer to bottom of the A4 page */}
-                    <div className="flex-1" />
-                    <footer className="mt-auto text-black">
+                    <footer className="absolute bottom-0 left-0 right-0 text-black" style={{ padding: '0 10mm 8mm 10mm' }}>
                          {businessDetails?.invoiceTerms && <p className="text-xs text-black whitespace-pre-line">{businessDetails.invoiceTerms}</p>}
-                        <div className="flex justify-between mt-8 text-black">
-                            <div className="w-2/5 border-t border-black pt-1">Customer Signature</div>
-                            <div className="w-1/5 border-t border-black pt-1">Date</div>
+                        <div className="flex justify-between mt-4 text-black">
+                            <div className="w-2/5 border-t border-black pt-1 text-xs">Customer Signature</div>
+                            <div className="w-1/5 border-t border-black pt-1 text-xs">Date</div>
                         </div>
-                        <div className="mt-4 pt-3 border-t border-black text-center text-black text-[9px]">
+                        <div className="mt-3 pt-2 border-t border-black text-center text-black text-[9px]">
                             <p>
                                 {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
                                 {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}
