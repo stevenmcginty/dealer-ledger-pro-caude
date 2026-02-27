@@ -83,10 +83,15 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
 
         const clone = elementToPrint.cloneNode(true) as HTMLElement;
 
+        // Render at exact A4 proportions so it fits one page
         clone.style.width = '210mm';
-        clone.style.padding = '10mm';
-        clone.style.height = 'auto';
+        clone.style.minHeight = '277mm';
+        clone.style.maxHeight = '277mm';
+        clone.style.padding = '8mm 10mm';
         clone.style.boxSizing = 'border-box';
+        clone.style.display = 'flex';
+        clone.style.flexDirection = 'column';
+        clone.style.overflow = 'hidden';
         
         pdfRenderer.innerHTML = '';
         pdfRenderer.appendChild(clone);
@@ -97,24 +102,10 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             const imgData = canvas.toDataURL('image/jpeg', 1.0);
             const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
             const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfPageHeight = pdf.internal.pageSize.getHeight();
-            const imgProps = pdf.getImageProperties(imgData);
-            const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            const pdfHeight = pdf.internal.pageSize.getHeight();
             
-            // Handle multi-page: slice the image across pages
-            let heightLeft = imgHeight;
-            let position = 0;
-            
-            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
-            heightLeft -= pdfPageHeight;
-            
-            while (heightLeft > 0) {
-                position -= pdfPageHeight;
-                pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
-                heightLeft -= pdfPageHeight;
-            }
-            
+            // Single page — fit to A4 exactly
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
             pdf.save(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
         } catch (error) {
             console.error("Error generating PDF:", error);
@@ -147,8 +138,8 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             </header>
             
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
-                <div id="printable-content" className="p-10 bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0">
-                    <header className="flex justify-between items-start pb-4">
+                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 flex flex-col" style={{ padding: '8mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
+                    <header className="flex justify-between items-start pb-3">
                         <div className="text-black">
                             <h1 className="text-3xl font-bold uppercase text-black">{docTitles[doc.documentType]} #{doc.invoiceNumber}</h1>
                         </div>
@@ -158,8 +149,8 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                              <p className="text-black text-sm mt-1">{businessDetails?.phone}</p>
                         </div>
                     </header>
-                    <section className="grid grid-cols-2 gap-8 mb-4">
-                        <div className="border border-black p-3 text-black">
+                    <section className="grid grid-cols-2 gap-6 mb-3">
+                        <div className="border border-black p-2 text-black">
                             <h3 className="font-bold text-black uppercase tracking-wider text-xs mb-1">Invoice To:</h3>
                             <p className="font-semibold text-base text-black">{doc.customerName}</p>
                             <p className="whitespace-pre-line text-black text-sm leading-snug">{doc.customerAddress}</p>
@@ -172,7 +163,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                             </div>
                         )}
                     </section>
-                     <section className="grid grid-cols-2 gap-8 border-y border-black py-2 mb-6 text-sm text-black">
+                     <section className="grid grid-cols-2 gap-6 border-y border-black py-1 mb-4 text-sm text-black">
                         <div className="text-black">Date: <span className="font-semibold text-black">{formatDate(doc.invoiceDate)}</span></div>
                         <div className="text-right text-black">Invoice #: <span className="font-semibold text-black">{doc.invoiceNumber}</span></div>
                     </section>
@@ -199,8 +190,8 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                             </div>
                         </div>
                     </section>
-                    <section className="mt-6">
-                         <h2 className="font-bold border-b-2 border-black pb-1 mb-2 text-base tracking-wider text-right text-black">AMOUNT</h2>
+                    <section className="mt-4">
+                         <h2 className="font-bold border-b-2 border-black pb-1 mb-1 text-base tracking-wider text-right text-black">AMOUNT</h2>
                          <div className="flex justify-end">
                              <div className="w-1/2 space-y-1 text-sm">
                                  <div className="flex justify-between py-1 border-b border-black text-black">
@@ -227,7 +218,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                          </div>
                     </section>
                      {doc.pxValue > 0 && doc.partExchangeDetails && (
-                         <section className="mt-8">
+                         <section className="mt-4">
                              <h2 className="font-bold border-b border-black pb-1 mb-2 text-base tracking-wider text-black">Part Exchange Details</h2>
                              <div className="grid grid-cols-2 gap-x-12 p-2">
                                 <div>
@@ -241,30 +232,32 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                              </div>
                          </section>
                     )}
-                    <section className="mt-8">
-                         <h2 className="font-bold border-b border-black pb-1 mb-2 text-base tracking-wider text-black">Additional Notes/Comments</h2>
-                         <p className="text-sm text-black mt-2 whitespace-pre-line">{doc.additionalNotes || 'None'}</p>
+                    <section className="mt-4">
+                         <h2 className="font-bold border-b border-black pb-1 mb-1 text-base tracking-wider text-black">Additional Notes/Comments</h2>
+                         <p className="text-sm text-black mt-1 whitespace-pre-line">{doc.additionalNotes || 'None'}</p>
                     </section>
                      {businessDetails?.bankDetails && (
-                         <section className="mt-8">
-                             <h2 className="font-bold border-b border-black pb-1 mb-2 text-base tracking-wider text-black">Payment Details</h2>
-                             <p className="text-sm text-black mt-2 whitespace-pre-line">{businessDetails.bankDetails}</p>
+                         <section className="mt-4">
+                             <h2 className="font-bold border-b border-black pb-1 mb-1 text-base tracking-wider text-black">Payment Details</h2>
+                             <p className="text-sm text-black mt-1 whitespace-pre-line">{businessDetails.bankDetails}</p>
                         </section>
                     )}
-                    <footer className="mt-12 text-black">
-                         {businessDetails?.invoiceTerms && <p className="text-sm text-black whitespace-pre-line">{businessDetails.invoiceTerms}</p>}
-                        <div className="flex justify-between mt-16 text-black">
+                    {/* Spacer pushes footer to bottom of the A4 page */}
+                    <div className="flex-1" />
+                    <footer className="mt-auto text-black">
+                         {businessDetails?.invoiceTerms && <p className="text-xs text-black whitespace-pre-line">{businessDetails.invoiceTerms}</p>}
+                        <div className="flex justify-between mt-8 text-black">
                             <div className="w-2/5 border-t border-black pt-1">Customer Signature</div>
                             <div className="w-1/5 border-t border-black pt-1">Date</div>
                         </div>
-                        <div className="mt-8 pt-4 border-t border-black text-center text-black text-[9px]" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                        <div className="mt-4 pt-3 border-t border-black text-center text-black text-[9px]">
                             <p>
                                 {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
                                 {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}
                                 {isVatRegistered && businessDetails?.vatNumber && `VAT No: ${businessDetails.vatNumber}`}
                             </p>
-                            <p className="mt-1">{businessDetails?.address?.replace(/\n/g, ', ')}</p>
-                            <p className="mt-1">
+                            <p className="mt-0.5">{businessDetails?.address?.replace(/\n/g, ', ')}</p>
+                            <p className="mt-0.5">
                                 {businessDetails?.phone && `Tel: ${businessDetails.phone}`}
                                 {businessDetails?.phone && businessDetails?.email && ' | '}
                                 {businessDetails?.email && `Email: ${businessDetails.email}`}
