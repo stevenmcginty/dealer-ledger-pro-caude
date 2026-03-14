@@ -135,6 +135,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
     const { openModal } = useUI();
     const [statusFilter, setStatusFilter] = useState('Current Stock');
     const [searchTerm, setSearchTerm] = useState('');
+    const [snapshotDate, setSnapshotDate] = useState(''); // empty = today (live view)
     
     type SortKey = 'reg' | 'make' | 'daysInStock';
     type SortDirection = 'ascending' | 'descending';
@@ -152,16 +153,28 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
     };
 
     const processedVehicles = useMemo(() => {
-        const calculateDaysInStock = (vehicle: Vehicle, salesDocs: SalesDocument[]): number => {
+        const viewDate = snapshotDate ? new Date(snapshotDate + 'T23:59:59') : new Date();
+        const isHistorical = !!snapshotDate;
+
+        const getSaleDate = (vehicleId: string): Date | null => {
+            const saleDoc = salesDocs.find(doc => doc.vehicleId === vehicleId && doc.documentType === 'Sales Invoice');
+            if (saleDoc?.invoiceDate) {
+                const d = new Date(saleDoc.invoiceDate);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            return null;
+        };
+
+        const calculateDaysInStock = (vehicle: Vehicle): number => {
             const purchaseDate = new Date(vehicle.purchaseDate);
             if (isNaN(purchaseDate.getTime())) return 0;
     
-            let endDate = new Date(); // Today
+            let endDate = new Date(viewDate);
     
             if (vehicle.status === 'Sold') {
-                const saleDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Sales Invoice');
-                if (saleDoc?.invoiceDate) {
-                    endDate = new Date(saleDoc.invoiceDate);
+                const saleDate = getSaleDate(vehicle.id);
+                if (saleDate && saleDate <= viewDate) {
+                    endDate = saleDate;
                 }
             }
     
@@ -169,20 +182,36 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             return diffDays;
         };
+
+        // When viewing a historical date, filter to only vehicles that were in stock on that date
+        let baseVehicles = vehicles;
+        if (isHistorical) {
+            baseVehicles = vehicles.filter(v => {
+                const purchaseDate = new Date(v.purchaseDate);
+                if (isNaN(purchaseDate.getTime()) || purchaseDate > viewDate) return false; // Not yet purchased
+                if (v.status === 'Sold') {
+                    const saleDate = getSaleDate(v.id);
+                    if (saleDate && saleDate <= viewDate) return false; // Already sold by that date
+                }
+                return true;
+            });
+        }
         
-        let enriched = vehicles.map(v => ({
+        let enriched = baseVehicles.map(v => ({
             ...v,
-            daysInStock: calculateDaysInStock(v, salesDocs),
+            daysInStock: calculateDaysInStock(v),
         }));
 
-        // Status filter
+        // Status filter (only apply when NOT viewing historical — historical shows all stock on that date)
         let filtered: EnrichedVehicle[] = enriched;
-        if (statusFilter === 'Current Stock') {
-            filtered = enriched.filter(v => v.status !== 'Sold');
-        } else if (statusFilter === 'Sold Stock') {
-            filtered = enriched.filter(v => v.status === 'Sold');
-        } else if (statusFilter === 'Deposit Paid') {
-            filtered = enriched.filter(v => v.status === 'Deposit Paid');
+        if (!isHistorical) {
+            if (statusFilter === 'Current Stock') {
+                filtered = enriched.filter(v => v.status !== 'Sold');
+            } else if (statusFilter === 'Sold Stock') {
+                filtered = enriched.filter(v => v.status === 'Sold');
+            } else if (statusFilter === 'Deposit Paid') {
+                filtered = enriched.filter(v => v.status === 'Deposit Paid');
+            }
         }
 
         // Search filter
@@ -220,7 +249,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         });
 
         return filtered;
-    }, [vehicles, salesDocs, statusFilter, searchTerm, sortConfig]);
+    }, [vehicles, salesDocs, statusFilter, searchTerm, sortConfig, snapshotDate]);
 
     if (!vehicles) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
     
@@ -258,6 +287,34 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
 
     return (
         <div className="space-y-6">
+            {/* Date snapshot picker */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2">
+                    <label htmlFor="snapshot-date" className="text-sm font-medium text-gray-400 whitespace-nowrap">View date:</label>
+                    <input
+                        type="date"
+                        id="snapshot-date"
+                        value={snapshotDate}
+                        max={new Date().toISOString().split('T')[0]}
+                        onChange={(e) => setSnapshotDate(e.target.value)}
+                        className="rounded-md border-0 bg-gray-700 py-1.5 px-3 text-white ring-1 ring-inset ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-brand-500 text-sm"
+                    />
+                    {snapshotDate && (
+                        <button
+                            onClick={() => setSnapshotDate('')}
+                            className="text-xs text-brand-400 hover:text-brand-300 whitespace-nowrap"
+                        >
+                            ✕ Back to live
+                        </button>
+                    )}
+                </div>
+                {snapshotDate && (
+                    <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded">
+                        📅 Viewing stock as of {new Date(snapshotDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                )}
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                  <div className="flex-1">
                     <div className="border-b border-gray-700">
@@ -266,7 +323,8 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                                 <button
                                     key={tab}
                                     onClick={() => setStatusFilter(tab)}
-                                    className={`${tab === statusFilter ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
+                                    disabled={!!snapshotDate}
+                                    className={`${snapshotDate ? 'border-transparent text-gray-600 cursor-not-allowed' : tab === statusFilter ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
                                 >
                                     <span>{tab}</span>
                                 </button>
