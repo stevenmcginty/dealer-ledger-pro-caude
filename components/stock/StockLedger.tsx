@@ -251,8 +251,44 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         return filtered;
     }, [vehicles, salesDocs, statusFilter, searchTerm, sortConfig, snapshotDate]);
 
+    const totalPurchasePrice = useMemo(() => {
+        return processedVehicles.reduce((sum, v) => sum + (v.purchasePrice || 0), 0);
+    }, [processedVehicles]);
+
+    const handleExportCSV = () => {
+        const headers = ['Stock #', 'Registration', 'Make', 'Model', 'Year', 'Mileage', 'VIN', 'Purchase Price', 'Purchase Date', 'Status', 'Ownership', 'Days in Stock'];
+        const rows = processedVehicles.map(v => [
+            v.stockNumber,
+            v.reg || '',
+            v.make,
+            v.model,
+            v.year,
+            v.mileage || '',
+            v.vin || '',
+            v.purchasePrice?.toFixed(2) ?? '0.00',
+            v.purchaseDate,
+            v.status,
+            v.ownershipType,
+            v.daysInStock,
+        ]);
+        rows.push(['', '', '', '', '', '', '', totalPurchasePrice.toFixed(2), '', '', '', '']);
+
+        const csvContent = [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dateLabel = snapshotDate || new Date().toISOString().split('T')[0];
+        a.href = url;
+        a.download = `stock-book-${dateLabel}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     if (!vehicles) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
-    
+
     const handleActionsClick = (vehicle: Vehicle) => {
         const depositDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Deposit Slip');
         const salesDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Sales Invoice');
@@ -313,6 +349,16 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                         📅 Viewing stock as of {new Date(snapshotDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </span>
                 )}
+                <div className="sm:ml-auto">
+                    <button
+                        onClick={handleExportCSV}
+                        disabled={processedVehicles.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 ring-1 ring-inset ring-gray-600 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                        Export CSV
+                    </button>
+                </div>
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -354,6 +400,12 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                         {processedVehicles.map(vehicle => (
                             <VehicleCard key={vehicle.id} vehicle={vehicle} onActionsClick={() => handleActionsClick(vehicle)} />
                         ))}
+                        <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">{processedVehicles.length} vehicle{processedVehicles.length !== 1 ? 's' : ''}</span>
+                                <span className="font-semibold text-white">Total: {formatCurrency(totalPurchasePrice)}</span>
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <div className="overflow-x-auto bg-gray-800 rounded-lg shadow">
@@ -380,6 +432,17 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                                     <VehicleRow key={vehicle.id} vehicle={vehicle} onActionsClick={() => handleActionsClick(vehicle)} />
                                 ))}
                             </tbody>
+                            <tfoot className="bg-gray-900/80 border-t-2 border-gray-600">
+                                <tr>
+                                    <td className="py-3.5 pl-4 pr-3 text-sm font-semibold text-white sm:pl-6">{processedVehicles.length} vehicle{processedVehicles.length !== 1 ? 's' : ''}</td>
+                                    <td className="px-3 py-3.5"></td>
+                                    <td className="px-3 py-3.5"></td>
+                                    <td className="px-3 py-3.5 text-sm font-semibold text-white">{formatCurrency(totalPurchasePrice)}</td>
+                                    <td className="px-3 py-3.5"></td>
+                                    <td className="px-3 py-3.5"></td>
+                                    <td className="px-3 py-3.5"></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 )
