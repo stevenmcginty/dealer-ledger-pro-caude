@@ -66,8 +66,11 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
             if (customer) {
                 setCustomerName(customer.name);
                 setCustomerAddress(customer.address);
-                // FIX: Changed isVatRegistered to isBusiness to match Customer type
-                setIsVatInvoice(customer.isBusiness);
+                // Only auto-set VAT checkbox from customer when creating new invoices,
+                // not when editing — editing should preserve the stored value
+                if (!isEditing) {
+                    setIsVatInvoice(customer.isBusiness);
+                }
                 setIsAddingCustomer(false);
             }
         } else if (!isEditing) {
@@ -117,13 +120,13 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
 
         if (transaction && !isEditing) {
             finalTotal = parseFloat(totalStr) || 0;
-            finalVat = shouldCalculateVat ? finalTotal / 6 : 0;
+            finalVat = isVatInvoice ? finalTotal / 6 : 0;
             finalSubtotal = finalTotal - finalVat;
             finalItems = [{ description: items[0]?.description || transaction.description || 'Miscellaneous Income', amount: finalSubtotal }];
         } else {
             finalItems = items.map(({ amountStr, ...rest}) => rest).filter(i => i.description.trim() !== '');
             finalSubtotal = finalItems.reduce((sum, item) => sum + item.amount, 0);
-            finalVat = shouldCalculateVat ? finalSubtotal * 0.2 : 0;
+            finalVat = isVatInvoice ? finalSubtotal * 0.2 : 0;
             finalTotal = finalSubtotal + finalVat;
         }
 
@@ -132,7 +135,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
             invoiceDate: editingInvoice?.invoiceDate || transaction?.date || new Date().toISOString().split('T')[0],
             customerName,
             customerAddress,
-            isVatInvoice: shouldCalculateVat,
+            isVatInvoice: isVatInvoice,
             items: finalItems,
             subtotal: finalSubtotal,
             vat: finalVat,
@@ -248,7 +251,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
 
                 <div className="pt-4 border-t border-gray-700 space-y-2">
                     <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Subtotal</span><span className="font-medium text-white">{formatCurrency(transaction && !isEditing ? subtotal : totalFromItems)}</span></div>
-                    {shouldCalculateVat && <div className="flex justify-between items-center text-sm"><span className="text-gray-400">VAT (20%)</span><span className="font-medium text-white">{formatCurrency(isVatInvoice ? (transaction && !isEditing ? vat : totalFromItems * 0.2) : 0)}</span></div>}
+                    {isVatInvoice && <div className="flex justify-between items-center text-sm"><span className="text-gray-400">VAT (20%)</span><span className="font-medium text-white">{formatCurrency(transaction && !isEditing ? vat : totalFromItems * 0.2)}</span></div>}
                     <div className="flex justify-between items-center text-lg font-bold"><span className="text-white">Total</span><span className="font-bold text-white">{formatCurrency(isVatInvoice ? (transaction && !isEditing ? total : totalFromItems * 1.2) : (transaction && !isEditing ? total : totalFromItems))}</span></div>
                 </div>
 
