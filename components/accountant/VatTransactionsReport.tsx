@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { useData } from '../../hooks/useData';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
-import { ArrowDownTrayIcon, BanknotesIcon, CreditCardIcon, CalculatorIcon, ExclamationTriangleIcon, DocumentTextIcon } from '../icons';
+import { ArrowDownTrayIcon, BanknotesIcon, CreditCardIcon, CalculatorIcon, ExclamationTriangleIcon } from '../icons';
 import UkDateInput from '../common/UkDateInput';
 import { StatementTransaction } from '../../types';
 import Select from '../common/Select';
@@ -22,7 +22,7 @@ interface ReportRow {
 }
 
 const VatTransactionsReport = () => {
-    const { transactions, financialAccounts, miscInvoices } = useData();
+    const { transactions, financialAccounts } = useData();
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
@@ -70,31 +70,9 @@ const VatTransactionsReport = () => {
             };
         });
         
-        // Include VAT income invoices (misc invoices with isVatInvoice: true)
-        const vatInvoices = (miscInvoices || []).filter(inv => {
-            if (!inv.isVatInvoice || !inv.vat) return false;
-            const invDate = new Date(inv.invoiceDate);
-            return invDate >= start && invDate <= end;
-        });
-
-        vatInvoices.forEach(inv => {
-            rows.push({
-                key: `inv-${inv.id}`,
-                date: inv.invoiceDate,
-                description: `Invoice #${inv.invoiceNumber} — ${inv.customerName}`,
-                accountName: 'Income Invoice',
-                AccountIcon: DocumentTextIcon,
-                category: 'Income',
-                net: inv.subtotal,
-                inputVat: 0,
-                outputVat: inv.vat,
-                total: inv.total,
-            });
-        });
-
         return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    }, [transactions, startDate, endDate, accountIdFilter, financialAccounts, miscInvoices]);
+    }, [transactions, startDate, endDate, accountIdFilter, financialAccounts]);
     
     const totals = useMemo(() => {
         return reportRows.reduce((acc, row) => {
