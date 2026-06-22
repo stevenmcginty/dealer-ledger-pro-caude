@@ -13,6 +13,12 @@ const ExpensesPage = () => {
         if (!companyId) return;
         openModal('progress');
         await dataService.processStatement(companyId, file, account, allReceipts, transactions, (progress) => {
+            // Unrecognised format + no saved mapping → open the Mapping Wizard so the user can
+            // teach us this bank's layout. The mapping is then saved on the account for next time.
+            if (progress.step === 'needs_mapping') {
+                openModal('statementMapping', { account, csvText: progress.csvText, file });
+                return;
+            }
             openModal('progress', progress);
         });
     }

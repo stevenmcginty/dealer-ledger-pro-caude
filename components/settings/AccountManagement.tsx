@@ -2,8 +2,10 @@
 
 import React, { useState } from 'react';
 import { useData } from '../../hooks/useData';
+import { useUI } from '../../hooks/useUI';
 import { FinancialAccount, NewFinancialAccount } from '../../types';
-import { BanknotesIcon, CreditCardIcon, PlusIcon, TrashIcon, CheckCircleIcon, EditIcon, XMarkIcon } from '../icons';
+import { BanknotesIcon, CreditCardIcon, PlusIcon, TrashIcon, CheckCircleIcon, EditIcon, XMarkIcon, ViewColumnsIcon } from '../icons';
+import { isMappingComplete } from '../../utils/csvMapping';
 import Spinner from '../common/Spinner';
 import Select from '../common/Select';
 
@@ -13,9 +15,12 @@ interface AccountRowProps {
 }
 const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
     const { updateFinancialAccount, deleteFinancialAccount } = useData();
+    const { openModal } = useUI();
     const [name, setName] = useState(account.name);
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+
+    const hasMapping = isMappingComplete(account.columnMapping);
 
     const handleSave = async () => {
         if (name.trim() === '' || name.trim() === account.name) {
@@ -54,7 +59,15 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
                 ) : (
                     <div>
                         <p className="font-semibold text-white">{account.name}</p>
-                        <p className="text-xs text-gray-500">{account.type}</p>
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-gray-500">{account.type}</span>
+                            <span className="text-gray-600">·</span>
+                            {hasMapping ? (
+                                <span className="inline-flex items-center gap-1 text-green-400"><CheckCircleIcon className="h-3.5 w-3.5" /> Statement format set</span>
+                            ) : (
+                                <span className="text-amber-400">Statement format not set up</span>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
@@ -70,6 +83,13 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
                     </>
                 ) : (
                     <>
+                        <button
+                            onClick={() => openModal('statementMapping', { account })}
+                            title="Set up / re-map this account's statement format"
+                            className={`p-2 ${hasMapping ? 'text-gray-400 hover:text-white' : 'text-amber-400 hover:text-amber-300'}`}
+                        >
+                            <ViewColumnsIcon className="h-5 w-5"/>
+                        </button>
                         <button onClick={() => setIsEditing(true)} className="p-2 text-gray-400 hover:text-white"><EditIcon className="h-5 w-5"/></button>
                         <button onClick={handleDelete} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
                     </>

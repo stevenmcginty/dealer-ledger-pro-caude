@@ -56,6 +56,7 @@ import CreateLeadFromEmailModal from '../crm/CreateLeadFromEmailModal';
 import EmailComposer from '../crm/EmailComposer';
 import AddTestEmailModal from '../crm/AddTestEmailModal';
 import ConvertToSaleModal from '../crm/ConvertToSaleModal';
+import StatementMappingWizard from '../expenses/StatementMappingWizard';
 
 const DeleteJobInvoiceConfirmModal = ({ invoice }: { invoice: JobInvoice }) => {
     const { deleteJobInvoice } = useData();
@@ -329,6 +330,8 @@ const ModalManager = () => {
                 return <AddTestEmailModal onClose={closeModal} />;
             case 'convertToSale':
                 return <ConvertToSaleModal lead={modal.data.lead} onClose={closeModal} />;
+            case 'statementMapping':
+                return <StatementMappingWizard account={modal.data.account} csvText={modal.data.csvText} file={modal.data.file} />;
             default:
                 return null;
         }
@@ -359,6 +362,7 @@ const ModalManager = () => {
             case 'convertToSale':
                 return 'lg';
             case 'emailComposer':
+            case 'statementMapping':
                 return '2xl';
             default:
                 return 'lg';

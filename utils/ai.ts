@@ -8,6 +8,14 @@ const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 const ai = new GoogleGenAI({ apiKey });
 
+// Surface a clear, actionable message instead of a cryptic SDK auth error when the
+// Gemini key hasn't been configured. (Set VITE_GEMINI_API_KEY in .env.local and restart.)
+const ensureApiKey = () => {
+    if (!apiKey) {
+        throw new Error('AI features need a Gemini API key. Add VITE_GEMINI_API_KEY to your .env.local file and restart the app.');
+    }
+};
+
 export const getCategorySuggestionForTx = async (description: string, categories: string[]): Promise<string> => {
     const textPart = { text: `Given the transaction description "${description}", which of the following expense categories is the most logical fit? [${categories.join(', ')}]. Respond ONLY with the category name in a JSON format like this: {"category": "chosen_category_name"}.` };
 
@@ -41,6 +49,7 @@ export const getCategorySuggestionForTx = async (description: string, categories
 }
 
 export const scanVehicleInvoice = async (file: File): Promise<Partial<Vehicle> & { grandTotal?: number, totalDeliveryCost?: number, deliveryVat?: number, vendor?: string }> => {
+    ensureApiKey();
     const base64Data = await fileToBase64(file);
     const mimeType = file.type;
 
@@ -86,6 +95,7 @@ export const scanExpenseReceipt = async (file: File, categories: string[]): Prom
     vat?: number;
     category?: string;
 }> => {
+    ensureApiKey();
     const base64Data = await fileToBase64(file);
     const mimeType = file.type;
 
@@ -194,6 +204,7 @@ export const processGeneralCommandStream = async (
 };
 
 export const analyzeCanvasUpload = async (file: File): Promise<{ headline: string, documentType?: string, registrationNumber?: string }> => {
+    ensureApiKey();
     const base64Data = await fileToBase64(file);
     const mimeType = file.type;
 

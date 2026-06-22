@@ -2,7 +2,7 @@
 
 export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'jobInvoices' | 'pipeline' | 'inbox' | 'leadDetail';
 
-export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'emailComposer' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'createLeadFromEmail' | 'analyzeEmail' | 'addTestEmail';
+export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'emailComposer' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'createLeadFromEmail' | 'analyzeEmail' | 'addTestEmail' | 'statementMapping';
 
 export type ModalState = { type: ModalType; data?: any } | null;
 
@@ -291,10 +291,28 @@ export interface CanvasItem {
 export type NewCanvasItem = Omit<CanvasItem, 'id' | 'createdAt'>;
 export type CanvasItemUpdate = Partial<NewCanvasItem>;
 
+// --- Bank statement column mapping (teaches the importer an unknown bank's CSV layout) ---
+export type StatementDateFormat = 'DD/MM/YYYY' | 'DD-MM-YYYY' | 'YYYY-MM-DD' | 'MM/DD/YYYY';
+export type StatementAmountMode = 'single' | 'split';
+
+export interface StatementColumnMapping {
+    // Stored as the literal header TEXT the user selected (matched case-insensitively at parse time).
+    dateColumn: string;
+    descriptionColumn: string;
+    amountMode: StatementAmountMode;
+    amountColumn?: string;   // used when amountMode === 'single' (one signed column)
+    debitColumn?: string;    // used when amountMode === 'split'
+    creditColumn?: string;   // used when amountMode === 'split'
+    methodColumn?: string;   // optional (e.g. "Transaction Type")
+    dateFormat: StatementDateFormat;
+    invertAmountSign?: boolean; // for single-column statements where spend shows as positive (common on credit cards)
+}
+
 export interface FinancialAccount {
     id: string;
     name: string;
     type: 'Bank' | 'Credit Card';
+    columnMapping?: StatementColumnMapping; // saved bank-statement format for this account
 }
 export type NewFinancialAccount = Omit<FinancialAccount, 'id'>;
 

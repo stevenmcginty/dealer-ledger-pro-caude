@@ -18,6 +18,7 @@ import {
     ScheduledAutoResponse, NewScheduledAutoResponse, ScheduledAutoResponseUpdate, AutoRepliedEmail
 } from '../types';
 import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
+import { applyColumnMapping } from '../utils/csvMapping';
 import type { User } from './firebase';
 import Papa from 'papaparse';
 
@@ -1277,41 +1278,61 @@ export const processStatement = async (companyId: string, file: File, account: F
         return undefined;
     };
 
+    // If this account has a saved column mapping (taught via the Mapping Wizard), use it.
+    // Otherwise fall back to the built-in header-alias heuristic for well-known bank formats.
+    const mapping = account.columnMapping;
+
     const newTransactions: NewStatementTransaction[] = [];
     for (const row of rows) {
-        const dateStr = getField(row, ['Date', 'Transaction Date', 'Clearance Date']);
-        const date = dateStr ? robustDateParser(dateStr) : null;
-        
-        const description = getField(row, ['Details', 'Transaction Description', 'Description', 'Merchant Name']);
-        
-        if (!date || !description) continue;
-        
+        let date: string | null;
+        let description: string | undefined;
         let amount: number;
-        const debitStr = getField(row, ['Out', 'Debit Amount', 'Debit']);
-        const creditStr = getField(row, ['In', 'Credit Amount', 'Credit']);
-        const amountStr = getField(row, ['Amount']);
+        let method: string | undefined;
 
-        if (debitStr !== undefined || creditStr !== undefined) {
-            const debit = parseFloat(debitStr || '0');
-            const credit = parseFloat(creditStr || '0');
-            amount = credit - debit;
-        } else if (amountStr !== undefined) {
-            const parsedAmount = parseFloat(amountStr);
-            if (account.type === 'Credit Card') {
-                const lowerDesc = description.toLowerCase();
-                if (lowerDesc.includes('payment received') || lowerDesc.includes('payment thank you')) {
-                    amount = parsedAmount;
+        if (mapping) {
+            // --- Saved per-account mapping path ---
+            const mapped = applyColumnMapping(row, mapping);
+            date = mapped.date;
+            description = mapped.description;
+            method = mapped.method;
+            if (!date || !description) continue;
+            amount = mapped.amount;
+            if (amount === 0) continue;
+        } else {
+            // --- Legacy header-alias heuristic path ---
+            const dateStr = getField(row, ['Date', 'Transaction Date', 'Clearance Date']);
+            date = dateStr ? robustDateParser(dateStr) : null;
+
+            description = getField(row, ['Details', 'Transaction Description', 'Description', 'Merchant Name']);
+
+            if (!date || !description) continue;
+
+            const debitStr = getField(row, ['Out', 'Debit Amount', 'Debit']);
+            const creditStr = getField(row, ['In', 'Credit Amount', 'Credit']);
+            const amountStr = getField(row, ['Amount']);
+
+            if (debitStr !== undefined || creditStr !== undefined) {
+                const debit = parseFloat(debitStr || '0');
+                const credit = parseFloat(creditStr || '0');
+                amount = credit - debit;
+            } else if (amountStr !== undefined) {
+                const parsedAmount = parseFloat(amountStr);
+                if (account.type === 'Credit Card') {
+                    const lowerDesc = description.toLowerCase();
+                    if (lowerDesc.includes('payment received') || lowerDesc.includes('payment thank you')) {
+                        amount = parsedAmount;
+                    } else {
+                        amount = -parsedAmount;
+                    }
                 } else {
-                    amount = -parsedAmount;
+                    amount = parsedAmount;
                 }
             } else {
-                amount = parsedAmount;
+                continue;
             }
-        } else {
-            continue;
+
+            method = getField(row, ['Transaction Type']);
         }
-        
-        const method = getField(row, ['Transaction Type']);
 
         const newTx: NewStatementTransaction = {
             date,
@@ -1325,7 +1346,7 @@ export const processStatement = async (companyId: string, file: File, account: F
             vatAmount: 0,
             status: 'Unreconciled'
         };
-        
+
         const lowerDesc = newTx.description.toLowerCase();
         if (account.type === 'Credit Card' && amount > 0 && (lowerDesc.includes('payment made') || lowerDesc.includes('direct debit') || lowerDesc.includes('payment received'))) {
             newTx.category = 'Credit Card Payment';
@@ -1333,9 +1354,16 @@ export const processStatement = async (companyId: string, file: File, account: F
         }
         newTransactions.push(newTx);
     }
-    
+
     if (rows.length > 0 && newTransactions.length === 0) {
-        onProgress({ step: 'error', error: "CSV parsed, but no valid transaction rows could be identified. Please check column headers." });
+        // No rows could be identified. If there's no saved mapping for this account, the
+        // format is unknown — ask the UI to open the Mapping Wizard so the user can teach
+        // it (and we save the mapping for next time). Otherwise it's a genuine parse error.
+        if (!mapping) {
+            onProgress({ step: 'needs_mapping', csvText: text, accountId: account.id, headers });
+            return;
+        }
+        onProgress({ step: 'error', error: "Couldn't read any transactions using this account's saved format. The bank may have changed their layout — use \"Statement format\" in Settings to re-map the columns." });
         return;
     }
 
