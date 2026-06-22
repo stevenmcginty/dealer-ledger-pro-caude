@@ -19,6 +19,8 @@ interface InlineCategoryComboboxProps {
     onAddCategory?: (name: string) => void;
     /** Allow choosing a typed value not in the list without persisting it (free-form, e.g. income categories). */
     allowCustom?: boolean;
+    /** Open as a big centered modal with a multi-column grid instead of a small anchored dropdown. */
+    large?: boolean;
     placeholder?: string;
     className?: string;
 }
@@ -27,7 +29,7 @@ interface InlineCategoryComboboxProps {
 // (so the dropdown is never clipped by the reconciler table's overflow). Selecting a category
 // fires onSelect immediately — the row commits in place with no modal.
 const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategoryComboboxProps>(({
-    categories, value, recentFirst = [], onSelect, onAddCategory, allowCustom = false, placeholder = 'Categorise…', className = '',
+    categories, value, recentFirst = [], onSelect, onAddCategory, allowCustom = false, large = false, placeholder = 'Categorise…', className = '',
 }, ref) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -131,7 +133,66 @@ const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategory
                 <ChevronDownIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
             </button>
 
-            {open && pos && createPortal(
+            {open && large && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:p-6">
+                    <div
+                        ref={panelRef}
+                        className="mt-[6vh] flex max-h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-gray-800 shadow-2xl ring-1 ring-black/40 border border-gray-700"
+                    >
+                        <div className="flex items-center gap-2 border-b border-gray-700 p-3">
+                            <input
+                                ref={inputRef}
+                                value={search}
+                                onChange={e => { setSearch(e.target.value); setHighlight(0); }}
+                                onKeyDown={onInputKeyDown}
+                                placeholder={onAddCategory ? 'Search or add a category…' : 'Search categories…'}
+                                className="w-full bg-gray-900 text-white text-base rounded-md px-3 py-2.5 ring-1 ring-inset ring-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                            />
+                            <button
+                                type="button"
+                                onClick={doClose}
+                                className="flex-shrink-0 rounded-md px-3 py-2.5 text-sm text-gray-300 ring-1 ring-inset ring-gray-700 hover:bg-gray-700 hover:text-white"
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <ul className="grid grid-cols-2 gap-1.5 overflow-y-auto p-3 sm:grid-cols-3" role="listbox">
+                            {canAdd && (
+                                <li className="sm:col-span-3">
+                                    <button
+                                        type="button"
+                                        onMouseEnter={() => setHighlight(filtered.length)}
+                                        onClick={addNew}
+                                        className={`flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm ${highlight === filtered.length ? 'bg-brand-600 text-white' : 'text-brand-300 ring-1 ring-inset ring-gray-700 hover:bg-gray-700'}`}
+                                    >
+                                        <PlusIcon className="h-4 w-4 flex-shrink-0" />
+                                        <span className="truncate">{onAddCategory ? 'Add' : 'Use'} &ldquo;{trimmed}&rdquo;</span>
+                                    </button>
+                                </li>
+                            )}
+                            {filtered.map((c, i) => (
+                                <li key={c.id}>
+                                    <button
+                                        type="button"
+                                        onMouseEnter={() => setHighlight(i)}
+                                        onClick={() => choose(c.name)}
+                                        className={`flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm ${highlight === i ? 'bg-brand-600 text-white' : 'text-gray-200 hover:bg-gray-700'}`}
+                                    >
+                                        <span className={`h-3 w-3 rounded-full flex-shrink-0 ${c.color || 'bg-gray-500'}`} />
+                                        <span className="truncate">{c.name}</span>
+                                    </button>
+                                </li>
+                            ))}
+                            {filtered.length === 0 && !canAdd && (
+                                <li className="px-3 py-6 text-center text-sm text-gray-500 sm:col-span-3">No matching categories</li>
+                            )}
+                        </ul>
+                    </div>
+                </div>,
+                document.body,
+            )}
+
+            {open && !large && pos && createPortal(
                 <div
                     ref={panelRef}
                     style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}

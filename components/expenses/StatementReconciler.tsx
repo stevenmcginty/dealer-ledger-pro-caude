@@ -647,6 +647,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
                                                         onSelect={name => handleRowCategorySelect(tx, name)}
                                                         onAddCategory={isIncome ? undefined : addExpenseCategory}
                                                         allowCustom={isIncome}
+                                                        large
                                                     />
                                                 )}
                                             </td>
@@ -749,6 +750,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
                                                 onSelect={name => handleRowCategorySelect(tx, name)}
                                                 onAddCategory={isIncome ? undefined : addExpenseCategory}
                                                 allowCustom={isIncome}
+                                                large
                                                 placeholder="Categorise inline…"
                                             />
                                             <button onClick={(e) => { e.stopPropagation(); onEdit(tx); }} className="w-full flex items-center justify-center px-3 py-2 border border-gray-600 text-xs font-medium rounded text-gray-200 bg-gray-700 hover:bg-gray-600 shadow-sm">
