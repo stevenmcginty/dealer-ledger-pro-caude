@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { StatementTransaction, ExpenseCategory, StatementTransactionUpdate } from '../../types';
 import { XMarkIcon, PlusIcon, Bars3Icon } from '../icons';
-import { formatCurrency, formatDate } from '../../utils/helpers';
+import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../utils/helpers';
 import CurrencyInput from '../common/CurrencyInput';
 
 interface CategoryAllocatorProps {
@@ -19,6 +19,13 @@ const CategoryAllocator = ({ transaction, onUpdate, onClose, categories, onAddCa
     const [vatRate, setVatRate] = useState<number>(transaction.vatRate);
     const [manualVat, setManualVat] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
+    // A "transfer" is money moved between the business's own accounts (e.g. to
+    // savings). Default it on when the line clearly looks like one, or when we're
+    // editing a transaction that was already saved as a transfer.
+    const [isTransfer, setIsTransfer] = useState<boolean>(
+        transaction.reconciliationType === 'transfer' ||
+        (transaction.status !== 'Reconciled' && isLikelyOwnAccountTransfer(transaction.description))
+    );
 
     const dragItem = useRef<number | null>(null);
     const dragOverItem = useRef<number | null>(null);
@@ -39,9 +46,21 @@ const CategoryAllocator = ({ transaction, onUpdate, onClose, categories, onAddCa
     };
 
     const handleUpdate = () => {
+        if (isTransfer) {
+            // Money moved between own accounts: no VAT, flagged so the reports exclude it.
+            onUpdate(transaction.id, {
+                category: 'Transfer',
+                vatRate: 0,
+                vatAmount: 0,
+                reconciliationType: 'transfer',
+                status: 'Reconciled',
+            });
+            return;
+        }
+
         let finalVatAmount = 0;
         let finalVatRate = 0;
-        
+
         if (vatMode === 'manual') {
             finalVatAmount = parseFloat(manualVat) || 0;
             const netAmount = Math.abs(transaction.amount) - finalVatAmount;
@@ -51,11 +70,12 @@ const CategoryAllocator = ({ transaction, onUpdate, onClose, categories, onAddCa
             finalVatAmount = vatRate === 20 ? (transaction.amount / 6) : 0;
         }
 
-        const updates: StatementTransactionUpdate = { 
-            category, 
-            vatRate: finalVatRate, 
-            vatAmount: Math.abs(finalVatAmount), 
-            status: 'Reconciled' 
+        const updates: StatementTransactionUpdate = {
+            category,
+            vatRate: finalVatRate,
+            vatAmount: Math.abs(finalVatAmount),
+            status: 'Reconciled',
+            reconciliationType: null, // clear any prior transfer flag (e.g. when editing)
         };
         onUpdate(transaction.id, updates);
     };
@@ -86,7 +106,35 @@ const CategoryAllocator = ({ transaction, onUpdate, onClose, categories, onAddCa
                     <div className="flex justify-between items-center"><p className="text-sm text-gray-400">{formatDate(transaction.date)}</p><p className={`text-xl font-bold ${transaction.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(transaction.amount)}</p></div>
                     <p className="text-white mt-1 truncate">{transaction.description}</p>
                 </div>
-                
+
+                {/* Transfer between own accounts (e.g. a sweep to savings) — not income/expense */}
+                <div className="mb-6">
+                    <button type="button" onClick={() => setIsTransfer(v => !v)} aria-pressed={isTransfer} className={`w-full flex items-center justify-between gap-3 p-3 rounded-lg border-2 text-left transition-colors ${isTransfer ? 'bg-brand-900/60 border-brand-500' : 'bg-gray-700/50 border-gray-600 hover:border-gray-500'}`}>
+                        <span>
+                            <span className="block text-sm font-semibold text-white">Transfer between own accounts</span>
+                            <span className="block text-xs text-gray-400">Moving money to savings or another of your own accounts — not income or an expense.</span>
+                        </span>
+                        <span className={`flex-shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${isTransfer ? 'bg-brand-500' : 'bg-gray-600'}`}>
+                            <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${isTransfer ? 'translate-x-5' : ''}`} />
+                        </span>
+                    </button>
+                </div>
+
+                {isTransfer && (
+                    <div className="space-y-3 rounded-lg bg-gray-900/40 p-4 border border-gray-700">
+                        <p className="text-sm text-gray-300">
+                            Use this for money moved between your own accounts — e.g. a sweep into your savings
+                            account, or moving funds between two business bank accounts. It isn't income or an
+                            expense, so it's excluded from your expense breakdown, profit, and VAT totals. The
+                            money is still yours, just in a different pot.
+                        </p>
+                        <p className="text-xs text-gray-400 italic">
+                            A transfer <em>fee</em>, if any, should be reconciled separately as a bank charge.
+                        </p>
+                    </div>
+                )}
+
+                {!isTransfer && (<>
                 <div>
                     <label htmlFor="category-search" className="block text-sm font-medium text-gray-300">Select or Add Category</label>
                     <input
@@ -151,8 +199,9 @@ const CategoryAllocator = ({ transaction, onUpdate, onClose, categories, onAddCa
                         </div>
                     )}
                 </div>
+                </>)}
             </div>
-             <footer className="p-4 border-t border-gray-700 flex justify-end sticky bottom-0 z-10 bg-gray-800"><button onClick={handleUpdate} className="w-full px-4 py-3 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-md">{isIncome ? 'Confirm & Record Income' : 'Confirm & Reconcile'}</button></footer>
+             <footer className="p-4 border-t border-gray-700 flex justify-end sticky bottom-0 z-10 bg-gray-800"><button onClick={handleUpdate} className="w-full px-4 py-3 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-md">{isTransfer ? 'Confirm Transfer' : isIncome ? 'Confirm & Record Income' : 'Confirm & Reconcile'}</button></footer>
         </>
     );
 };

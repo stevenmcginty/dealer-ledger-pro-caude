@@ -41,7 +41,8 @@ const VatTransactionsReport = () => {
         // The source of truth is only reconciled transactions.
         const filteredTransactions = transactions.filter(tx => {
             const txDate = new Date(tx.date);
-            if (tx.status !== 'Reconciled' || txDate < start || txDate > end) {
+            // Exclude internal transfers (e.g. to savings) — not a VAT-relevant supply.
+            if (tx.status !== 'Reconciled' || tx.reconciliationType === 'transfer' || txDate < start || txDate > end) {
                 return false;
             }
             if (selectedAccount) {

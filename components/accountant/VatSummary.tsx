@@ -63,7 +63,9 @@ const VatSummary = () => {
     const periodSales = salesDocs.filter(doc => doc.documentType === 'Sales Invoice' && new Date(doc.invoiceDate) >= start && new Date(doc.invoiceDate) <= end);
     const periodJobInvoices = jobInvoices.filter(inv => new Date(inv.invoiceDate) >= start && new Date(inv.invoiceDate) <= end);
     const periodMiscInvoices = miscInvoices.filter(inv => new Date(inv.invoiceDate) >= start && new Date(inv.invoiceDate) <= end);
-    const periodTransactions = transactions.filter(tx => tx.status === 'Reconciled' && new Date(tx.date) >= start && new Date(tx.date) <= end);
+    // Internal transfers between own accounts (e.g. to savings) are not income or
+    // an expense, so they're excluded from all VAT figures below.
+    const periodTransactions = transactions.filter(tx => tx.status === 'Reconciled' && tx.reconciliationType !== 'transfer' && new Date(tx.date) >= start && new Date(tx.date) <= end);
 
     // --- Output VAT Calculation ---
     let totalMarginVat = 0;

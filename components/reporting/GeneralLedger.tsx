@@ -101,8 +101,10 @@ const GeneralLedger = () => {
 
 
         // 3. Other Transactions (Expenses = Debit, Other Income = Credit)
+        // Internal transfers between own accounts are not income or expenses, so they
+        // are omitted from the ledger's P&L entries.
         transactions.forEach(tx => {
-            if (tx.status === 'Reconciled') {
+            if (tx.status === 'Reconciled' && tx.reconciliationType !== 'transfer') {
                 const vatAmount = tx.vatAmount || 0;
                 const netAmount = Math.abs(tx.amount) - vatAmount;
                 entries.push({

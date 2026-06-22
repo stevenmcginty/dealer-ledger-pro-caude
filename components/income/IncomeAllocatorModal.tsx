@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StatementTransaction, StatementTransactionUpdate, SalesDocument, MiscInvoice, PaymentMethod, Payment, JobInvoice } from '../../types';
 import { XMarkIcon } from '../icons';
-import { formatCurrency, formatDate } from '../../utils/helpers';
+import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../utils/helpers';
 import CurrencyInput from '../common/CurrencyInput';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
@@ -25,8 +25,13 @@ type Receivable = {
 const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocatorModalProps) => {
     const { salesDocs, miscInvoices, jobInvoices, reconcileSalePayment, reconcileMiscInvoicePayment, reconcileJobInvoicePayment } = useData();
     const { openModal, closeModal } = useUI();
-    const [view, setView] = useState<'match' | 'categorize'>('match');
-    
+    // Default straight to the categorize view (where the Transfer toggle lives) when the
+    // line clearly looks like an own-account transfer, or when editing a saved transfer.
+    const looksLikeTransfer = transaction.reconciliationType === 'transfer' ||
+        (transaction.status !== 'Reconciled' && isLikelyOwnAccountTransfer(transaction.description));
+    const [view, setView] = useState<'match' | 'categorize'>(looksLikeTransfer ? 'categorize' : 'match');
+    const [isTransfer, setIsTransfer] = useState<boolean>(looksLikeTransfer);
+
     // State for 'categorize' view
     const [category, setCategory] = useState(transaction.category === 'Other' ? '' : transaction.category);
     const [isOther, setIsOther] = useState(!["Car Sale", "Part Sale", "Rent"].includes(transaction.category) && transaction.category !== 'Other');
@@ -83,9 +88,22 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
     }, [salesDocs, miscInvoices, jobInvoices, transactionAmount]);
 
     const handleUpdate = () => {
+        if (isTransfer) {
+            // Money moved between own accounts: no VAT, flagged so the reports exclude it.
+            onUpdate(transaction.id, {
+                category: 'Transfer',
+                vatRate: 0,
+                vatAmount: 0,
+                reconciliationType: 'transfer',
+                status: 'Reconciled',
+            });
+            onClose();
+            return;
+        }
+
         let finalVatAmount = 0;
         let finalVatRate = 0;
-        
+
         if (vatMode === 'manual') {
             finalVatAmount = parseFloat(manualVat) || 0;
             const netAmount = Math.abs(transaction.amount) - finalVatAmount;
@@ -101,11 +119,12 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
             return;
         }
 
-        const updates: StatementTransactionUpdate = { 
-            category: finalCategory, 
-            vatRate: finalVatRate, 
-            vatAmount: Math.abs(finalVatAmount), 
-            status: 'Reconciled' 
+        const updates: StatementTransactionUpdate = {
+            category: finalCategory,
+            vatRate: finalVatRate,
+            vatAmount: Math.abs(finalVatAmount),
+            status: 'Reconciled',
+            reconciliationType: null, // clear any prior transfer flag (e.g. when editing)
         };
         onUpdate(transaction.id, updates);
         onClose();
@@ -197,7 +216,35 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
                     <div className="flex justify-between items-center"><p className="text-sm text-gray-400">{formatDate(transaction.date)}</p><p className="text-xl font-bold text-green-400">{formatCurrency(transaction.amount)}</p></div>
                     <p className="text-white mt-1 truncate">{transaction.description}</p>
                 </div>
-                
+
+                {/* Transfer between own accounts (e.g. moving money between bank accounts) — not income */}
+                <div className="mb-6">
+                    <button type="button" onClick={() => setIsTransfer(v => !v)} aria-pressed={isTransfer} className={`w-full flex items-center justify-between gap-3 p-3 rounded-lg border-2 text-left transition-colors ${isTransfer ? 'bg-brand-900/60 border-brand-500' : 'bg-gray-700/50 border-gray-600 hover:border-gray-500'}`}>
+                        <span>
+                            <span className="block text-sm font-semibold text-white">Transfer between own accounts</span>
+                            <span className="block text-xs text-gray-400">Money received from another of your own accounts — not income.</span>
+                        </span>
+                        <span className={`flex-shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${isTransfer ? 'bg-brand-500' : 'bg-gray-600'}`}>
+                            <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${isTransfer ? 'translate-x-5' : ''}`} />
+                        </span>
+                    </button>
+                </div>
+
+                {isTransfer && (
+                    <div className="space-y-3 rounded-lg bg-gray-900/40 p-4 border border-gray-700">
+                        <p className="text-sm text-gray-300">
+                            Use this for money moved between your own accounts — e.g. cash coming back from your
+                            savings account, or moving funds between two business bank accounts. It isn't income,
+                            so it's excluded from your turnover and VAT totals. The money is still yours, just in a
+                            different pot.
+                        </p>
+                        <p className="text-xs text-gray-400 italic">
+                            A transfer <em>fee</em>, if any, should be reconciled separately as a bank charge.
+                        </p>
+                    </div>
+                )}
+
+                {!isTransfer && (<>
                 <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">Select Category</label>
                     <div className="grid grid-cols-2 gap-3">
@@ -233,10 +280,11 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
                         <div><CurrencyInput id="manualVat" value={manualVat} onChange={e => setManualVat(e.target.value)} placeholder="Enter VAT amount" /></div>
                     )}
                 </div>
+                </>)}
             </div>
              <footer className="p-4 border-t border-gray-700 flex justify-end gap-3 sticky bottom-0 z-10 bg-gray-800">
                 <button type="button" onClick={() => setView('match')} className="px-4 py-3 text-sm font-bold text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Back to Matching</button>
-                <button onClick={handleUpdate} className="flex-1 px-4 py-3 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-md">Confirm & Record Income</button>
+                <button onClick={handleUpdate} className="flex-1 px-4 py-3 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-md">{isTransfer ? 'Confirm Transfer' : 'Confirm & Record Income'}</button>
              </footer>
         </>
     );

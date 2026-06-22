@@ -881,6 +881,8 @@ export const undoReconciliation = async (companyId: string, transaction: Stateme
     updates[`${roots.transactions}/${transaction.id}/category`] = 'Other';
     updates[`${roots.transactions}/${transaction.id}/vatRate`] = 0;
     updates[`${roots.transactions}/${transaction.id}/vatAmount`] = 0;
+    // Clear any 'transfer' flag so an un-reconciled line is treated normally again.
+    updates[`${roots.transactions}/${transaction.id}/reconciliationType`] = null;
     updates[`${roots.transactions}/${transaction.id}/linkedVehicleId}`] = null;
 
     if (transaction.linkedVehicleId) {
@@ -911,6 +913,8 @@ export const reconcileTransactionFromSuggestion = async (companyId: string, tran
     const updates: { [key: string]: any } = {};
     const txRef = `${roots.transactions}/${transactionId}`;
     updates[`${txRef}/status`] = 'Reconciled';
+    // Matching to a vehicle/receipt means this is a real purchase, not a transfer.
+    updates[`${txRef}/reconciliationType`] = null;
 
     // Case 1: Match includes a vehicle purchase
     if (match.vehicleId) {
@@ -967,6 +971,7 @@ export const reconcileSalePayment = async (companyId: string, transactionId: str
     updates[`${roots.salesDocuments}/${salesDocId}/balance`] = newBalance;
     updates[`${roots.transactions}/${transactionId}/status`] = 'Reconciled';
     updates[`${roots.transactions}/${transactionId}/category`] = doc.documentType === 'Deposit Slip' ? 'Sales Deposit' : 'Vehicle Sale';
+    updates[`${roots.transactions}/${transactionId}/reconciliationType`] = null; // real income, not a transfer
 
     return db.ref().update(updates);
 };
@@ -983,6 +988,7 @@ export const reconcileMiscInvoicePayment = async (companyId: string, transaction
 
     updates[`${txRef}/status`] = 'Reconciled';
     updates[`${txRef}/category`] = 'Miscellaneous Income';
+    updates[`${txRef}/reconciliationType`] = null; // real income, not a transfer
     updates[`${txRef}/vatAmount`] = inv.vat || 0;
     updates[`${txRef}/vatRate`] = inv.isVatInvoice && inv.subtotal > 0 ? (inv.vat / inv.subtotal) * 100 : 0;
     updates[`${invRef}/linkedTransactionId}`] = transactionId;
@@ -1012,6 +1018,7 @@ export const reconcileJobInvoicePayment = async (companyId: string, transactionI
     updates[`${roots.jobInvoices}/${jobInvoiceId}/balance`] = newBalance;
     updates[`${roots.transactions}/${transactionId}/status`] = 'Reconciled';
     updates[`${roots.transactions}/${transactionId}/category`] = 'Job Invoice Payment';
+    updates[`${roots.transactions}/${transactionId}/reconciliationType`] = null; // real income, not a transfer
 
     return db.ref().update(updates);
 };

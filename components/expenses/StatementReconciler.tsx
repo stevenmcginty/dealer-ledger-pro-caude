@@ -223,6 +223,15 @@ const StatementReconciler = ({ type, accountName, transactions, receipts, onEdit
     };
     
     const handleAcceptCategorySuggestion = async (txId: string, category: string, amount: number, vatRateOverride?: number) => {
+        // A learned "Transfer" suggestion (a recurring own-account move) must be booked as a
+        // transfer, not an expense — no VAT, and flagged so the reports exclude it.
+        if (category === 'Transfer') {
+            await updateTransaction(txId, { category: 'Transfer', vatRate: 0, vatAmount: 0, reconciliationType: 'transfer', status: 'Reconciled' });
+            setManualAiSuggestions(prev => { const newMap = new Map(prev); newMap.delete(txId); return newMap; });
+            setVatSelections(prev => { const newMap = {...prev}; delete newMap[txId]; return newMap; });
+            return;
+        }
+
         let vatRate = vatRateOverride ?? 0;
         let vatAmount = 0;
         

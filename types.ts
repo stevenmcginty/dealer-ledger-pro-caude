@@ -76,6 +76,11 @@ export interface StatementTransaction {
     vatRate: number;
     vatAmount: number;
     status: 'Reconciled' | 'Unreconciled';
+    // 'transfer' = money moved between the business's own accounts (e.g. a sweep
+    // to savings, or moving funds between two bank accounts). It is not income or
+    // an expense, so it's excluded from the VAT return and the profit/expense
+    // reports. (null is used only on write to clear a previously-set flag.)
+    reconciliationType?: 'transfer' | null;
     linkedVehicleId?: string;
     createdAt: number;
 }

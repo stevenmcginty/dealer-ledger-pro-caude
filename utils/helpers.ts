@@ -17,6 +17,20 @@ export const formatCurrency = (amount: number | undefined | null): string => {
   return isNegative ? `-${finalAmount}` : finalAmount;
 };
 
+/**
+ * Heuristic: does this bank-statement line look like money moving between the
+ * business's OWN accounts (e.g. a sweep into a savings account, or a move between
+ * two bank accounts)? Used to default the reconciliation modal to "Transfer" so
+ * own-account moves aren't mis-booked as income or an expense.
+ *
+ * Deliberately conservative — it only fires on strong own-account signals, NOT on
+ * the bare word "transfer", because genuine customer/supplier payments in this app
+ * are frequently described as "bank transfer" / "faster payment transfer" and must
+ * never be auto-excluded from the accounts. The user can always toggle it manually.
+ */
+export const isLikelyOwnAccountTransfer = (description?: string): boolean =>
+    /\b(savings|internal transfer|own account|own acct|money market|reserve account)\b/i.test(description || '');
+
 export const toYYYYMMDD = (date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');

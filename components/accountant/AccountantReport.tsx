@@ -31,7 +31,8 @@ const AccountantReport = () => {
         });
         const periodTransactions = transactions.filter(tx => {
             const txDate = new Date(tx.date);
-            return tx.status === 'Reconciled' && txDate >= start && txDate <= end;
+            // Internal transfers (e.g. to savings) are not income/expense — exclude from P&L.
+            return tx.status === 'Reconciled' && tx.reconciliationType !== 'transfer' && txDate >= start && txDate <= end;
         });
         const periodMiscInvoices = miscInvoices.filter(inv => {
             const invDate = new Date(inv.invoiceDate);

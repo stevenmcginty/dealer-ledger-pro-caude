@@ -7,7 +7,7 @@ import * as dataService from '../../services/dataService';
 import * as ai from '../../utils/ai';
 import { compressImage } from '../../utils/helpers';
 import { XMarkIcon, ExclamationTriangleIcon, ArrowUpTrayIcon, CheckCircleIcon } from '../icons';
-import { formatCurrency, formatDate } from '../../utils/helpers';
+import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../utils/helpers';
 import Spinner from '../common/Spinner';
 
 interface ItemDisplayProps {
@@ -19,7 +19,7 @@ interface ItemDisplayProps {
 
 const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTransaction }) => {
     const { closeModal, openModal } = useUI();
-    const { allReceipts, vehicles, reconcileTransactionFromSuggestion, companyId, userId, expenseCategories, addReceipt } = useData();
+    const { allReceipts, vehicles, reconcileTransactionFromSuggestion, updateTransaction, companyId, userId, expenseCategories, addReceipt } = useData();
     const [selectedType, setSelectedType] = useState<'receipt' | 'vehicle'>('receipt');
     // Changed from single selectedId to array of selectedIds
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -29,6 +29,24 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const transactionAmount = Math.abs(transaction.amount);
+    const looksLikeTransfer = isLikelyOwnAccountTransfer(transaction.description);
+
+    const handleMarkAsTransfer = async () => {
+        setIsSubmitting(true);
+        try {
+            // Money moved between the business's own accounts — not income or an expense.
+            await updateTransaction(transaction.id, {
+                category: 'Transfer',
+                vatRate: 0,
+                vatAmount: 0,
+                reconciliationType: 'transfer',
+                status: 'Reconciled',
+            });
+            closeModal();
+        } catch (e) {
+            setIsSubmitting(false);
+        }
+    };
 
     const { timeSensitiveMatches, otherMatches } = useMemo(() => {
         const txDate = new Date(transaction.date);
@@ -178,7 +196,18 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
                     </div>
                     <p className="text-white mt-1 truncate">{transaction.description}</p>
                 </div>
-                
+
+                {/* Quick path: money moved between own accounts (e.g. a sweep to savings) */}
+                <button
+                    type="button"
+                    onClick={handleMarkAsTransfer}
+                    disabled={isSubmitting}
+                    className={`w-full text-left p-3 rounded-lg border-2 transition-colors disabled:opacity-50 ${looksLikeTransfer ? 'bg-brand-900/50 border-brand-500 hover:bg-brand-900/70' : 'bg-gray-700/40 border-gray-600 hover:border-gray-500'}`}
+                >
+                    <span className="block text-sm font-semibold text-white">Transfer between own accounts</span>
+                    <span className="block text-xs text-gray-400">{looksLikeTransfer ? 'This looks like a transfer to savings/another account. ' : ''}Not income or an expense — excluded from your expenses, profit &amp; VAT.</span>
+                </button>
+
                 {selectedIds.length > 0 && (
                     <div className={`p-3 rounded-lg border flex justify-between items-center ${isExactMatch ? 'bg-green-900/40 border-green-700' : 'bg-yellow-900/40 border-yellow-700'}`}>
                         <div>
