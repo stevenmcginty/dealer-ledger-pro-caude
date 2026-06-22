@@ -335,10 +335,11 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
                 {activeTab === 'receipts' && <ReceiptManager receipts={directPaymentReceipts} hasActiveFilters={hasActiveFilters} />}
                 {activeTab === 'payables' && <PayablesManager receipts={payableReceipts} suppliers={suppliers} hasActiveFilters={hasActiveFilters} />}
                 {activeAccount && (
-                    <StatementReconciler 
+                    <StatementReconciler
                         type={activeAccount.type}
                         accountName={activeAccount.name}
-                        transactions={transactionsForActiveTab} 
+                        accountId={activeAccount.id}
+                        transactions={transactionsForActiveTab}
                         receipts={allReceipts} 
                         onEdit={handleAllocationClick} 
                         onUndo={undoReconciliation} 
