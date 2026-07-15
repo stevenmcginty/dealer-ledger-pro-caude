@@ -1,8 +1,6 @@
 // Network-first service worker. Replaces the old cache-first-forever v1 worker:
 // pages are always fetched fresh (so deploys reach the browser immediately),
 // hashed static assets are cached, and all old caches are purged on activation.
-// NOTE: the deployed copy lives in public/sw.js (Vite ships that one to dist/);
-// this root copy is kept identical so dev and prod serve the same worker.
 const CACHE_NAME = 'dealer-ledger-pro-cache-v2';
 
 self.addEventListener('install', () => {
