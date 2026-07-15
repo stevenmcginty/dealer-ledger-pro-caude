@@ -4,6 +4,7 @@ import * as dataService from '../../services/dataService';
 import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
+import UkDateInput from '../common/UkDateInput';
 import { formatCurrency } from '../../utils/helpers';
 import PrintableMiscInvoice from './PrintableMiscInvoice';
 import { useUI } from '../../hooks/useUI';
@@ -34,6 +35,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
     const [customerName, setCustomerName] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
     const [isVatInvoice, setIsVatInvoice] = useState(false);
+    const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [items, setItems] = useState<LineItem[]>([{ description: '', amount: 0, amountStr: '' }]);
     const [totalStr, setTotalStr] = useState('');
     
@@ -54,9 +56,11 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
             setCustomerAddress(editingInvoice.customerAddress);
             setIsVatInvoice(editingInvoice.isVatInvoice);
             setItems(editingInvoice.items.map(item => ({...item, amountStr: String(item.amount)})));
+            setInvoiceDate(editingInvoice.invoiceDate);
         } else if (transaction) {
             setTotalStr(String(Math.abs(transaction.amount)));
             setItems([{ description: transaction.description || 'Miscellaneous Income', amount: 0, amountStr: '' }]);
+            setInvoiceDate(transaction.date);
         }
     }, [editingInvoice, isEditing, transaction, customers]);
 
@@ -132,7 +136,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
 
         const invoiceData: NewMiscInvoice = {
             invoiceNumber: editingInvoice?.invoiceNumber || String(Math.floor(10000 + Math.random() * 90000)),
-            invoiceDate: editingInvoice?.invoiceDate || transaction?.date || new Date().toISOString().split('T')[0],
+            invoiceDate,
             customerName,
             customerAddress,
             isVatInvoice: isVatInvoice,
@@ -149,7 +153,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
         setIsSubmitting(true);
         try {
             if (isEditing) {
-                const { invoiceNumber, invoiceDate, ...updateData } = previewData;
+                const { invoiceNumber, ...updateData } = previewData;
                 await onSubmit(updateData, editingInvoice!.id);
             } else {
                 await onSubmit(previewData as NewMiscInvoice, undefined, transaction?.id);
@@ -204,6 +208,11 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
                         </Select>
                         <button type="button" onClick={() => setIsAddingCustomer(!isAddingCustomer)} className="p-2 rounded-md bg-gray-600 text-white hover:bg-gray-500"><PlusIcon className="h-5 w-5"/></button>
                     </div>
+                </div>
+
+                <div>
+                    <label htmlFor="invoiceDate" className="block text-sm font-medium text-gray-300">Date</label>
+                    <UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="mt-1" required/>
                 </div>
 
                 {isAddingCustomer && (

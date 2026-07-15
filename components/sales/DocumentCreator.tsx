@@ -4,6 +4,7 @@ import { addFinanceCompany } from '../../services/dataService';
 import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
+import UkDateInput from '../common/UkDateInput';
 import { formatCurrency } from '../../utils/helpers';
 import PrintableView from './PrintableView';
 import { useData } from '../../hooks/useData';
@@ -32,6 +33,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
     const [deliveryName, setDeliveryName] = useState('');
     const [deliveryAddress, setDeliveryAddress] = useState('');
     
+    const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
     const [priceStr, setPriceStr] = useState('');
     const [deliveryChargeStr, setDeliveryChargeStr] = useState('');
     const [surchargeStr, setSurchargeStr] = useState('');
@@ -77,6 +79,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
                 setDeliveryAddress(editingDocument.deliveryAddress || '');
             }
 
+            setInvoiceDate(editingDocument.invoiceDate || new Date().toISOString().split('T')[0]);
             setPriceStr(String(editingDocument.price || ''));
             setDeliveryChargeStr(String(editingDocument.deliveryCharge || ''));
             setSurchargeStr(String(editingDocument.surcharge || ''));
@@ -121,6 +124,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         setUseDeliveryAddress(documentType === 'Proforma Invoice');
         setDeliveryName('');
         setDeliveryAddress('');
+        setInvoiceDate(new Date().toISOString().split('T')[0]);
         setPriceStr(initialPrice);
         setDeliveryChargeStr('');
         setSurchargeStr('');
@@ -232,7 +236,8 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         }
         
         const baseData: Partial<NewSalesDocument> = {
-            customerName: docCustomerName, customerAddress: docCustomerAddress, price, deliveryCharge, surcharge, vat, subtotal, payments, 
+            invoiceDate,
+            customerName: docCustomerName, customerAddress: docCustomerAddress, price, deliveryCharge, surcharge, vat, subtotal, payments,
             balance, deliveryName: docDeliveryName, deliveryAddress: docDeliveryAddress, additionalNotes,
             pxValue: hasPartExchange ? pxValue : 0,
             partExchangeDetails: (hasPartExchange && partExchangeDetails.reg) ? (partExchangeDetails as PartExchangeVehicle) : undefined,
@@ -253,7 +258,6 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
              const newDocData: NewSalesDocument = {
                 ...cleanData,
                 invoiceNumber,
-                invoiceDate: new Date().toISOString().split('T')[0],
                 stockNumber: vehicle.stockNumber,
                 vehicleId: vehicle.id,
                 vatScheme: vehicle.vatScheme || 'Margin',
@@ -355,7 +359,8 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
                     </div>
                 )}
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div><label htmlFor="invoiceDate" className="block text-sm font-medium text-gray-300">Date</label><UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="mt-1" required/></div>
                     <div><label htmlFor="price" className="block text-sm font-medium text-gray-300">Vehicle Price</label><CurrencyInput id="price" value={priceStr} onChange={e => setPriceStr(e.target.value)} required /></div>
                     <div><label htmlFor="deliveryCharge" className="block text-sm font-medium text-gray-300">Delivery Charge</label><CurrencyInput id="deliveryCharge" value={deliveryChargeStr} onChange={e => setDeliveryChargeStr(e.target.value)} /></div>
                     <div><label htmlFor="surcharge" className="block text-sm font-medium text-gray-300">Surcharge</label><CurrencyInput id="surcharge" value={surchargeStr} onChange={e => setSurchargeStr(e.target.value)} /></div>
