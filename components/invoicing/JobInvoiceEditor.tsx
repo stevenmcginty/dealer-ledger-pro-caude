@@ -142,6 +142,7 @@ const JobInvoiceEditor = ({ editingInvoice, onSubmit, onCancel, businessDetails 
                 isPreview
                 onBack={() => setPreviewData(null)}
                 onConfirm={handleConfirmSave}
+                isSubmitting={isSubmitting}
             />
         )
     }

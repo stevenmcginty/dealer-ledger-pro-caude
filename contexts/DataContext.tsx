@@ -305,7 +305,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         handleGoogleSignOut,
         refreshGoogleCalendarEvents,
         
-        undoSale: (doc) => dataService.undoSale(companyId!, doc, vehicles),
+        undoSale: (doc) => dataService.undoSale(companyId!, doc, vehicles, salesDocs),
         undoDeposit: (doc) => dataService.undoDeposit(companyId!, doc, todos),
         undoReconciliation: (tx) => dataService.undoReconciliation(companyId!, tx, miscInvoices, receipts),
         reconcileTransactionFromSuggestion: (txId, match) => dataService.reconcileTransactionFromSuggestion(companyId!, txId, match),

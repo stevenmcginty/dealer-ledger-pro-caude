@@ -188,6 +188,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
                 isPreview={true}
                 onBack={() => setPreviewData(null)}
                 onConfirm={handleConfirmSave}
+                isSubmitting={isSubmitting}
             />
         );
     }

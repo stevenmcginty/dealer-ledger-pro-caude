@@ -12,9 +12,10 @@ interface PrintableMiscInvoiceProps {
     isPreview?: boolean;
     onConfirm?: () => void;
     onBack?: () => void;
+    isSubmitting?: boolean;
 }
 
-const PrintableMiscInvoice = ({ invoice, businessDetails, onClose, isPreview, onConfirm, onBack }: PrintableMiscInvoiceProps) => {
+const PrintableMiscInvoice = ({ invoice, businessDetails, onClose, isPreview, onConfirm, onBack, isSubmitting = false }: PrintableMiscInvoiceProps) => {
     
     const handleDownloadPdf = async () => {
         const input = document.getElementById('printable-misc-invoice');
@@ -132,11 +133,11 @@ const PrintableMiscInvoice = ({ invoice, businessDetails, onClose, isPreview, on
             </main>
              {isPreview && onConfirm && onBack && (
                 <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800 print:hidden">
-                    <button type="button" onClick={onBack} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
+                    <button type="button" onClick={onBack} disabled={isSubmitting} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md disabled:opacity-50">
                         Back to Edit
                     </button>
-                    <button type="button" onClick={onConfirm} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700">
-                        {invoice.linkedTransactionId ? 'Confirm & Reconcile' : 'Confirm & Save'}
+                    <button type="button" onClick={onConfirm} disabled={isSubmitting} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
+                        {isSubmitting ? 'Saving…' : (invoice.linkedTransactionId ? 'Confirm & Reconcile' : 'Confirm & Save')}
                     </button>
                 </footer>
             )}

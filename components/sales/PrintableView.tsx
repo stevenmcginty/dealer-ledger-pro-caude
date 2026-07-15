@@ -13,6 +13,7 @@ interface PrintableViewProps {
     isPreview?: boolean;
     onConfirm?: () => void;
     onBack?: () => void;
+    isSubmitting?: boolean;
 }
 
 const VehicleDetailGridItem: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => {
@@ -31,7 +32,7 @@ const VehicleDetailGridItem: React.FC<{ label: string; value?: string | number |
 };
 
 
-const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDetails, onClose, isPreview, onConfirm, onBack }) => {
+const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDetails, onClose, isPreview, onConfirm, onBack, isSubmitting = false }) => {
     const { isVatRegistered } = useData();
     
     // Create sanitized, safe-to-render versions of details to prevent crashes from bad data.
@@ -293,11 +294,11 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             
             {isPreview && onConfirm && onBack && (
                 <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800 print:hidden">
-                    <button type="button" onClick={onBack} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
+                    <button type="button" onClick={onBack} disabled={isSubmitting} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md disabled:opacity-50">
                         Back to Edit
                     </button>
-                    <button type="button" onClick={onConfirm} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700">
-                        Confirm & Save
+                    <button type="button" onClick={onConfirm} disabled={isSubmitting} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
+                        {isSubmitting ? 'Saving…' : 'Confirm & Save'}
                     </button>
                 </footer>
             )}

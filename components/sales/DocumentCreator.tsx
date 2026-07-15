@@ -290,14 +290,20 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             ...previewData
         } as SalesDocument;
         return (
-            <PrintableView
-                document={docForPreview}
-                businessDetails={businessDetails}
-                onClose={onCancel}
-                isPreview={true}
-                onBack={() => setPreviewData(null)}
-                onConfirm={handleConfirmSave}
-            />
+            <div className="w-full flex flex-col h-full">
+                {submissionError && (
+                    <div className="flex-shrink-0 m-4 mb-0 p-3 rounded-md bg-red-900/50 border border-red-700 text-sm text-red-200">{submissionError}</div>
+                )}
+                <PrintableView
+                    document={docForPreview}
+                    businessDetails={businessDetails}
+                    onClose={onCancel}
+                    isPreview={true}
+                    onBack={() => { setSubmissionError(null); setPreviewData(null); }}
+                    onConfirm={handleConfirmSave}
+                    isSubmitting={isSubmitting}
+                />
+            </div>
         );
     }
     

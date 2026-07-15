@@ -424,7 +424,16 @@ export const addSalesDocument = async (companyId: string, data: NewSalesDocument
     const vehicleSnap = await db.ref(`${roots.vehicles}/${data.vehicleId}`).get();
     if (!vehicleSnap.exists()) throw new Error("Vehicle not found for sale.");
     const vehicle: Vehicle = vehicleSnap.val();
-    
+
+    // Guard against duplicate Sales Invoices (e.g. a slow-network triple-click) for the same vehicle.
+    if (data.documentType === 'Sales Invoice') {
+        const existingDocsSnap = await db.ref(roots.salesDocuments).get();
+        const existingDocs = existingDocsSnap.val() as { [key: string]: SalesDocument } | null;
+        if (existingDocs && Object.values(existingDocs).some(d => d.vehicleId === data.vehicleId && d.documentType === 'Sales Invoice')) {
+            throw new Error("This vehicle already has a Sales Invoice. Undo the existing sale first (Sales Journal → Undo Sale) before creating a new one.");
+        }
+    }
+
     const newDocKey = db.ref(roots.salesDocuments).push().key;
     if (!newDocKey) throw new Error("Failed to generate a key for the sales document.");
     
@@ -795,7 +804,7 @@ export const deleteMultipleFiles = async (files: { fullPath: string }[]): Promis
 
 
 // --- Business Logic ---
-export const undoSale = async (companyId: string, document: SalesDocument, allVehicles: Vehicle[]) => {
+export const undoSale = async (companyId: string, document: SalesDocument, allVehicles: Vehicle[], allSalesDocs: SalesDocument[]) => {
     const roots = FOLDER_ROOTS(companyId);
     const updates: { [key: string]: any } = {};
     updates[`${roots.vehicles}/${document.vehicleId}/status`] = 'Available';
@@ -805,10 +814,18 @@ export const undoSale = async (companyId: string, document: SalesDocument, allVe
             updates[`${roots.vehicles}/${pxVehicleToDelete.id}`] = null;
         }
     }
-    if (document.sorPayableReceiptId) {
-        updates[`${roots.receipts}/${document.sorPayableReceiptId}`] = null;
+    // Sweep every 'Sales Invoice' for this vehicle (duplicates from double/triple-clicks included), not just the one passed in.
+    const salesInvoicesToDelete = allSalesDocs.filter(d => d.vehicleId === document.vehicleId && d.documentType === 'Sales Invoice');
+    // Union in the passed document by id, in case it's missing from the live array.
+    if (!salesInvoicesToDelete.some(d => d.id === document.id)) {
+        salesInvoicesToDelete.push(document);
     }
-    updates[`${roots.salesDocuments}/${document.id}`] = null;
+    salesInvoicesToDelete.forEach(doc => {
+        updates[`${roots.salesDocuments}/${doc.id}`] = null;
+        if (doc.sorPayableReceiptId) {
+            updates[`${roots.receipts}/${doc.sorPayableReceiptId}`] = null;
+        }
+    });
     return db.ref().update(updates);
 };
 
