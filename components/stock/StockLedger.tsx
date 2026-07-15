@@ -12,13 +12,14 @@ interface StockLedgerProps {
     salesDocs: SalesDocument[];
 }
 
-type EnrichedVehicle = Vehicle & { daysInStock: number };
+type EnrichedVehicle = Vehicle & { daysInStock: number; saleDate: string | null };
 
 interface VehicleRowProps {
     vehicle: EnrichedVehicle;
+    showSoldDate: boolean;
     onActionsClick: () => void;
 }
-const VehicleRow: React.FC<VehicleRowProps> = ({ vehicle, onActionsClick }) => {
+const VehicleRow: React.FC<VehicleRowProps> = ({ vehicle, showSoldDate, onActionsClick }) => {
     const isSor = vehicle.ownershipType === 'Sale or Return';
     const statusColorClasses = {
         'Available': 'bg-green-800 text-green-200',
@@ -65,6 +66,11 @@ const VehicleRow: React.FC<VehicleRowProps> = ({ vehicle, onActionsClick }) => {
                     <div className="text-gray-400 text-xs mt-1">{formatDate(vehicle.purchaseDate)}</div>
                 </div>
             </td>
+            {showSoldDate && (
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-300">
+                    {vehicle.saleDate ? formatDate(vehicle.saleDate) : <span className="text-gray-500">—</span>}
+                </td>
+            )}
             <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-300">
                 <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusColorClasses[status]}`}>{status}</span>
                 {isSor && <span className="ml-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-purple-800 text-purple-200">SOR</span>}
@@ -81,9 +87,10 @@ const VehicleRow: React.FC<VehicleRowProps> = ({ vehicle, onActionsClick }) => {
 
 interface VehicleCardProps {
     vehicle: EnrichedVehicle;
+    showSoldDate: boolean;
     onActionsClick: () => void;
 }
-const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onActionsClick }) => {
+const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, showSoldDate, onActionsClick }) => {
     const isSor = vehicle.ownershipType === 'Sale or Return';
     const statusColorClasses = {
         'Available': 'bg-green-800 text-green-200',
@@ -125,6 +132,9 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onActionsClick }) =>
                 <div className="flex justify-between"><span>Year/Mileage</span><span className="text-white">{vehicle.year} / {vehicle.mileage ? vehicle.mileage.toLocaleString() : 'N/A'} mi</span></div>
                 <div className="flex justify-between"><span>Purchase Price</span><span className="font-semibold text-white">{formatCurrency(vehicle.purchasePrice)}</span></div>
                 <div className="flex justify-between"><span>Purchase Date</span><span className="text-white">{formatDate(vehicle.purchaseDate)}</span></div>
+                {showSoldDate && (
+                    <div className="flex justify-between"><span>Sold Date</span><span className="text-white">{vehicle.saleDate ? formatDate(vehicle.saleDate) : '—'}</span></div>
+                )}
                 <div className="flex justify-between"><span>Days in Stock</span><span className="font-semibold text-white">{vehicle.daysInStock}</span></div>
             </div>
         </div>
@@ -137,7 +147,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [snapshotDate, setSnapshotDate] = useState(''); // empty = today (live view)
     
-    type SortKey = 'reg' | 'make' | 'daysInStock';
+    type SortKey = 'reg' | 'make' | 'daysInStock' | 'saleDate';
     type SortDirection = 'ascending' | 'descending';
 
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'daysInStock', direction: 'descending' });
@@ -156,10 +166,18 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         const viewDate = snapshotDate ? new Date(snapshotDate + 'T23:59:59') : new Date();
         const isHistorical = !!snapshotDate;
 
+        // Map each vehicle to the invoiceDate of its first 'Sales Invoice' doc (matching salesDocs.find semantics).
+        const saleDateMap = new Map<string, string | null>();
+        for (const doc of salesDocs) {
+            if (doc.documentType === 'Sales Invoice' && !saleDateMap.has(doc.vehicleId)) {
+                saleDateMap.set(doc.vehicleId, doc.invoiceDate || null);
+            }
+        }
+
         const getSaleDate = (vehicleId: string): Date | null => {
-            const saleDoc = salesDocs.find(doc => doc.vehicleId === vehicleId && doc.documentType === 'Sales Invoice');
-            if (saleDoc?.invoiceDate) {
-                const d = new Date(saleDoc.invoiceDate);
+            const invoiceDate = saleDateMap.get(vehicleId);
+            if (invoiceDate) {
+                const d = new Date(invoiceDate);
                 return isNaN(d.getTime()) ? null : d;
             }
             return null;
@@ -200,6 +218,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         let enriched = baseVehicles.map(v => ({
             ...v,
             daysInStock: calculateDaysInStock(v),
+            saleDate: saleDateMap.get(v.id) ?? null,
         }));
 
         // Status filter (only apply when NOT viewing historical — historical shows all stock on that date)
@@ -245,6 +264,17 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
             if (sortConfig.key === 'daysInStock') {
                 return sortConfig.direction === 'ascending' ? a.daysInStock - b.daysInStock : b.daysInStock - a.daysInStock;
             }
+            if (sortConfig.key === 'saleDate') {
+                const valA = a.saleDate;
+                const valB = b.saleDate;
+                // Vehicles with no sale date always sort last, regardless of direction.
+                if (valA === null && valB === null) return 0;
+                if (valA === null) return 1;
+                if (valB === null) return -1;
+                if (valA < valB) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            }
             return 0;
         });
 
@@ -255,8 +285,29 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         return processedVehicles.reduce((sum, v) => sum + (v.purchasePrice || 0), 0);
     }, [processedVehicles]);
 
+    // Show the sold date only on the live 'Sold Stock' tab (never in a historical snapshot).
+    const showSoldDate = statusFilter === 'Sold Stock' && !snapshotDate;
+
+    // When sorted by sale date on the Sold tab, group the list under month headers.
+    const groupedVehicles = useMemo(() => {
+        if (!(showSoldDate && sortConfig.key === 'saleDate')) return null;
+        const groups: { label: string; vehicles: EnrichedVehicle[] }[] = [];
+        for (const v of processedVehicles) {
+            const label = v.saleDate
+                ? new Date(v.saleDate).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                : 'No sale date';
+            const last = groups[groups.length - 1];
+            if (last && last.label === label) {
+                last.vehicles.push(v);
+            } else {
+                groups.push({ label, vehicles: [v] });
+            }
+        }
+        return groups;
+    }, [processedVehicles, showSoldDate, sortConfig.key]);
+
     const handleExportCSV = () => {
-        const headers = ['Stock #', 'Registration', 'Make', 'Model', 'Year', 'Mileage', 'VIN', 'Purchase Price', 'Purchase Date', 'Status', 'Ownership', 'Days in Stock'];
+        const headers = ['Stock #', 'Registration', 'Make', 'Model', 'Year', 'Mileage', 'VIN', 'Purchase Price', 'Purchase Date', 'Sold Date', 'Status', 'Ownership', 'Days in Stock'];
         const rows = processedVehicles.map(v => [
             v.stockNumber,
             v.reg || '',
@@ -267,11 +318,12 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
             v.vin || '',
             v.purchasePrice?.toFixed(2) ?? '0.00',
             v.purchaseDate,
+            v.saleDate ?? '',
             v.status,
             v.ownershipType,
             v.daysInStock,
         ]);
-        rows.push(['', '', '', '', '', '', '', totalPurchasePrice.toFixed(2), '', '', '', '']);
+        rows.push(['', '', '', '', '', '', '', totalPurchasePrice.toFixed(2), '', '', '', '', '']);
 
         const csvContent = [headers, ...rows]
             .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -368,7 +420,14 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                             {tabs.map((tab) => (
                                 <button
                                     key={tab}
-                                    onClick={() => setStatusFilter(tab)}
+                                    onClick={() => {
+                                        setStatusFilter(tab);
+                                        if (tab === 'Sold Stock') {
+                                            setSortConfig({ key: 'saleDate', direction: 'descending' });
+                                        } else {
+                                            setSortConfig(prev => prev.key === 'saleDate' ? { key: 'daysInStock', direction: 'descending' } : prev);
+                                        }
+                                    }}
                                     disabled={!!snapshotDate}
                                     className={`${snapshotDate ? 'border-transparent text-gray-600 cursor-not-allowed' : tab === statusFilter ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
                                 >
@@ -397,9 +456,22 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
             {processedVehicles.length === 0 ? <EmptyState /> : (
                 isMobile ? (
                     <div className="space-y-4">
-                        {processedVehicles.map(vehicle => (
-                            <VehicleCard key={vehicle.id} vehicle={vehicle} onActionsClick={() => handleActionsClick(vehicle)} />
-                        ))}
+                        {groupedVehicles ? (
+                            groupedVehicles.map(group => (
+                                <div key={group.label} className="space-y-4">
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 px-1">
+                                        {group.label} · {group.vehicles.length} vehicle{group.vehicles.length !== 1 ? 's' : ''}
+                                    </div>
+                                    {group.vehicles.map(vehicle => (
+                                        <VehicleCard key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
+                                    ))}
+                                </div>
+                            ))
+                        ) : (
+                            processedVehicles.map(vehicle => (
+                                <VehicleCard key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
+                            ))
+                        )}
                         <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
                             <div className="flex justify-between text-sm">
                                 <span className="text-gray-400">{processedVehicles.length} vehicle{processedVehicles.length !== 1 ? 's' : ''}</span>
@@ -420,6 +492,11 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                                     </th>
                                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Details</th>
                                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Purchase</th>
+                                    {showSoldDate && (
+                                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">
+                                            <button onClick={() => requestSort('saleDate')} className="group inline-flex items-center gap-1">Sold {getSortIndicator('saleDate')}</button>
+                                        </th>
+                                    )}
                                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Status</th>
                                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">
                                         <button onClick={() => requestSort('daysInStock')} className="group inline-flex items-center gap-1">Days in Stock {getSortIndicator('daysInStock')}</button>
@@ -428,9 +505,24 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-700/50">
-                                {processedVehicles.map(vehicle => (
-                                    <VehicleRow key={vehicle.id} vehicle={vehicle} onActionsClick={() => handleActionsClick(vehicle)} />
-                                ))}
+                                {groupedVehicles ? (
+                                    groupedVehicles.map(group => (
+                                        <React.Fragment key={group.label}>
+                                            <tr>
+                                                <td colSpan={8} className="bg-gray-900/70 text-xs font-semibold uppercase tracking-wide text-gray-400 px-4 py-2">
+                                                    {group.label} · {group.vehicles.length} vehicle{group.vehicles.length !== 1 ? 's' : ''}
+                                                </td>
+                                            </tr>
+                                            {group.vehicles.map(vehicle => (
+                                                <VehicleRow key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
+                                            ))}
+                                        </React.Fragment>
+                                    ))
+                                ) : (
+                                    processedVehicles.map(vehicle => (
+                                        <VehicleRow key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
+                                    ))
+                                )}
                             </tbody>
                             <tfoot className="bg-gray-900/80 border-t-2 border-gray-600">
                                 <tr>
@@ -438,6 +530,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                                     <td className="px-3 py-3.5"></td>
                                     <td className="px-3 py-3.5"></td>
                                     <td className="px-3 py-3.5 text-sm font-semibold text-white">{formatCurrency(totalPurchasePrice)}</td>
+                                    {showSoldDate && <td className="px-3 py-3.5"></td>}
                                     <td className="px-3 py-3.5"></td>
                                     <td className="px-3 py-3.5"></td>
                                     <td className="px-3 py-3.5"></td>
