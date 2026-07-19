@@ -20,7 +20,7 @@
       "icons": [{ "src": "/icons/shortcut-expense.png", "sizes": "192x192", "type": "image/png" }] },
     { "name": "Add new car", "short_name": "Add car", "url": "/app?action=add-vehicle",
       "icons": [{ "src": "/icons/shortcut-car.png", "sizes": "192x192", "type": "image/png" }] },
-    { "name": "Generate invoice", "short_name": "Invoice", "url": "/app?action=new-invoice",
+    { "name": "Sales invoice", "short_name": "Invoice", "url": "/app?action=new-invoice",
       "icons": [{ "src": "/icons/shortcut-invoice.png", "sizes": "192x192", "type": "image/png" }] }
   ],
   "screenshots": [
