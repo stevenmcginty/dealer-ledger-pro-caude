@@ -7,6 +7,11 @@
 // stroke-based, stroke-width 1.5). Rounded corners are applied ONLY to the two
 // purpose:any app icons; every other icon is square-edged because Android/iOS
 // launchers apply their own mask.
+//
+// Launcher-shortcut icons invert that scheme (accent: true): vivid sky-blue
+// plate, white glyph, heavier stroke. Android renders them inside a ~28dp
+// masked circle in the long-press popup, where the navy plate + thin blue
+// stroke read as a washed-out dark blob.
 
 import sharp from 'sharp';
 import fs from 'fs';
@@ -32,9 +37,9 @@ const ICONS = [
   { file: 'maskable-192.png', size: 192, glyph: 'car', rounded: false, scale: 0.48 },
   { file: 'maskable-512.png', size: 512, glyph: 'car', rounded: false, scale: 0.48 },
   { file: 'apple-touch-icon.png', size: 180, glyph: 'car', rounded: false, scale: 0.62 },
-  { file: 'shortcut-expense.png', size: 96, glyph: 'card', rounded: false, scale: 0.48 },
-  { file: 'shortcut-car.png', size: 96, glyph: 'car', rounded: false, scale: 0.48 },
-  { file: 'shortcut-invoice.png', size: 96, glyph: 'document', rounded: false, scale: 0.48 },
+  { file: 'shortcut-expense.png', size: 192, glyph: 'card', rounded: false, scale: 0.56, accent: true },
+  { file: 'shortcut-car.png', size: 192, glyph: 'car', rounded: false, scale: 0.56, accent: true },
+  { file: 'shortcut-invoice.png', size: 192, glyph: 'document', rounded: false, scale: 0.56, accent: true },
 ];
 
 // Probe render used only to measure a glyph's visual bounds. The 24-unit box is
@@ -79,7 +84,7 @@ async function measureGlyphCentre(glyph) {
   return { cx, cy };
 }
 
-function buildSvg({ size, glyph, rounded, scale }, centre) {
+function buildSvg({ size, glyph, rounded, scale, accent }, centre) {
   const rx = rounded ? Math.round(size * 0.18) : 0;
   // Centre the glyph on the plate by its VISUAL midpoint and scale it to `scale`
   // of the icon: shift origin to centre, scale, then recentre the measured
@@ -90,15 +95,20 @@ function buildSvg({ size, glyph, rounded, scale }, centre) {
     .map((d) => `<path d="${d}" />`)
     .join('');
 
+  const plateStops = accent
+    ? '<stop offset="0%" stop-color="#38bdf8" /><stop offset="100%" stop-color="#0369a1" />'
+    : '<stop offset="0%" stop-color="#1e293b" /><stop offset="100%" stop-color="#0f172a" />';
+  const stroke = accent ? '#ffffff' : '#38bdf8';
+  const strokeWidth = accent ? 1.9 : 1.5;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <defs>
     <radialGradient id="plate" cx="50%" cy="0%" r="100%">
-      <stop offset="0%" stop-color="#1e293b" />
-      <stop offset="100%" stop-color="#0f172a" />
+      ${plateStops}
     </radialGradient>
   </defs>
   <rect width="${size}" height="${size}" rx="${rx}" fill="url(#plate)" />
-  <g transform="${transform}" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="${transform}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">
     ${paths}
   </g>
 </svg>`;
