@@ -1,0 +1,32 @@
+{
+  "id": "/app",
+  "name": "Dealer Ledger Pro",
+  "short_name": "Dealer Ledger",
+  "description": "Stock, sales, expenses, invoicing and VAT ledger for UK car dealers.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#030712",
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Add expense", "short_name": "Expense", "url": "/app?action=add-expense",
+      "icons": [{ "src": "/icons/shortcut-expense.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Add new car", "short_name": "Add car", "url": "/app?action=add-vehicle",
+      "icons": [{ "src": "/icons/shortcut-car.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Generate invoice", "short_name": "Invoice", "url": "/app?action=new-invoice",
+      "icons": [{ "src": "/icons/shortcut-invoice.png", "sizes": "96x96", "type": "image/png" }] }
+  ],
+  "screenshots": [
+    { "src": "/screenshots/dashboard.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "Dashboard" },
+    { "src": "/screenshots/stock.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "Vehicle stock" },
+    { "src": "/screenshots/expenses.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "Expenses" },
+    { "src": "/screenshots/vat.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "VAT summary" }
+  ]
+}

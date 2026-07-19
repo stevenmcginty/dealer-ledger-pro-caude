@@ -4,6 +4,7 @@ import { useUI } from './hooks/useUI';
 import { useData } from './hooks/useData';
 import { signOut } from './services/firebase';
 import { formatDate } from './utils/helpers';
+import { consumeQuickAction } from './utils/quickAction';
 import { View, NewCanvasItem, CanvasItem } from './types';
 
 // Import Layout Components
@@ -64,6 +65,27 @@ const LedgerCore = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Fire a launcher-shortcut quick action once, after data has loaded.
+  const quickActionConsumed = useRef(false);
+  useEffect(() => {
+    if (isLoading || error || quickActionConsumed.current) return;
+    const action = consumeQuickAction();
+    if (!action) return;
+    quickActionConsumed.current = true;
+    switch (action) {
+      case 'add-expense':
+        setView('expenses'); openModal('expense'); break;
+      case 'add-vehicle':
+        if (isServiceBusiness) { setView('expenses'); openModal('expense'); }
+        else { setView('stock'); openModal('vehicle'); }
+        break;
+      case 'new-invoice':
+        if (isServiceBusiness) { setView('jobInvoices'); openModal('jobInvoice'); }
+        else { setView('stock'); openModal('invoicePicker'); }
+        break;
+    }
+  }, [isLoading, error, isServiceBusiness, setView, openModal]);
 
   const notifications = useMemo(() => {
     if (isServiceBusiness) return [];

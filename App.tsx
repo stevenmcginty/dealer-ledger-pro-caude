@@ -56,6 +56,8 @@ const App = () => {
     const resetInactivityTimer = useCallback(() => {
         if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
         if (!user) return;
+        // Installed app (phone launcher / bubble): stay logged in; idle logout is desktop-browser only
+        if (window.matchMedia('(display-mode: standalone)').matches) return;
         inactivityTimer.current = setTimeout(() => {
             console.log('[App] Logging out due to 30 minutes of inactivity');
             signOut();

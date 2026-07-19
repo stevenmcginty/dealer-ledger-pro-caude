@@ -35,6 +35,7 @@ import SupplierEditorModal from '../settings/SupplierEditorModal';
 import CanvasItemModal from '../canvas/CanvasItemModal';
 import ForceUndoSaleConfirmModal from './ForceUndoSaleConfirmModal';
 import VehicleActionsModal from '../stock/VehicleActionsModal';
+import InvoiceVehiclePicker from '../sales/InvoiceVehiclePicker';
 import ToDoEditor from '../todo/ToDoEditor';
 import DeleteMiscInvoiceConfirmModal from './DeleteMiscInvoiceConfirmModal';
 import TransactionAllocatorModal from './TransactionAllocatorModal';
@@ -288,6 +289,8 @@ const ModalManager = () => {
                 return <CanvasItemModal item={modal.data} />;
             case 'vehicleActions':
                 return <VehicleActionsModal data={modal.data} />;
+            case 'invoicePicker':
+                return <InvoiceVehiclePicker />;
             case 'todo':
                 return <ToDoEditor type={modal.data.type} editingTodo={modal.data.editingTodo} prefillData={modal.data.prefillData} />;
             case 'confirmClearData': 
@@ -349,6 +352,7 @@ const ModalManager = () => {
             case 'canvasItem':
                 return '4xl';
             case 'vehicleActions':
+            case 'invoicePicker':
                 return 'sm';
             case 'todo':
             case 'customerManager':

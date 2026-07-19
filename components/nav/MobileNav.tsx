@@ -196,7 +196,10 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
                 </div>
             )}
         
-            <div className="fixed bottom-0 left-0 right-0 h-auto z-50 pointer-events-none p-4 pb-6">
+            <div
+                className="fixed bottom-0 left-0 right-0 h-auto z-50 pointer-events-none p-4"
+                style={{ paddingBottom: 'max(1.5rem, calc(env(safe-area-inset-bottom) + 0.75rem))' }}
+            >
                 <div className="pointer-events-auto mx-auto max-w-lg glass-panel rounded-3xl shadow-2xl shadow-black/50 border border-white/10">
                     <nav className="grid grid-cols-5 items-center h-16 relative">
                         <NavItem {...mainNavItems[0]} isActive={activeView === mainNavItems[0].view} onClick={setActiveView} />
