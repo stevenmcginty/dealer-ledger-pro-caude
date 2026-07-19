@@ -40,6 +40,7 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
     const onEditClick = () => handleAction(() => openModal('vehicle', vehicle));
     const onActionClick = (docType: DocumentType) => handleAction(() => openModal('invoice', { vehicle, docType }));
     const onViewDocClick = (doc: SalesDocument) => handleAction(() => openModal('invoice', { viewOnly: true, document: doc }));
+    const onEditDocClick = (doc: SalesDocument) => handleAction(() => openModal('editInvoice', doc));
     const onUndoClick = (doc: SalesDocument) => handleAction(() => openModal('undoSaleConfirm', doc));
     const onUndoDepositClick = (doc: SalesDocument) => handleAction(() => openModal('undoDepositConfirm', doc));
     const onForceUndoClick = (veh: Vehicle) => handleAction(() => openModal('forceUndoSaleConfirm', veh));
@@ -63,6 +64,19 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
 
                 {vehicle.status === 'Available' && (
                     <>
+                        {salesDoc && (
+                            <>
+                                <p className="text-xs text-yellow-300">This vehicle is in stock but still has a sales invoice attached — it will show as sold in reports.</p>
+                                <ActionButton onClick={() => onViewDocClick(salesDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                    <DocumentTextIcon className="h-5 w-5 text-green-400" />
+                                    <span>View Sales Invoice</span>
+                                </ActionButton>
+                                <ActionButton onClick={() => onUndoClick(salesDoc)} className="bg-red-900/50 hover:bg-red-800 text-red-300">
+                                    <UndoIcon className="h-5 w-5" />
+                                    <span>Remove Stray Sales Invoice</span>
+                                </ActionButton>
+                            </>
+                        )}
                         <ActionButton onClick={() => onActionClick('Deposit Slip')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
                             <DocumentTextIcon className="h-5 w-5 text-cyan-400" />
                             <span>Create Deposit Slip</span>
@@ -86,6 +100,12 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                                 <span>View Deposit Slip</span>
                             </ActionButton>
                         )}
+                        {depositDoc && (
+                             <ActionButton onClick={() => onEditDocClick(depositDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                <EditIcon className="h-5 w-5" />
+                                <span>Edit Deposit Slip</span>
+                            </ActionButton>
+                        )}
                         <ActionButton onClick={() => onActionClick('Sales Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
                             <DocumentTextIcon className="h-5 w-5 text-green-400" />
                             <span>Finalise Sale</span>
@@ -106,6 +126,10 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                                 <ActionButton onClick={() => onViewDocClick(salesDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
                                     <DocumentTextIcon className="h-5 w-5 text-green-400" />
                                     <span>View Sales Invoice</span>
+                                </ActionButton>
+                                <ActionButton onClick={() => onEditDocClick(salesDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                    <EditIcon className="h-5 w-5" />
+                                    <span>Edit Sales Invoice</span>
                                 </ActionButton>
                                 <ActionButton onClick={() => onUndoClick(salesDoc)} className="bg-red-900/50 hover:bg-red-800 text-red-300">
                                     <UndoIcon className="h-5 w-5" />
