@@ -25,6 +25,8 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
     const uploadMenuRef = useRef<HTMLDivElement>(null);
     const [selectedTxIds, setSelectedTxIds] = useState<string[]>([]);
     const bulkInputRef = useRef<HTMLInputElement>(null);
+    const tabsScrollRef = useRef<HTMLDivElement>(null);
+    const activeTabRef = useRef<HTMLButtonElement>(null);
     
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -43,6 +45,15 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
     useEffect(() => {
         setSelectedTxIds([]);
     }, [activeTab]);
+
+    // Keep the selected tab visible in the scrollable strip (only moves the strip, not the page).
+    useEffect(() => {
+        const scroller = tabsScrollRef.current;
+        const btn = activeTabRef.current;
+        if (!scroller || !btn) return;
+        const target = btn.offsetLeft - (scroller.clientWidth - btn.offsetWidth) / 2;
+        scroller.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    }, [activeTab, financialAccounts.length]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, account: FinancialAccount) => {
         const file = e.target.files?.[0];
@@ -291,8 +302,8 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
                 </div>
             </div>
 
-            <div className="p-4 bg-gray-800 rounded-lg shadow-md flex flex-col sm:flex-row items-center gap-4">
-                 <div className="relative w-full sm:w-auto sm:flex-1">
+            <div className="p-4 bg-gray-800 rounded-lg shadow-md flex flex-col sm:flex-row sm:items-center gap-4">
+                 <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                         <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
                     </div>
@@ -304,26 +315,27 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
                         placeholder="Search description, vendor, amount..."
                     />
                 </div>
-                <div className="flex items-center gap-4 flex-wrap w-full sm:w-auto justify-end">
-                    <div className="flex items-center gap-2">
-                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                        <span className="text-gray-400">to</span>
-                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 sm:flex-wrap w-full min-w-0 sm:w-auto sm:justify-end">
+                    <div className="flex items-center gap-2 w-full min-w-0 sm:w-auto">
+                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="flex-1 min-w-0 sm:flex-initial" />
+                        <span className="text-gray-400 text-sm flex-shrink-0">to</span>
+                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="flex-1 min-w-0 sm:flex-initial" />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setPeriod('this_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Month</button>
-                        <button onClick={() => setPeriod('last_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Month</button>
-                        <button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button>
-                        <button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button>
+                    <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:items-center sm:w-auto">
+                        <button onClick={() => setPeriod('this_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md whitespace-nowrap">This Month</button>
+                        <button onClick={() => setPeriod('last_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md whitespace-nowrap">Last Month</button>
+                        <button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md whitespace-nowrap">This Quarter</button>
+                        <button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md whitespace-nowrap">Last Quarter</button>
                     </div>
                 </div>
             </div>
 
-            <div className="w-full sm:w-auto overflow-x-auto">
-                 <div className="border-b border-gray-700">
+            {/* Swipes edge-to-edge on mobile so a partly-visible tab reads as "there's more". */}
+            <div ref={tabsScrollRef} className="-mx-4 px-4 sm:mx-0 sm:px-0 w-auto overflow-x-auto">
+                 <div className="border-b border-gray-700 min-w-max sm:min-w-0">
                     <nav className="-mb-px flex space-x-4 sm:space-x-8" aria-label="Tabs">
                         {tabs.map((tab) => (
-                            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`${tab.id === activeTab ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}>
+                            <button key={tab.id} ref={tab.id === activeTab ? activeTabRef : undefined} onClick={() => setActiveTab(tab.id)} className={`${tab.id === activeTab ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}>
                                 <span>{tab.name}</span>
                             </button>
                         ))}

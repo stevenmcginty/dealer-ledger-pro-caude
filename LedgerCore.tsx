@@ -247,7 +247,10 @@ const LedgerCore = () => {
     <div className={`flex h-screen overflow-hidden bg-gray-950 text-gray-100 theme-${theme} print:hidden`}>
       {!isMobile && <DesktopNav onLogout={handleLogout} />}
 
-      <main className="flex-1 flex flex-col min-h-0">
+      {/* min-w-0 is load-bearing: without it <main> grows to its content's min-content
+          width, and the overflow-hidden wrapper above clips the excess with no way to
+          scroll to it (the "screen is cut off on mobile" bug). */}
+      <main className="flex-1 flex flex-col min-h-0 min-w-0">
          <header className="md:hidden p-4 flex items-center justify-between border-b border-gray-700/50">
              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <CarIcon className={`h-8 w-8 text-brand-400 flex-shrink-0`} />

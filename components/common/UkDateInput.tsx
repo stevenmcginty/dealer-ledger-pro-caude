@@ -20,7 +20,7 @@ const UkDateInput = ({ id, name, value, onChange, className, required }: UkDateI
         type="text"
         value={formattedValue}
         readOnly
-        className="block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500 cursor-pointer"
+        className="block w-full min-w-0 bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500 cursor-pointer"
         placeholder="DD/MM/YYYY"
       />
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">

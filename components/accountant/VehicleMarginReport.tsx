@@ -140,7 +140,7 @@ const VehicleMarginReport = () => {
                         <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
                         <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
                     </div>
-                     <div className="self-end flex items-center gap-2">
+                     <div className="self-end flex flex-wrap items-center gap-2">
                         <button onClick={() => setPeriod('this_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Month</button>
                         <button onClick={() => setPeriod('last_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Month</button>
                         <button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button>
