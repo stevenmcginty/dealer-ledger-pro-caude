@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Vehicle, NewSalesDocument, FinanceCompany, DocumentType, SalesDocument, SalesDocumentUpdate, Payment, BusinessDetails, PartExchangeVehicle } from '../../types';
 import { addFinanceCompany } from '../../services/dataService';
 import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
@@ -22,6 +22,13 @@ interface DocumentCreatorProps {
     businessDetails: BusinessDetails | null;
 }
 
+// While editing, amounts are held as raw strings so part-typed values ("12", "12.5")
+// survive re-renders instead of being round-tripped through parseFloat.
+type PaymentDraft = Omit<Payment, 'amount'> & { amount: string };
+
+const toDraft = (p: Payment): PaymentDraft => ({ ...p, amount: p.amount ? String(p.amount) : '' });
+const toPayment = (p: PaymentDraft): Payment => ({ ...p, amount: parseFloat(p.amount) || 0 });
+
 const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editingDocument, prefillData, onSubmit, onCancel, financeCompanies, businessDetails }: DocumentCreatorProps) => {
     const { isVatRegistered } = useData();
     // These states now always refer to the END customer
@@ -37,7 +44,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
     const [priceStr, setPriceStr] = useState('');
     const [deliveryChargeStr, setDeliveryChargeStr] = useState('');
     const [surchargeStr, setSurchargeStr] = useState('');
-    const [payments, setPayments] = useState<Payment[]>([]);
+    const [payments, setPayments] = useState<PaymentDraft[]>([]);
     
     const [hasPartExchange, setHasPartExchange] = useState(false);
     const [pxValueStr, setPxValueStr] = useState('');
@@ -59,7 +66,21 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
     
     const financeCompany = useMemo(() => financeCompanies.find(fc => fc.id === selectedFinCo), [selectedFinCo, financeCompanies]);
 
+    // The form is only ever populated once per document. Parents rebuild the `vehicle`
+    // prop on every render, so without this guard any re-render of the app (a window
+    // resize, the mobile keyboard opening, a Firebase snapshot) would wipe unsaved edits.
+    const populatedForRef = useRef<string | null>(null);
+
     useEffect(() => {
+        const populationKey = [
+            editingDocument?.id ?? 'new',
+            priorDeposit?.id ?? 'none',
+            vehicle.id,
+            documentType,
+        ].join('|');
+        if (populatedForRef.current === populationKey) return;
+        populatedForRef.current = populationKey;
+
         // For editing an existing document
         if (isEditing && editingDocument) {
             // Check if it was a finance deal by seeing if a known finance company name matches the customerName
@@ -83,8 +104,8 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             setPriceStr(String(editingDocument.price || ''));
             setDeliveryChargeStr(String(editingDocument.deliveryCharge || ''));
             setSurchargeStr(String(editingDocument.surcharge || ''));
-            const existingPayments = editingDocument.payments || (editingDocument.deposit ? [{ method: 'Deposit', amount: editingDocument.deposit }] : []);
-            setPayments(existingPayments);
+            const existingPayments: Payment[] = editingDocument.payments || (editingDocument.deposit ? [{ method: 'Deposit', amount: editingDocument.deposit }] : []);
+            setPayments(existingPayments.map(toDraft));
             setAdditionalNotes(editingDocument.additionalNotes || '');
             const pxExists = editingDocument.pxValue && editingDocument.pxValue > 0;
             setHasPartExchange(pxExists);
@@ -95,7 +116,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
 
         // For creating a new document
         let initialPrice = '0';
-        let initialPayments: Payment[] = [];
+        let initialPayments: PaymentDraft[] = [];
         let initialCustomerName = '';
         let initialCustomerAddress = '';
         let initialAdditionalNotes = '';
@@ -115,7 +136,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
 
             const totalDepositPaid = priorDeposit.payments?.reduce((sum, p) => sum + p.amount, 0) || priorDeposit.deposit || 0;
             if (totalDepositPaid > 0) {
-                initialPayments.push({ method: 'Deposit', amount: totalDepositPaid, notes: `From Deposit Slip #${priorDeposit.invoiceNumber}` });
+                initialPayments.push({ method: 'Deposit', amount: String(totalDepositPaid), notes: `From Deposit Slip #${priorDeposit.invoiceNumber}` });
             }
         }
         
@@ -142,7 +163,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             if (prefillData.customerName !== undefined) setCustomerName(prefillData.customerName);
             if (prefillData.customerAddress !== undefined) setCustomerAddress(prefillData.customerAddress);
             if (prefillData.price !== undefined) setPriceStr(String(prefillData.price));
-            if (prefillData.payments !== undefined) setPayments(prefillData.payments);
+            if (prefillData.payments !== undefined) setPayments(prefillData.payments.map(toDraft));
         }
     }, [prefillData]);
 
@@ -150,7 +171,8 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
     const deliveryCharge = parseFloat(deliveryChargeStr) || 0;
     const surcharge = parseFloat(surchargeStr) || 0;
     const pxValue = hasPartExchange ? (parseFloat(pxValueStr) || 0) : 0;
-    const totalPayments = payments.reduce((sum, p) => sum + p.amount, 0);
+    const numericPayments = useMemo(() => payments.map(toPayment), [payments]);
+    const totalPayments = numericPayments.reduce((sum, p) => sum + p.amount, 0);
     
     const isSor = vehicle.ownershipType === 'Sale or Return';
     const commission = isSor ? price - vehicle.purchasePrice : 0;
@@ -194,24 +216,16 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         }
     }
 
-    const handlePaymentChange = (index: number, field: keyof Payment, value: any) => {
-        const newPayments = [...payments];
-        const payment = { ...newPayments[index] };
-        if (field === 'amount') {
-            payment[field] = parseFloat(value) || 0;
-        } else {
-            (payment[field] as any) = value;
-        }
-        newPayments[index] = payment;
-        setPayments(newPayments);
+    const handlePaymentChange = (index: number, field: keyof PaymentDraft, value: any) => {
+        setPayments(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
     };
 
     const addPayment = () => {
-        setPayments([...payments, { method: 'Bank Transfer', amount: 0 }]);
+        setPayments(prev => [...prev, { method: 'Bank Transfer', amount: '' }]);
     };
 
     const removePayment = (index: number) => {
-        setPayments(payments.filter((_, i) => i !== index));
+        setPayments(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleGeneratePreview = (e: React.FormEvent) => {
@@ -237,7 +251,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         
         const baseData: Partial<NewSalesDocument> = {
             invoiceDate,
-            customerName: docCustomerName, customerAddress: docCustomerAddress, price, deliveryCharge, surcharge, vat, subtotal, payments,
+            customerName: docCustomerName, customerAddress: docCustomerAddress, price, deliveryCharge, surcharge, vat, subtotal, payments: numericPayments,
             balance, deliveryName: docDeliveryName, deliveryAddress: docDeliveryAddress, additionalNotes,
             pxValue: hasPartExchange ? pxValue : 0,
             partExchangeDetails: (hasPartExchange && partExchangeDetails.reg) ? (partExchangeDetails as PartExchangeVehicle) : undefined,
@@ -391,7 +405,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
                     {payments.map((p, i) => (
                          <div key={i} className="flex items-end gap-2 mt-2">
                              <div className="flex-1"><label className="sr-only">Method</label><select value={p.method} onChange={e => handlePaymentChange(i, 'method', e.target.value)} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"><option>Bank Transfer</option><option>Card</option><option>Cash</option><option>Finance</option><option>Deposit</option><option>Other</option></select></div>
-                             <div className="w-36"><label className="sr-only">Amount</label><CurrencyInput id={`payment-amount-${i}`} value={String(p.amount)} onChange={e => handlePaymentChange(i, 'amount', e.target.value)} /></div>
+                             <div className="w-36"><label className="sr-only">Amount</label><CurrencyInput id={`payment-amount-${i}`} value={p.amount} onChange={e => handlePaymentChange(i, 'amount', e.target.value)} /></div>
                              <button type="button" onClick={() => removePayment(i)} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
                          </div>
                     ))}

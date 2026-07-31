@@ -12,9 +12,10 @@ export function useWindowSize() {
   useEffect(() => {
     // Handler to call on window resize
     function handleResize() {
-      setWindowSize({
-        width: window.innerWidth,
-      });
+      // Only re-render when the width actually changes. On phones the on-screen
+      // keyboard fires resize on every focus, and a fresh object here would
+      // re-render the whole app (and any open editor) for nothing.
+      setWindowSize(prev => prev.width === window.innerWidth ? prev : { width: window.innerWidth });
     }
     
     // Add event listener
