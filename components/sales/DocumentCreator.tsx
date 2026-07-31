@@ -297,10 +297,13 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
     };
     
     if (previewData) {
+        // When editing, the preview data only carries the fields this form owns.
+        // Layer it over the saved document so untouched fields — invoice number,
+        // stock number, car details — still show, exactly as the patched save leaves them.
         const docForPreview: SalesDocument = {
             id: editingDocument?.id || 'temp-id',
             createdAt: editingDocument?.createdAt || Date.now(),
-            ...(isEditing ? {} : { invoiceNumber: '', stockNumber: '', vehicleId: '', vatScheme: 'Margin', documentType }),
+            ...(isEditing ? editingDocument : { invoiceNumber: '', stockNumber: '', vehicleId: '', vatScheme: 'Margin', documentType }),
             ...previewData
         } as SalesDocument;
         return (
