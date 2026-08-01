@@ -51,6 +51,7 @@ const DesktopNav = ({ onLogout }: DesktopNavProps) => {
         ...(!isServiceBusiness ? [{ label: "Income", view: "income" as View, icon: BanknotesIcon }] : []),
         { label: "Work Sheets", view: "workSheets" as View, icon: WrenchScrewdriverIcon },
         { label: "Work Prep", view: "workPrep" as View, icon: ClipboardDocumentListIcon },
+        { label: "Internal Jobs", view: "internalJobs" as View, icon: WrenchScrewdriverIcon },
         { label: "Canvas", view: "canvas" as View, icon: ClipboardIcon },
     ];
     

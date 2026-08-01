@@ -1,8 +1,8 @@
 
 
-export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'jobInvoices' | 'pipeline' | 'inbox' | 'leadDetail';
+export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'internalJobs' | 'jobInvoices' | 'pipeline' | 'inbox' | 'leadDetail';
 
-export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'invoicePicker' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'emailComposer' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'createLeadFromEmail' | 'analyzeEmail' | 'addTestEmail' | 'statementMapping';
+export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'internalJob' | 'deleteInternalJobConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'invoicePicker' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'emailComposer' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'createLeadFromEmail' | 'analyzeEmail' | 'addTestEmail' | 'statementMapping';
 
 export type ModalState = { type: ModalType; data?: any } | null;
 
@@ -261,11 +261,15 @@ export interface InternalJob {
     vehicleId: string;
     carDetails: Vehicle;
     jobDate: string;
+    /** Odometer reading when the work was done. Falls back to the vehicle snapshot. */
+    serviceMileage?: number | null;
+    notes?: string | null;
     items: { description: string; amount: number }[];
     totalAmount: number;
     createdAt: number;
 }
 export type NewInternalJob = Omit<InternalJob, 'id' | 'createdAt'>;
+export type InternalJobUpdate = Partial<NewInternalJob>;
 
 export interface InformalVehicle {
     id: string;
@@ -573,6 +577,9 @@ export interface DataContextState {
     addWorkSheet: (data: NewWorkSheet) => Promise<any>;
     updateWorkSheet: (id: string, data: WorkSheetUpdate) => Promise<void>;
     deleteWorkSheet: (id: string) => Promise<void>;
+    addInternalJob: (data: NewInternalJob) => Promise<any>;
+    updateInternalJob: (id: string, data: InternalJobUpdate) => Promise<void>;
+    deleteInternalJob: (id: string) => Promise<void>;
     addCustomer: (data: NewCustomer) => Promise<string>;
     updateCustomer: (id: string, data: Partial<NewCustomer>) => Promise<void>;
     deleteCustomer: (id: string) => Promise<void>;

@@ -24,7 +24,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
     const [customers, setCustomers] = useState<any[]>([]);
     const [miscInvoices, setMiscInvoices] = useState<any[]>([]);
     const [jobInvoices, setJobInvoices] = useState<any[]>([]);
-    const [internalJobs, setInternalJobs] = useState<any[]>([]); // Future support
+    const [internalJobs, setInternalJobs] = useState<any[]>([]);
     const [informalVehicles, setInformalVehicles] = useState<any[]>([]);
     const [garageCosts, setGarageCosts] = useState<any[]>([]);
     const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -114,6 +114,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
             dataService.subscribeToCustomers(companyId, setCustomers),
             dataService.subscribeToMiscInvoices(companyId, setMiscInvoices),
             dataService.subscribeToJobInvoices(companyId, setJobInvoices),
+            dataService.subscribeToInternalJobs(companyId, setInternalJobs),
             dataService.subscribeToInformalVehicles(companyId, setInformalVehicles),
             dataService.subscribeToGarageCosts(companyId, setGarageCosts),
             dataService.subscribeToSuppliers(companyId, setSuppliers),
@@ -261,6 +262,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         addWorkSheet: (data) => dataService.addWorkSheet(companyId!, data),
         updateWorkSheet: (id, data) => dataService.updateWorkSheet(companyId!, id, data),
         deleteWorkSheet: (id) => dataService.deleteWorkSheet(companyId!, id),
+        addInternalJob: (data) => dataService.addInternalJob(companyId!, data),
+        updateInternalJob: (id, data) => dataService.updateInternalJob(companyId!, id, data),
+        deleteInternalJob: (id) => dataService.deleteInternalJob(companyId!, id),
         addCustomer: (data) => dataService.addCustomer(companyId!, data),
         updateCustomer: (id, data) => dataService.updateCustomer(companyId!, id, data),
         deleteCustomer: (id) => dataService.deleteCustomer(companyId!, id),

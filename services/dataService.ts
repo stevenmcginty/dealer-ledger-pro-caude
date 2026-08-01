@@ -13,6 +13,7 @@ import {
     GarageCost, NewGarageCost, Supplier, NewSupplier, SupplierUpdate, CanvasItem, NewCanvasItem,
     CanvasItemUpdate, MiscInvoiceUpdate, FinancialAccount, NewFinancialAccount, UploadBatch,
     JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate,
+    InternalJob, NewInternalJob, InternalJobUpdate,
     Lead, NewLead, LeadUpdate, LeadStage, Activity, InboxEmail, NewInboxEmail, InboxEmailUpdate,
     EmailTemplate, NewEmailTemplate, EmailTemplateUpdate,
     ScheduledAutoResponse, NewScheduledAutoResponse, ScheduledAutoResponseUpdate, AutoRepliedEmail
@@ -37,6 +38,7 @@ export const FOLDER_ROOTS = (companyId: string) => ({
     customers: `${companyRoot(companyId)}/customers`,
     miscInvoices: `${companyRoot(companyId)}/miscInvoices`,
     jobInvoices: `${companyRoot(companyId)}/jobInvoices`,
+    internalJobs: `${companyRoot(companyId)}/internalJobs`,
     informalVehicles: `${companyRoot(companyId)}/informalVehicles`,
     garageCosts: `${companyRoot(companyId)}/garageCosts`,
     canvas: `${companyRoot(companyId)}/canvas`,
@@ -224,6 +226,7 @@ export const subscribeToBusinessDetails = (companyId: string, cb: (data: Busines
 }
 export const subscribeToToDos = (companyId: string, cb: (data: ToDoItem[]) => void) => createSubscription<ToDoItem>(FOLDER_ROOTS(companyId).todos, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToWorkSheets = (companyId: string, cb: (data: WorkSheet[]) => void) => createSubscription<WorkSheet>(FOLDER_ROOTS(companyId).workSheets, cb, (a, b) => b.createdAt - a.createdAt);
+export const subscribeToInternalJobs = (companyId: string, cb: (data: InternalJob[]) => void) => createSubscription<InternalJob>(FOLDER_ROOTS(companyId).internalJobs, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToCustomers = (companyId: string, cb: (data: Customer[]) => void) => createSubscription<Customer>(FOLDER_ROOTS(companyId).customers, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToMiscInvoices = (companyId: string, cb: (data: MiscInvoice[]) => void) => createSubscription<MiscInvoice>(FOLDER_ROOTS(companyId).miscInvoices, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToJobInvoices = (companyId: string, cb: (data: JobInvoice[]) => void) => createSubscription<JobInvoice>(FOLDER_ROOTS(companyId).jobInvoices, cb, (a, b) => b.createdAt - a.createdAt);
@@ -587,6 +590,10 @@ export const reclassifyToDo = async (companyId: string, todoId: string, targetCa
 export const addWorkSheet = async (companyId: string, data: NewWorkSheet) => { const newKey = db.ref(FOLDER_ROOTS(companyId).workSheets).push().key; if (!newKey) throw new Error("Failed to create key for new work sheet."); return db.ref(`${FOLDER_ROOTS(companyId).workSheets}/${newKey}`).set({ ...data, createdAt: firebase.database.ServerValue.TIMESTAMP }); };
 export const updateWorkSheet = async (companyId: string, id: string, data: WorkSheetUpdate) => db.ref(`${FOLDER_ROOTS(companyId).workSheets}/${id}`).update(data);
 export const deleteWorkSheet = async (companyId: string, id: string) => db.ref(`${FOLDER_ROOTS(companyId).workSheets}/${id}`).remove();
+
+export const addInternalJob = async (companyId: string, data: NewInternalJob) => { const newKey = db.ref(FOLDER_ROOTS(companyId).internalJobs).push().key; if (!newKey) throw new Error("Failed to create key for new internal job."); return db.ref(`${FOLDER_ROOTS(companyId).internalJobs}/${newKey}`).set({ ...data, createdAt: firebase.database.ServerValue.TIMESTAMP }); };
+export const updateInternalJob = async (companyId: string, id: string, data: InternalJobUpdate) => db.ref(`${FOLDER_ROOTS(companyId).internalJobs}/${id}`).update(data);
+export const deleteInternalJob = async (companyId: string, id: string) => db.ref(`${FOLDER_ROOTS(companyId).internalJobs}/${id}`).remove();
 
 // --- Customer & Misc Invoice Operations ---
 export const addCustomer = async (companyId: string, data: NewCustomer): Promise<string> => { const newKey = db.ref(FOLDER_ROOTS(companyId).customers).push().key; if (!newKey) throw new Error("Failed to create key for new customer."); await db.ref(`${FOLDER_ROOTS(companyId).customers}/${newKey}`).set({ ...data, createdAt: firebase.database.ServerValue.TIMESTAMP }); return newKey; };

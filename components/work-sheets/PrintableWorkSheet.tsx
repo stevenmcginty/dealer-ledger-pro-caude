@@ -74,8 +74,8 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500 print:p-0 print:bg-white print:overflow-visible">
                 <SheetPage id="printable-worksheet">
                     <SheetBand
-                        title={businessDetails?.name || 'Work Record'}
-                        subtitle={docType}
+                        title={businessDetails?.name || docType}
+                        subtitle={businessDetails?.name ? docType : null}
                         rightTitle={makeModel || car.reg}
                         rightSubtitle={vehicleSubtitle || car.reg}
                     />

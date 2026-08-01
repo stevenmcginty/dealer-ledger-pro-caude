@@ -32,6 +32,7 @@ import GaragePage from './pages/GaragePage';
 import CanvasPage from './pages/CanvasPage';
 import JobInvoicesPage from './pages/JobInvoicesPage';
 import WorkPrepPage from './pages/WorkPrepPage';
+import InternalJobsPage from './pages/InternalJobsPage';
 import PipelinePage from './pages/PipelinePage';
 import InboxPage from './pages/InboxPage';
 import LeadDetailPage from './pages/LeadDetailPage';
@@ -134,6 +135,7 @@ const LedgerCore = () => {
         dashboard: 'Dashboard',
         workSheets: 'Work Sheets',
         workPrep: 'Work Prep',
+        internalJobs: 'Internal Job Sheets',
         stock: 'Vehicle Stock',
         garage: 'Garage',
         sales: 'Sales',
@@ -158,6 +160,8 @@ const LedgerCore = () => {
       return {
         expenses: { label: 'Add Receipt', action: () => openModal('expense') },
         jobInvoices: { label: 'Add Quote', action: () => openModal('jobInvoice') },
+        workSheets: { label: 'Add Work Sheet', action: () => openModal('workSheet') },
+        internalJobs: { label: 'Add Job Sheet', action: () => openModal('internalJob') },
         pipeline: { label: 'Add Lead', action: () => openModal('lead') },
       }
     }
@@ -166,6 +170,7 @@ const LedgerCore = () => {
         garage: { label: 'Add Informal Car', action: () => openModal('addInformalVehicle') },
         expenses: { label: 'Add Receipt', action: () => openModal('expense') },
         workSheets: { label: 'Add Work Sheet', action: () => openModal('workSheet') },
+        internalJobs: { label: 'Add Job Sheet', action: () => openModal('internalJob') },
         income: { label: 'Add Invoice', action: () => openModal('miscInvoice') },
         pipeline: { label: 'Add Lead', action: () => openModal('lead') },
     }
@@ -204,6 +209,7 @@ const LedgerCore = () => {
       case 'dashboard': return <DashboardPage />;
       case 'workSheets': return <WorkSheetsPage />;
       case 'workPrep': return <WorkPrepPage />;
+      case 'internalJobs': return <InternalJobsPage />;
       case 'stock': return isServiceBusiness ? null : <StockPage />;
       case 'garage': return isServiceBusiness ? null : <GaragePage />;
       case 'sales': return isServiceBusiness ? null : <SalesPage />;

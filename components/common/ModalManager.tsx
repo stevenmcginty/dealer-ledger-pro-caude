@@ -4,7 +4,7 @@
 import React, { useMemo } from 'react';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
-import { SalesDocument, Vehicle, NewVehicle, VehicleUpdate, NewReceipt, ReceiptUpdate, NewSalesDocument, SalesDocumentUpdate, StatementTransaction, StatementTransactionUpdate, NewWorkSheet, NewMiscInvoice, Receipt, MiscInvoiceUpdate, WorkSheet, JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate } from '../../types';
+import { SalesDocument, Vehicle, NewVehicle, VehicleUpdate, NewReceipt, ReceiptUpdate, NewSalesDocument, SalesDocumentUpdate, StatementTransaction, StatementTransactionUpdate, NewWorkSheet, NewMiscInvoice, Receipt, MiscInvoiceUpdate, WorkSheet, JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate, InternalJob, NewInternalJob, InternalJobUpdate } from '../../types';
 import * as dataService from '../../services/dataService';
 
 // Import Modal/Editor Components
@@ -47,6 +47,9 @@ import JobInvoiceEditor from '../invoicing/JobInvoiceEditor';
 import PrintableJobInvoice from '../invoicing/PrintableJobInvoice';
 import CustomerDetailView from '../customers/CustomerDetailView';
 import DeleteWorkSheetConfirmModal from './DeleteWorkSheetConfirmModal';
+import DeleteInternalJobConfirmModal from './DeleteInternalJobConfirmModal';
+import InternalJobEditor from '../internal-jobs/InternalJobEditor';
+import PrintableJobSheet from '../internal-jobs/PrintableJobSheet';
 import BulkReceiptWizard from '../expenses/BulkReceiptWizard';
 import ArchiveDrawer from '../filing-cabinet/ArchiveModal';
 import RestoreDrawer from '../filing-cabinet/RestoreModal';
@@ -85,6 +88,10 @@ const ModalManager = () => {
     const { modal, closeModal, openModal } = useUI();
     const data = useData();
     const { companyId, userId } = data;
+
+    // Must sit above the early return: hooks cannot be conditional, and closing a
+    // modal would otherwise change the hook count between renders.
+    const vehiclesWithoutInvoice = useMemo(() => data.vehicles.filter(v => !v.invoiceUrl), [data.vehicles]);
 
     if (!modal || !companyId || !userId) return null;
 
@@ -153,6 +160,15 @@ const ModalManager = () => {
         closeModal();
     };
     
+    const handleInternalJobSubmit = async (formData: NewInternalJob | InternalJobUpdate, id?: string) => {
+        if (id) {
+            await data.updateInternalJob(id, formData as InternalJobUpdate);
+        } else {
+            await data.addInternalJob(formData as NewInternalJob);
+        }
+        closeModal();
+    };
+
     const handleMiscInvoiceSubmit = async (formData: NewMiscInvoice | MiscInvoiceUpdate, id?: string, transactionId?: string) => {
         if (id) {
             await data.updateMiscInvoice(id, formData as MiscInvoiceUpdate);
@@ -172,8 +188,6 @@ const ModalManager = () => {
         }
         closeModal();
     };
-
-    const vehiclesWithoutInvoice = useMemo(() => data.vehicles.filter(v => !v.invoiceUrl), [data.vehicles]);
 
     const handleAssignInvoice = async (vehicleId: string, file: File) => {
         if (!companyId || !userId || !vehicleId || !file) return;
@@ -267,6 +281,26 @@ const ModalManager = () => {
             }
             case 'deleteWorkSheetConfirm':
                 return <DeleteWorkSheetConfirmModal sheet={modal.data} />;
+            case 'internalJob': {
+                if (modal.data?.viewOnly && modal.data?.job) {
+                    let jobForView = modal.data.job as InternalJob;
+                    if (!jobForView.carDetails) {
+                        const vehicleForJob = data.vehicles.find(v => v.id === jobForView.vehicleId);
+                        jobForView = { ...jobForView, carDetails: (vehicleForJob || {}) as InternalJob['carDetails'] };
+                    }
+                    return <PrintableJobSheet job={jobForView} businessDetails={data.businessDetails} onClose={closeModal} />;
+                }
+                return <InternalJobEditor
+                            vehicles={data.vehicles}
+                            existingJobs={data.internalJobs}
+                            businessDetails={data.businessDetails}
+                            onSubmit={handleInternalJobSubmit}
+                            onCancel={closeModal}
+                            editingJob={modal.data?.editingJob || null}
+                        />;
+            }
+            case 'deleteInternalJobConfirm':
+                return <DeleteInternalJobConfirmModal job={modal.data} />;
             case 'miscInvoice': 
                 return <MiscInvoiceEditor companyId={companyId} transaction={modal.data?.transaction} customers={data.customers} businessDetails={data.businessDetails} onSubmit={handleMiscInvoiceSubmit} onClose={closeModal} />;
             case 'editMiscInvoice':
@@ -345,6 +379,7 @@ const ModalManager = () => {
             case 'invoice':
             case 'editInvoice':
             case 'workSheet':
+            case 'internalJob':
             case 'jobInvoice':
             case 'customerDetailView':
             case 'bulkReceiptWizard':

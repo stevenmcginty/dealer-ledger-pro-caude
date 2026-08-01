@@ -23,6 +23,9 @@ const PrintableJobSheet = ({ job, businessDetails, onClose, isPreview, onConfirm
     const makeModel = [car.make, car.model].filter(Boolean).join(' ');
     const vehicleSubtitle = [car.color, car.year ? `Model Year ${car.year}` : null].filter(Boolean).join('  |  ');
 
+    // Reading recorded on the job wins; otherwise fall back to the vehicle snapshot.
+    const odometer = typeof job?.serviceMileage === 'number' ? job.serviceMileage : car.mileage;
+
     const handleDownloadPdf = async () => {
         const input = document.getElementById('printable-job-sheet');
         if (!input) return;
@@ -54,7 +57,7 @@ const PrintableJobSheet = ({ job, businessDetails, onClose, isPreview, onConfirm
                 <SheetPage id="printable-job-sheet">
                     <SheetBand
                         title={businessDetails?.name || 'Internal Job Sheet'}
-                        subtitle="Internal Job Sheet"
+                        subtitle={businessDetails?.name ? 'Internal Job Sheet' : null}
                         rightTitle={makeModel || car.reg}
                         rightSubtitle={vehicleSubtitle || car.reg}
                     />
@@ -73,7 +76,7 @@ const PrintableJobSheet = ({ job, businessDetails, onClose, isPreview, onConfirm
                             <SheetRow label="Stock number" value={car.stockNumber} />
                             <SheetRow
                                 label="Odometer"
-                                value={typeof car.mileage === 'number' ? `${car.mileage.toLocaleString()} miles` : undefined}
+                                value={typeof odometer === 'number' ? `${odometer.toLocaleString()} miles` : undefined}
                                 note={jobDateLabel ? `recorded ${jobDateLabel}` : undefined}
                             />
                             <SheetRow label="Exterior" value={car.color} />
@@ -111,6 +114,12 @@ const PrintableJobSheet = ({ job, businessDetails, onClose, isPreview, onConfirm
                                 </div>
                             </div>
                         </SheetSection>
+
+                        {job?.notes && (
+                            <SheetSection title="Notes">
+                                <p className="text-[11px] leading-relaxed text-gray-700 whitespace-pre-line">{job.notes}</p>
+                            </SheetSection>
+                        )}
 
                         <SheetFooter lines={[
                             [businessDetails?.name, jobDateLabel && `Prepared ${jobDateLabel}`].filter(Boolean).join('  |  '),
