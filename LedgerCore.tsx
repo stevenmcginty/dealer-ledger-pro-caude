@@ -53,6 +53,16 @@ const LedgerCore = () => {
     }
   }, [width]);
 
+  // Modals portal to document.body, so they sit outside the theme-* wrapper below
+  // and would otherwise always render the default blue brand palette. Stamping the
+  // theme onto <html> puts the --color-brand-* vars in reach of everything.
+  useEffect(() => {
+    const themeClass = `theme-${theme}`;
+    const root = document.documentElement;
+    root.classList.add(themeClass);
+    return () => root.classList.remove(themeClass);
+  }, [theme]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
         if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {

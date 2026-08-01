@@ -145,11 +145,23 @@ export interface WorkSheet {
     workSheetNumber: string;
     vehicleId: string;
     carDetails: Omit<Vehicle, 'id' | 'createdAt' | 'status'>; // Snapshot
-    customerName?: string;
+    customerName?: string | null;
+    /**
+     * 'customer' = chargeable work, prints as a Work Receipt with payment terms.
+     * 'internal' = in-house work, prints as an Internal Work Record.
+     * Absent on sheets created before this field existed - infer from customerName.
+     */
+    recordType?: 'customer' | 'internal';
+    /** Odometer reading at the time of the work. Falls back to the vehicle's stored mileage. */
+    serviceMileage?: number | null;
     workDate: string;
     items: { description: string; amount?: number }[];
     createdAt: number;
 }
+
+/** Legacy sheets predate recordType; treat a named customer as chargeable work. */
+export const workSheetRecordType = (sheet: Pick<WorkSheet, 'recordType' | 'customerName'>): 'customer' | 'internal' =>
+    sheet.recordType || (sheet.customerName ? 'customer' : 'internal');
 export type NewWorkSheet = Omit<WorkSheet, 'id' | 'createdAt'>;
 export type WorkSheetUpdate = Partial<NewWorkSheet>;
 

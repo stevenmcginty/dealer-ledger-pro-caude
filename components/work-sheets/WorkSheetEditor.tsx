@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Vehicle, NewWorkSheet, WorkSheet, BusinessDetails, WorkSheetUpdate } from '../../types';
+import { Vehicle, NewWorkSheet, WorkSheet, BusinessDetails, WorkSheetUpdate, workSheetRecordType } from '../../types';
 import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import PrintableWorkSheet from './PrintableWorkSheet';
@@ -25,7 +25,9 @@ interface WorkItem {
 const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editingSheet }: WorkSheetEditorProps) => {
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
     const [workDate, setWorkDate] = useState(new Date().toISOString().split('T')[0]);
+    const [recordType, setRecordType] = useState<'customer' | 'internal'>('customer');
     const [customerName, setCustomerName] = useState('');
+    const [mileageStr, setMileageStr] = useState('');
     const [items, setItems] = useState<WorkItem[]>([{ description: '', amount: undefined, amountStr: '' }]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [previewData, setPreviewData] = useState<WorkSheet | null>(null);
@@ -38,6 +40,8 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
     const [showSuggestions, setShowSuggestions] = useState(false);
     const suggestionBoxRef = useRef<HTMLDivElement>(null);
 
+    const selectedVehicle = useMemo(() => vehicles.find(v => v.id === selectedVehicleId), [vehicles, selectedVehicleId]);
+
     const searchableVehicles = useMemo(() => {
         if (isEditing && editingSheet) {
             const currentVehicle = vehicles.find(v => v.id === editingSheet.vehicleId);
@@ -46,22 +50,36 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
         return vehicles;
     }, [vehicles, isEditing, editingSheet]);
 
+    // Seed the form from the sheet being edited. Keyed on the sheet id only: a
+    // Firebase push re-creates the `vehicles` array, and depending on it here would
+    // re-run this and wipe whatever the user had typed (date included) mid-edit.
     useEffect(() => {
         if (isEditing && editingSheet) {
             setSelectedVehicleId(editingSheet.vehicleId);
-            const vehicle = vehicles.find(v => v.id === editingSheet.vehicleId);
-            setRegInput(vehicle?.reg || '');
             setWorkDate(editingSheet.workDate);
+            setRecordType(workSheetRecordType(editingSheet));
             setCustomerName(editingSheet.customerName || '');
+            setMileageStr(typeof editingSheet.serviceMileage === 'number' ? String(editingSheet.serviceMileage) : '');
             setItems(editingSheet.items.length > 0 ? editingSheet.items.map(i => ({...i, amountStr: i.amount !== undefined ? String(i.amount) : ''})) : [{ description: '', amount: undefined, amountStr: '' }]);
         } else {
             setSelectedVehicleId('');
             setRegInput('');
             setWorkDate(new Date().toISOString().split('T')[0]);
+            setRecordType('customer');
             setCustomerName('');
+            setMileageStr('');
             setItems([{ description: '', amount: undefined, amountStr: '' }]);
         }
-    }, [editingSheet, isEditing, vehicles]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editingSheet?.id, isEditing]);
+
+    // Fill the (read-only, while editing) reg display once the vehicle list arrives.
+    // Only ever fills a blank value, so it cannot clobber user input.
+    useEffect(() => {
+        if (!isEditing || !editingSheet || regInput) return;
+        const vehicle = vehicles.find(v => v.id === editingSheet.vehicleId);
+        if (vehicle?.reg) setRegInput(vehicle.reg);
+    }, [vehicles, isEditing, editingSheet, regInput]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -123,20 +141,22 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
 
         const { id: vehicleIdToOmit, createdAt: vehicleCreatedAtToOmit, status: vehicleStatusToOmit, ...carDetailsForSheet } = vehicle;
 
+        const parsedMileage = parseInt(mileageStr.replace(/[^0-9]/g, ''), 10);
+
         const sheetData: WorkSheet = {
             id: editingSheet?.id || 'temp-preview-id',
             workSheetNumber,
             vehicleId: vehicle.id,
             carDetails: carDetailsForSheet,
             workDate,
+            recordType,
+            // null rather than undefined: Firebase rejects undefined, and on an update
+            // an omitted key would silently keep the old value instead of clearing it.
+            customerName: recordType === 'customer' && customerName.trim() ? customerName.trim() : null,
+            serviceMileage: isNaN(parsedMileage) ? null : parsedMileage,
             items: finalItems,
             createdAt: editingSheet?.createdAt || Date.now(),
         };
-
-        // Conditionally add customerName only if it exists, to avoid sending 'undefined' to Firebase
-        if (customerName.trim()) {
-            sheetData.customerName = customerName.trim();
-        }
 
         setPreviewData(sheetData);
     };
@@ -181,6 +201,9 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
     const handleSuggestionClick = (vehicle: Vehicle) => {
         setSelectedVehicleId(vehicle.id);
         setRegInput(vehicle.reg);
+        // Seed the odometer from the vehicle record so it only needs correcting,
+        // but never clobber a reading the user has already typed.
+        setMileageStr(prev => (prev.trim() === '' && typeof vehicle.mileage === 'number' ? String(vehicle.mileage) : prev));
         setSuggestions([]);
         setShowSuggestions(false);
     };
@@ -205,6 +228,30 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
                 <button type="button" onClick={onCancel} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
             </header>
             <form id="worksheet-editor-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
+                <div>
+                    <span className="block text-sm font-medium text-gray-300">Record Type</span>
+                    <div className="mt-1 grid grid-cols-2 gap-2">
+                        {([
+                            { key: 'customer' as const, label: 'Chargeable Work', hint: 'Prints as a work receipt' },
+                            { key: 'internal' as const, label: 'Internal / In-House', hint: 'Prints as an internal record' },
+                        ]).map(option => (
+                            <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => setRecordType(option.key)}
+                                aria-pressed={recordType === option.key}
+                                className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                                    recordType === option.key
+                                        ? 'border-brand-500 bg-brand-600/20 text-white'
+                                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                }`}
+                            >
+                                <span className="block text-sm font-semibold">{option.label}</span>
+                                <span className="block text-xs text-gray-400">{option.hint}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="relative md:col-span-2" ref={suggestionBoxRef}>
                         <label htmlFor="vehicleReg" className="block text-sm font-medium text-gray-300">Vehicle</label>
@@ -249,16 +296,30 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
                         <UkDateInput id="workDate" name="workDate" value={workDate} onChange={e => setWorkDate(e.target.value)} className="mt-1" required />
                     </div>
                     <div>
-                        <label htmlFor="customerName" className="block text-sm font-medium text-gray-300">Customer Name (Optional)</label>
+                        <label htmlFor="serviceMileage" className="block text-sm font-medium text-gray-300">Mileage at Service (Optional)</label>
                         <input
                             type="text"
-                            id="customerName"
-                            value={customerName}
-                            onChange={e => setCustomerName(e.target.value)}
-                            placeholder="e.g., John Smith"
+                            inputMode="numeric"
+                            id="serviceMileage"
+                            value={mileageStr}
+                            onChange={e => setMileageStr(e.target.value)}
+                            placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString()} on record` : 'e.g., 44229'}
                             className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
                         />
                     </div>
+                    {recordType === 'customer' && (
+                        <div className="md:col-span-2">
+                            <label htmlFor="customerName" className="block text-sm font-medium text-gray-300">Customer Name (Optional)</label>
+                            <input
+                                type="text"
+                                id="customerName"
+                                value={customerName}
+                                onChange={e => setCustomerName(e.target.value)}
+                                placeholder="e.g., John Smith"
+                                className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
+                            />
+                        </div>
+                    )}
                 </div>
                 <div>
                     <h3 className="text-base font-semibold text-white">Work Carried Out</h3>
