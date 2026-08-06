@@ -9,6 +9,7 @@
  *
  * Vehicle Lookup
  * - Merges DVSA MOT History and DVLA VES data for a registration
+ * - Refreshes MOT status for all vehicles in stock, daily and on demand
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -44,7 +45,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.lookupVehicleByReg = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
+exports.healthCheck = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.refreshStockMotStatus = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -56,6 +57,8 @@ var schedule_1 = require("./autoResponse/schedule");
 Object.defineProperty(exports, "processScheduledResponses", { enumerable: true, get: function () { return schedule_1.processScheduledResponses; } });
 Object.defineProperty(exports, "cancelScheduledResponse", { enumerable: true, get: function () { return schedule_1.cancelScheduledResponse; } });
 Object.defineProperty(exports, "sendScheduledResponseNow", { enumerable: true, get: function () { return schedule_1.sendScheduledResponseNow; } });
+var motSweep_1 = require("./vehicle/motSweep");
+Object.defineProperty(exports, "refreshStockMotStatus", { enumerable: true, get: function () { return motSweep_1.refreshStockMotStatus; } });
 // Export callable functions for client-side use
 var oauth_1 = require("./gmail/oauth");
 Object.defineProperty(exports, "exchangeGmailCode", { enumerable: true, get: function () { return oauth_1.exchangeGmailCode; } });
@@ -64,6 +67,8 @@ var send_1 = require("./gmail/send");
 Object.defineProperty(exports, "sendGmailEmail", { enumerable: true, get: function () { return send_1.sendGmailEmail; } });
 var lookup_1 = require("./vehicle/lookup");
 Object.defineProperty(exports, "lookupVehicleByReg", { enumerable: true, get: function () { return lookup_1.lookupVehicleByReg; } });
+var motSweep_2 = require("./vehicle/motSweep");
+Object.defineProperty(exports, "runMotSweepNow", { enumerable: true, get: function () { return motSweep_2.runMotSweepNow; } });
 // Health check function
 exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({

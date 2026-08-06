@@ -101,6 +101,37 @@ export interface VehicleLookupResult {
     cached?: boolean;
 }
 
+/**
+ * Result of the daily MOT sweep over vehicles in stock.
+ * Mirrors functions/src/vehicle/motSweep.ts — keep the two in step.
+ */
+export interface MotAlert {
+    vehicleId: string;
+    reg: string;
+    make?: string;
+    model?: string;
+    stockNumber?: string;
+    motDueDate?: string;
+    motStatus?: string;
+    /** Negative once the MOT has already run out. */
+    daysRemaining?: number;
+}
+
+export interface MotSweepSummary {
+    startedAt: number;
+    finishedAt: number;
+    trigger: 'scheduled' | 'manual';
+    triggeredBy?: string;
+    checked: number;
+    updated: number;
+    failed: number;
+    /** Set when more vehicles were in stock than one sweep will check. */
+    skipped?: number;
+    expired: MotAlert[];
+    expiringSoon: MotAlert[];
+    errors: Array<{ reg: string; message: string }>;
+}
+
 export interface Receipt {
     id: string;
     vendor: string;

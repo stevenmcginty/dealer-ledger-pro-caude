@@ -7,6 +7,7 @@ import * as dataService from '../../services/dataService';
 import UkDateInput from '../common/UkDateInput';
 import SessionInfoCard from './SessionInfoCard';
 import FirebaseHealthCheckCard from './FirebaseHealthCheckCard';
+import MotSweepCard from './MotSweepCard';
 import Spinner from '../common/Spinner';
 import { CONFIG } from '../../config';
 
@@ -225,6 +226,8 @@ const BusinessDetailsPage = () => {
             </form>
 
             {isAdmin && <AdminProvisioning />}
+
+            <MotSweepCard />
 
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
                 <h2 className="text-lg font-semibold text-white">Firebase Diagnostics</h2>
