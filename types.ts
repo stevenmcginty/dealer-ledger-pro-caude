@@ -38,12 +38,68 @@ export interface Vehicle {
     v5cUrls?: string[]; // Multiple V5C pages
     motDueDate?: string;
     firstRegistered?: string;
+    // Populated from the DVSA/DVLA lookup (see services/vehicleLookup.ts)
+    fuelType?: string;
+    motStatus?: string;
+    taxStatus?: string;
+    taxDueDate?: string;
+    co2Emissions?: number;
+    /** Timestamp of the last successful government data lookup for this reg. */
+    dvlaLookedUpAt?: number;
     businessId?: string; // Owner's Firebase UID for multi-business routing
     createdAt: number;
 }
 
 export type NewVehicle = Omit<Vehicle, 'id' | 'createdAt' | 'status'>;
 export type VehicleUpdate = Partial<NewVehicle> & { status?: Vehicle['status'] };
+
+export interface MotTestSummary {
+    completedDate: string;
+    expiryDate?: string;
+    testResult: string;
+    odometerValue?: number;
+    odometerUnit?: string;
+    advisories: string[];
+    failures: string[];
+}
+
+/**
+ * Merged result of the DVSA MOT History and DVLA Vehicle Enquiry lookups.
+ * Mirrors functions/src/vehicle/types.ts — keep the two in step.
+ */
+export interface VehicleLookupResult {
+    reg: string;
+    found: boolean;
+    sources: { mot: boolean; ves: boolean };
+
+    make?: string;
+    model?: string;
+    color?: string;
+    fuelType?: string;
+    engineSize?: string;
+    year?: number;
+    firstRegistered?: string;
+
+    motDueDate?: string;
+    motStatus?: string;
+    lastMotOdometer?: { value: number; unit: string; date: string };
+    motTestCount?: number;
+    motHistory?: MotTestSummary[];
+    hasOutstandingRecall?: string;
+
+    taxStatus?: string;
+    taxDueDate?: string;
+    co2Emissions?: number;
+    euroStatus?: string;
+    wheelplan?: string;
+    typeApproval?: string;
+    revenueWeight?: number;
+    dateOfLastV5CIssued?: string;
+    markedForExport?: boolean;
+
+    warnings?: string[];
+    cached?: boolean;
+}
 
 export interface Receipt {
     id: string;

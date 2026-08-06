@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Vehicle, NewVehicle, VehicleUpdate, NewReceipt } from '../../types';
+import { Vehicle, NewVehicle, VehicleUpdate, NewReceipt, VehicleLookupResult } from '../../types';
 import { uploadFile } from '../../services/dataService';
 import * as ai from '../../utils/ai';
-import { formatCurrency, fileToBase64, compressImage, robustDateParser, formatBytes } from '../../utils/helpers';
-import { XMarkIcon, CameraIcon, ArrowUpTrayIcon, SparklesIcon, CheckCircleIcon } from '../icons';
+import { lookupVehicle, buildVehiclePatch, isPlausibleUkReg, normaliseReg } from '../../services/vehicleLookup';
+import { formatCurrency, fileToBase64, compressImage, robustDateParser, formatBytes, formatDate } from '../../utils/helpers';
+import { XMarkIcon, CameraIcon, ArrowUpTrayIcon, SparklesIcon, CheckCircleIcon, MagnifyingGlassIcon, ExclamationTriangleIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
@@ -28,12 +29,20 @@ interface VehicleEditorProps {
   onClear: () => void;
 }
 
-type ScanStep = 'idle' | 'compressing' | 'uploading' | 'analyzing' | 'error' | 'success';
+type ScanStep = 'idle' | 'compressing' | 'uploading' | 'analyzing' | 'looking-up' | 'error' | 'success';
 interface ScanProgress {
     step: ScanStep;
     message: string;
     originalSize?: number;
     compressedSize?: number;
+}
+
+interface LookupState {
+    status: 'idle' | 'loading' | 'done' | 'error';
+    message?: string;
+    changed?: string[];
+    result?: VehicleLookupResult;
+    mileageWarning?: string;
 }
 
 
@@ -46,6 +55,8 @@ const ScanProgressIndicator = ({ progress, onRetry, onClose }: { progress: ScanP
                 return `Uploading... ${progress.compressedSize ? `(${formatBytes(progress.compressedSize)})` : ''}`;
             case 'analyzing':
                 return 'AI is analyzing the document...';
+            case 'looking-up':
+                return 'Checking DVLA & MOT records...';
             default:
                 return progress.message;
         }
@@ -82,6 +93,101 @@ const ScanProgressIndicator = ({ progress, onRetry, onClose }: { progress: ScanP
     );
 };
 
+/** Diagnostic-only warnings that would be noise on every single lookup. */
+const isRoutineWarning = (warning: string) => warning.startsWith('DVLA Vehicle Enquiry Service key not configured');
+
+const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
+    if (lookup.status === 'idle' || lookup.status === 'loading') return null;
+
+    if (lookup.status === 'error') {
+        return (
+            <div className="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/40 px-4 py-3 text-sm text-red-200">
+                <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 text-red-400" />
+                <p>{lookup.message}</p>
+            </div>
+        );
+    }
+
+    const result = lookup.result;
+    if (!result) return null;
+
+    const motStatusColor = result.motStatus === 'Expired' ? 'text-red-300' : 'text-green-300';
+    const advisories = result.motHistory?.find(test => test.advisories.length > 0)?.advisories || [];
+    const warnings = [lookup.mileageWarning, ...(result.warnings || [])]
+        .filter((w): w is string => !!w && !isRoutineWarning(w));
+
+    const facts: Array<[string, React.ReactNode]> = [];
+    if (result.motStatus) {
+        facts.push(['MOT', (
+            <span className={motStatusColor}>
+                {result.motStatus}{result.motDueDate ? ` — ${formatDate(result.motDueDate)}` : ''}
+            </span>
+        )]);
+    }
+    if (result.lastMotOdometer) {
+        facts.push(['Last recorded mileage', `${result.lastMotOdometer.value.toLocaleString()} (${formatDate(result.lastMotOdometer.date)})`]);
+    }
+    if (result.taxStatus) {
+        facts.push(['Tax', `${result.taxStatus}${result.taxDueDate ? ` — ${formatDate(result.taxDueDate)}` : ''}`]);
+    }
+    if (result.hasOutstandingRecall && result.hasOutstandingRecall !== 'Unknown') {
+        facts.push(['Outstanding recall', result.hasOutstandingRecall]);
+    }
+
+    return (
+        <div className="rounded-lg border border-gray-700 bg-gray-900/60 px-4 py-3 space-y-3">
+            <div className="flex items-start gap-2">
+                <CheckCircleIcon className="h-5 w-5 flex-shrink-0 text-green-400" />
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-white">{lookup.message}</p>
+                    <p className="text-xs text-gray-400">
+                        Source: {result.sources.mot ? 'DVSA MOT history' : ''}
+                        {result.sources.mot && result.sources.ves ? ' + ' : ''}
+                        {result.sources.ves ? 'DVLA vehicle enquiry' : ''}
+                        {result.cached ? ' (cached)' : ''}
+                    </p>
+                </div>
+            </div>
+
+            {!!lookup.changed?.length && (
+                <div className="flex flex-wrap gap-1.5">
+                    {lookup.changed.map(field => (
+                        <span key={field} className="rounded-full bg-brand-600/20 px-2 py-0.5 text-xs text-brand-300">{field}</span>
+                    ))}
+                </div>
+            )}
+
+            {!!facts.length && (
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    {facts.map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-2">
+                            <dt className="text-gray-400">{label}</dt>
+                            <dd className="text-right text-gray-200">{value}</dd>
+                        </div>
+                    ))}
+                </dl>
+            )}
+
+            {!!advisories.length && (
+                <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Latest MOT advisories</p>
+                    <ul className="mt-1 space-y-0.5 text-xs text-gray-300 list-disc list-inside">
+                        {advisories.slice(0, 4).map((text, i) => <li key={i}>{text}</li>)}
+                        {advisories.length > 4 && <li className="list-none text-gray-500">+{advisories.length - 4} more</li>}
+                    </ul>
+                </div>
+            )}
+
+            {warnings.map(warning => (
+                <div key={warning} className="flex items-start gap-2 rounded-md bg-amber-900/30 px-3 py-2 text-xs text-amber-200">
+                    <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                    <span>{warning}</span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 const calculateNextStockNumber = (allVehicles: Vehicle[]): string => {
     const allStockNumbers = allVehicles.map(v => parseInt(v.stockNumber, 10)).filter(n => !isNaN(n));
     const maxNum = allStockNumbers.length > 0 ? Math.max(...allStockNumbers) : 0;
@@ -90,16 +196,21 @@ const calculateNextStockNumber = (allVehicles: Vehicle[]): string => {
 
 const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, editingVehicle, prefillData, imageFile, onClear }: VehicleEditorProps) => {
   const [formData, setFormData] = useState<Partial<Vehicle>>({});
+  // Mirrors formData so async flows (scan → lookup) can read the current values
+  // without waiting for a re-render.
+  const formDataRef = useRef<Partial<Vehicle>>({});
+  formDataRef.current = formData;
   const [priceStr, setPriceStr] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress>({ step: 'idle', message: '' });
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [scannedDeliveryDetails, setScannedDeliveryDetails] = useState<ScannedDeliveryDetails | null>(null);
-  
+  const [lookup, setLookup] = useState<LookupState>({ status: 'idle' });
+
   const [generatePurchaseInvoice, setGeneratePurchaseInvoice] = useState(false);
   const [sellerDetails, setSellerDetails] = useState({ name: '', address: '' });
 
-  const isScanning = ['compressing', 'uploading', 'analyzing'].includes(scanProgress.step);
+  const isScanning = ['compressing', 'uploading', 'analyzing', 'looking-up'].includes(scanProgress.step);
   const isEditing = !!editingVehicle;
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +245,7 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
     setFormData(initialState);
     setPriceStr(initialPrice);
     setScannedDeliveryDetails(null);
+    setLookup({ status: 'idle' });
   }, [editingVehicle, prefillData, vehicles]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -150,6 +262,56 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
 
     const val = type === 'number' ? parseFloat(value) : value;
     setFormData(prev => ({ ...prev, [name]: val }));
+  };
+
+  /**
+   * Pull the vehicle's record from DVLA/DVSA and merge it into the form.
+   *
+   * `base` is the form state the patch is calculated against. It's passed in
+   * explicitly because the invoice scan calls this immediately after setting the
+   * scanned values, when `formData` hasn't re-rendered yet.
+   */
+  const runRegLookup = async (rawReg: string, base: Partial<Vehicle>): Promise<VehicleLookupResult | null> => {
+    const reg = normaliseReg(rawReg);
+
+    if (!isPlausibleUkReg(reg)) {
+        setLookup({ status: 'error', message: 'Enter a registration before looking it up.' });
+        return null;
+    }
+
+    setLookup({ status: 'loading' });
+
+    try {
+        const result = await lookupVehicle(reg);
+
+        if (!result.found) {
+            setLookup({
+                status: 'error',
+                message: `No record found for ${reg}. Cars under three years old have no MOT history yet.`,
+            });
+            return null;
+        }
+
+        const { patch, changed, mileageWarning } = buildVehiclePatch(result, base);
+        if (Object.keys(patch).length) {
+            setFormData(prev => ({ ...prev, ...patch }));
+        }
+
+        setLookup({
+            status: 'done',
+            result,
+            changed,
+            mileageWarning,
+            message: changed.length
+                ? `${changed.length} field${changed.length === 1 ? '' : 's'} filled from official records.`
+                : 'Official records match what you already have.',
+        });
+
+        return result;
+    } catch (error: any) {
+        setLookup({ status: 'error', message: error?.message || 'Lookup failed.' });
+        return null;
+    }
   };
 
   const runInvoiceScan = async (file: File) => {
@@ -182,19 +344,21 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
         const firstRegDate = result.firstRegistered ? robustDateParser(result.firstRegistered) : null;
         const purchaseDate = result.purchaseDate ? robustDateParser(result.purchaseDate) : null;
 
-        setFormData(prev => ({
-            ...prev,
-            make: result.make || prev.make,
-            model: result.model || prev.model,
-            vin: result.vin || prev.vin,
-            color: result.color || prev.color,
-            reg: result.reg || prev.reg,
-            firstRegistered: firstRegDate || prev.firstRegistered,
-            purchaseDate: purchaseDate || prev.purchaseDate,
-            year: result.year || prev.year,
-            mileage: result.mileage || prev.mileage,
-            engineSize: result.engineSize || prev.engineSize,
-        }));
+        // Only carry across what the invoice actually yielded, so a blank field
+        // never wipes something already on the form.
+        const invoicePatch: Partial<Vehicle> = {};
+        if (result.make) invoicePatch.make = result.make;
+        if (result.model) invoicePatch.model = result.model;
+        if (result.vin) invoicePatch.vin = result.vin;
+        if (result.color) invoicePatch.color = result.color;
+        if (result.reg) invoicePatch.reg = result.reg;
+        if (firstRegDate) invoicePatch.firstRegistered = firstRegDate;
+        if (purchaseDate) invoicePatch.purchaseDate = purchaseDate;
+        if (result.year) invoicePatch.year = result.year;
+        if (result.mileage) invoicePatch.mileage = result.mileage;
+        if (result.engineSize) invoicePatch.engineSize = result.engineSize;
+
+        setFormData(prev => ({ ...prev, ...invoicePatch }));
 
         // Calculate purchase price: Grand Total minus Delivery Cost
         // This ensures indemnity and auction fees remain in the vehicle purchase price
@@ -202,6 +366,20 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
             const calculatedPrice = result.grandTotal - totalDeliveryCost;
             setPriceStr(String(calculatedPrice));
         }
+
+        // The invoice gives us the reg; DVLA and DVSA give us everything the
+        // invoice got wrong or left out — including the MOT expiry.
+        const merged = { ...formDataRef.current, ...invoicePatch };
+        if (merged.reg && isPlausibleUkReg(merged.reg)) {
+            setScanProgress(p => ({ ...p, step: 'looking-up', message: 'Checking DVLA & MOT records...' }));
+            const lookedUp = await runRegLookup(merged.reg, merged);
+            if (lookedUp) {
+                successMessage = totalDeliveryCost > 0
+                    ? 'Invoice + DVLA data combined. Delivery extracted separately.'
+                    : 'Invoice and DVLA data combined.';
+            }
+        }
+
         setScanProgress({ step: 'success', message: successMessage });
 
     } catch (error: any) {
@@ -301,7 +479,24 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                         className="mt-1 block w-full bg-gray-900 border-gray-700 rounded-md py-2 px-3 text-gray-400 placeholder:text-gray-500"
                     />
                 </div>
-                <div><label htmlFor="reg" className="block text-sm font-medium text-gray-300">Registration</label><input type="text" name="reg" value={formData.reg || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase" /></div>
+                <div>
+                    <label htmlFor="reg" className="block text-sm font-medium text-gray-300">Registration</label>
+                    <div className="mt-1 flex items-stretch gap-2">
+                        <input type="text" name="reg" value={formData.reg || ''} onChange={handleChange} required className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase" />
+                        <button
+                            type="button"
+                            onClick={() => runRegLookup(formData.reg || '', formData)}
+                            disabled={lookup.status === 'loading' || isScanning}
+                            title="Look up DVLA & MOT data for this registration"
+                            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md text-white bg-gray-600 hover:bg-gray-500 disabled:opacity-50"
+                        >
+                            {lookup.status === 'loading'
+                                ? <Spinner className="h-5 w-5" />
+                                : <MagnifyingGlassIcon className="h-5 w-5" />}
+                            <span>Look up</span>
+                        </button>
+                    </div>
+                </div>
                 <div><label htmlFor="make" className="block text-sm font-medium text-gray-300">Make</label><input type="text" name="make" value={formData.make || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
                 <div><label htmlFor="model" className="block text-sm font-medium text-gray-300">Model</label><input type="text" name="model" value={formData.model || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
                 <div><label htmlFor="color" className="block text-sm font-medium text-gray-300">Colour</label><input type="text" name="color" value={formData.color || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
@@ -320,6 +515,8 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                 <div className="md:col-span-2"><label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-300">{isSor ? 'Owner Payout Amount' : 'Purchase Price'}</label><CurrencyInput id="purchasePrice" value={priceStr} onChange={e => setPriceStr(e.target.value)} required={!isSor} className="mt-1"/></div>
                 <div className="md:col-span-2"><label htmlFor="purchaseDate" className="block text-sm font-medium text-gray-300">{isSor ? 'Agreement Date' : 'Purchase Date'}</label><UkDateInput id="purchaseDate" name="purchaseDate" value={formData.purchaseDate || ''} onChange={handleChange} className="mt-1" /></div>
             </div>
+
+            <LookupResultPanel lookup={lookup} />
 
             {isSor && (
                 <fieldset className="p-4 border border-gray-700 rounded-lg animate-in fade-in-0 duration-300">

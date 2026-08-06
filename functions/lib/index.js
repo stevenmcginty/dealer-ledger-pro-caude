@@ -6,6 +6,9 @@
  * - Polls Gmail for new emails every 5 minutes
  * - Processes scheduled auto-responses every 1 minute
  * - Handles OAuth token refresh
+ *
+ * Vehicle Lookup
+ * - Merges DVSA MOT History and DVLA VES data for a registration
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -41,7 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
+exports.healthCheck = exports.lookupVehicleByReg = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -59,6 +62,8 @@ Object.defineProperty(exports, "exchangeGmailCode", { enumerable: true, get: fun
 Object.defineProperty(exports, "refreshGmailToken", { enumerable: true, get: function () { return oauth_1.refreshGmailToken; } });
 var send_1 = require("./gmail/send");
 Object.defineProperty(exports, "sendGmailEmail", { enumerable: true, get: function () { return send_1.sendGmailEmail; } });
+var lookup_1 = require("./vehicle/lookup");
+Object.defineProperty(exports, "lookupVehicleByReg", { enumerable: true, get: function () { return lookup_1.lookupVehicleByReg; } });
 // Health check function
 exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({
