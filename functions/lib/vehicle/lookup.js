@@ -46,6 +46,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const motHistory_1 = require("./motHistory");
 const ves_1 = require("./ves");
+const ved_1 = require("./ved");
 /** Registrations are stored and queried without spaces, upper case. */
 const normaliseReg = (input) => String(input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 exports.normaliseReg = normaliseReg;
@@ -87,6 +88,19 @@ const mergeSources = (reg, mot, ves, warnings) => {
         (ves?.monthOfFirstRegistration ? `${ves.monthOfFirstRegistration}-01` : undefined);
     const engineSize = mot?.engineSize ||
         (typeof ves?.engineCapacity === 'number' ? String(ves.engineCapacity) : undefined);
+    // Neither API publishes what the road tax costs, what the fuel costs, or
+    // what the car does to a company car driver's tax bill — all of it falls
+    // out of the fields above once the published rules are applied.
+    const derived = (0, ved_1.deriveVehicleData)({
+        co2: ves?.co2Emissions,
+        fuel: mot?.fuelType || ves?.fuelType,
+        firstRegistered,
+        engineCapacity: engineSize,
+        euroStatus: ves?.euroStatus,
+        // Only a reading in miles; a kilometre clock would make the
+        // miles-a-year comparison quietly wrong.
+        mileage: lastRead && (lastRead.odometerUnit || 'MI') === 'MI' ? lastRead.odometerValue : null,
+    });
     const result = {
         reg,
         found: !!mot || !!ves,
@@ -122,6 +136,13 @@ const mergeSources = (reg, mot, ves, warnings) => {
         revenueWeight: ves?.revenueWeight,
         dateOfLastV5CIssued: (0, motHistory_1.toIsoDate)(ves?.dateOfLastV5CIssued),
         markedForExport: ves?.markedForExport,
+        annualRoadTax: derived.ved.annual,
+        ved: derived.ved,
+        runningCosts: derived.running,
+        annualCost: derived.annual,
+        companyCarTax: derived.companyCar,
+        zones: derived.zones,
+        ageAndUse: derived.age,
     };
     if (warnings.length)
         result.warnings = warnings;

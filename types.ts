@@ -44,8 +44,29 @@ export interface Vehicle {
     taxStatus?: string;
     taxDueDate?: string;
     co2Emissions?: number;
+    /**
+     * Annual road tax in pounds. Not published by any government API — worked
+     * out from CO2, fuel and the first registration date against the VED
+     * tables (see functions/src/vehicle/ved.ts). Held on the vehicle so a
+     * customer-facing advert can quote it without a fresh lookup.
+     */
+    annualRoadTax?: number;
+    /** Estimated mpg, worked back from CO2. Absent on an EV. */
+    estimatedMpg?: number;
+    /** Estimated fuel spend a year at the price assumed when it was looked up. */
+    estimatedAnnualFuelCost?: number;
+    /** ULEZ and clean air zone compliance. */
+    ulezCompliant?: boolean;
     /** Timestamp of the last successful government data lookup for this reg. */
     dvlaLookedUpAt?: number;
+    /**
+     * What the car is advertised at, as opposed to what it cost. Optional and
+     * separate from purchasePrice on purpose: this is the only price a linked
+     * website is ever sent, and purchasePrice must never leave the ledger.
+     * (null is used only on write, to clear a price that was set before —
+     * an absent key would leave the old figure in place.)
+     */
+    advertisedPrice?: number | null;
     businessId?: string; // Owner's Firebase UID for multi-business routing
     createdAt: number;
 }
@@ -64,7 +85,97 @@ export interface MotTestSummary {
 }
 
 /**
- * Merged result of the DVSA MOT History and DVLA Vehicle Enquiry lookups.
+ * The figures neither government API publishes, worked out from the ones they
+ * do. Mirrors functions/src/vehicle/ved.ts — keep the two in step.
+ *
+ * Every block carries a `basis` sentence written to be shown to a customer
+ * verbatim, and flags anything that rests on an assumption rather than a
+ * record.
+ */
+export interface VedResult {
+    taxYear: string;
+    regime?: 'pre-2001' | '2001-2017' | 'post-2017';
+    /** Annual cost in pounds for the next 12 months, or null when unknowable. */
+    annual: number | null;
+    sixMonth: number | null;
+    monthly: number | null;
+    /** CO2 band letter — only meaningful in the 2001-2017 regime. */
+    band?: string;
+    firstYear?: number | null;
+    standard?: number;
+    supplement?: {
+        applies: boolean;
+        possible: boolean;
+        amount: number;
+        threshold: number;
+        endsOn: string;
+        exemptAsEarlyElectric: boolean;
+    };
+    basis: string;
+    assumed: boolean;
+    unknown: string[];
+}
+
+export interface RunningCosts {
+    fuel: string;
+    milesPerYear: number;
+    mpg?: number;
+    milesPerKwh?: number;
+    kwhPerYear?: number;
+    annualFuelCost: number;
+    pencePerMile: number;
+    priceAssumed: string;
+    optimistic: boolean;
+    basis: string;
+}
+
+export interface AnnualCost {
+    tax: number;
+    fuel: number;
+    total: number;
+    milesPerYear: number;
+    basis: string;
+}
+
+export interface CompanyCarTax {
+    taxYear: string;
+    percent: number;
+    listPrice?: number;
+    taxableBenefit?: number;
+    monthlyAt20?: number;
+    monthlyAt40?: number;
+    unknown?: string[];
+    basis: string;
+}
+
+export interface ZoneVerdict {
+    compliant: boolean;
+    assumed: boolean;
+    basis: string;
+}
+
+export interface Zones {
+    ulez: ZoneVerdict | null;
+    caz: ZoneVerdict | null;
+    scottishLez: ZoneVerdict | null;
+    congestionCharge: { exempt: boolean; basis: string };
+}
+
+export interface AgeAndUse {
+    firstRegistered: string;
+    ageYears: number;
+    ageText: string;
+    plate: string;
+    firstMotDue?: string;
+    firstMotNote?: string;
+    milesPerYear?: number;
+    versusAverage?: 'below' | 'typical' | 'above';
+    versusAverageBasis?: string;
+}
+
+/**
+ * Merged result of the DVSA MOT History and DVLA Vehicle Enquiry lookups,
+ * plus the layer derived from them.
  * Mirrors functions/src/vehicle/types.ts — keep the two in step.
  */
 export interface VehicleLookupResult {
@@ -96,6 +207,16 @@ export interface VehicleLookupResult {
     revenueWeight?: number;
     dateOfLastV5CIssued?: string;
     markedForExport?: boolean;
+
+    // --- Derived, not fetched ---
+    /** Annual road tax in pounds, ready for the vehicle form. Null when unknowable. */
+    annualRoadTax?: number | null;
+    ved?: VedResult;
+    runningCosts?: RunningCosts | null;
+    annualCost?: AnnualCost | null;
+    companyCarTax?: CompanyCarTax | null;
+    zones?: Zones;
+    ageAndUse?: AgeAndUse | null;
 
     warnings?: string[];
     cached?: boolean;
@@ -130,6 +251,57 @@ export interface MotSweepSummary {
     expired: MotAlert[];
     expiringSoon: MotAlert[];
     errors: Array<{ reg: string; message: string }>;
+}
+
+/**
+ * The link between this ledger and a dealer website.
+ * Mirrors functions/src/connectors/types.ts — keep the two in step.
+ */
+export interface WebsiteConnector {
+    endpoint: string;
+    /** A write credential. Held here, never shown again after pairing. */
+    token: string;
+    /** What the website calls this ledger, e.g. "Steve — Motor Ledger Pro". */
+    dealer: string;
+    linkId: string;
+    /** Nothing reaches the website until this says 'live'. */
+    mode: 'preview' | 'live';
+    enabled: boolean;
+    connectedAt: number;
+    connectedBy?: string;
+    host?: string;
+    log?: {
+        /** The last full push — a dry run or a "push all stock now". */
+        latest?: WebsitePushSummary;
+        /** The last single car sent by the trigger, kept separately so one
+         *  vehicle changing does not overwrite the record of a whole sweep. */
+        lastVehiclePush?: WebsitePushSummary;
+    };
+}
+
+/** What a linked website did with one car. */
+export interface WebsiteVehicleResult {
+    reg: string;
+    action: 'created' | 'updated' | 'unchanged' | 'skipped' | 'failed';
+    /** Set on a skip: 'other_dealer', 'bad_reg', 'never_advertised'. */
+    reason?: string;
+    message?: string;
+    /** Fields the website took from this push. */
+    changed: string[];
+    /** Fields it declined, because they had been edited in the back office. */
+    kept: string[];
+    status?: { from: string; to: string };
+    name?: string;
+}
+
+export interface WebsitePushSummary {
+    at: number;
+    trigger: 'vehicle' | 'manual' | 'preview';
+    mode: 'preview' | 'live';
+    /** Set when the push never left the ledger. */
+    error?: string;
+    counts?: { created: number; updated: number; unchanged: number; skipped: number; failed: number };
+    results?: WebsiteVehicleResult[];
 }
 
 export interface Receipt {

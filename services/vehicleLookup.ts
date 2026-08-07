@@ -77,6 +77,10 @@ const FIELD_LABELS: Record<string, string> = {
     taxStatus: 'Tax status',
     taxDueDate: 'Tax due',
     co2Emissions: 'CO2',
+    annualRoadTax: 'Road tax',
+    estimatedMpg: 'MPG',
+    estimatedAnnualFuelCost: 'Fuel cost',
+    ulezCompliant: 'ULEZ',
 };
 
 export interface AppliedLookup {
@@ -127,6 +131,14 @@ export const buildVehiclePatch = (
     set('taxStatus', lookup.taxStatus);
     set('taxDueDate', lookup.taxDueDate);
     set('co2Emissions', lookup.co2Emissions);
+
+    // Derived rather than fetched, but no less authoritative — the VED tables
+    // are published, and the alternative is a blank box on every advert. Null
+    // means the rules could not reach an answer, which `set` already skips.
+    set('annualRoadTax', lookup.annualRoadTax ?? undefined);
+    set('estimatedMpg', lookup.runningCosts?.mpg);
+    set('estimatedAnnualFuelCost', lookup.runningCosts?.annualFuelCost);
+    set('ulezCompliant', lookup.zones?.ulez?.compliant);
 
     // Mileage only fills a blank — never overwrites a reading from the invoice.
     const existingMileage = Number(current.mileage) || 0;

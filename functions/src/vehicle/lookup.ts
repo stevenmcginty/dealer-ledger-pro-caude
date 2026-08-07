@@ -12,6 +12,7 @@ import * as admin from 'firebase-admin';
 
 import { fetchMotHistory, summariseMotTests, toIsoDate, RawMotVehicle } from './motHistory';
 import { fetchVesVehicle, isVesConfigured, RawVesVehicle } from './ves';
+import { deriveVehicleData } from './ved';
 import { VehicleLookupResult } from './types';
 
 /** Registrations are stored and queried without spaces, upper case. */
@@ -69,6 +70,20 @@ export const mergeSources = (
         mot?.engineSize ||
         (typeof ves?.engineCapacity === 'number' ? String(ves.engineCapacity) : undefined);
 
+    // Neither API publishes what the road tax costs, what the fuel costs, or
+    // what the car does to a company car driver's tax bill — all of it falls
+    // out of the fields above once the published rules are applied.
+    const derived = deriveVehicleData({
+        co2: ves?.co2Emissions,
+        fuel: mot?.fuelType || ves?.fuelType,
+        firstRegistered,
+        engineCapacity: engineSize,
+        euroStatus: ves?.euroStatus,
+        // Only a reading in miles; a kilometre clock would make the
+        // miles-a-year comparison quietly wrong.
+        mileage: lastRead && (lastRead.odometerUnit || 'MI') === 'MI' ? lastRead.odometerValue : null,
+    });
+
     const result: VehicleLookupResult = {
         reg,
         found: !!mot || !!ves,
@@ -109,6 +124,14 @@ export const mergeSources = (
         revenueWeight: ves?.revenueWeight,
         dateOfLastV5CIssued: toIsoDate(ves?.dateOfLastV5CIssued),
         markedForExport: ves?.markedForExport,
+
+        annualRoadTax: derived.ved.annual,
+        ved: derived.ved,
+        runningCosts: derived.running,
+        annualCost: derived.annual,
+        companyCarTax: derived.companyCar,
+        zones: derived.zones,
+        ageAndUse: derived.age,
     };
 
     if (warnings.length) result.warnings = warnings;

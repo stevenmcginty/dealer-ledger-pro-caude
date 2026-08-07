@@ -62,8 +62,10 @@ const MotSweepCard = () => {
         }
     };
 
+    // Guarded because Realtime Database omits empty arrays entirely.
     const expired = summary?.expired || [];
     const expiringSoon = summary?.expiringSoon || [];
+    const errors = summary?.errors || [];
     const allClear = !!summary && expired.length === 0 && expiringSoon.length === 0;
 
     return (
@@ -148,14 +150,14 @@ const MotSweepCard = () => {
                         </div>
                     )}
 
-                    {summary.errors.length > 0 && (
+                    {errors.length > 0 && (
                         <details className="text-xs text-gray-500">
                             <summary className="cursor-pointer">
-                                {summary.errors.length} lookup{summary.errors.length === 1 ? '' : 's'} failed
+                                {errors.length} lookup{errors.length === 1 ? '' : 's'} failed
                             </summary>
                             <ul className="mt-1 space-y-1">
-                                {summary.errors.map(e => (
-                                    <li key={e.reg}>
+                                {errors.map((e, index) => (
+                                    <li key={`${e.reg}-${index}`}>
                                         <span className="font-mono">{e.reg}</span> — {e.message}
                                     </li>
                                 ))}

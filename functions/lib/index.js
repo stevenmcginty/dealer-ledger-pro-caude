@@ -10,6 +10,10 @@
  * Vehicle Lookup
  * - Merges DVSA MOT History and DVLA VES data for a registration
  * - Refreshes MOT status for all vehicles in stock, daily and on demand
+ *
+ * Website Connector
+ * - Pushes stock to a linked dealer website as it changes
+ * - Inert until a site is paired; see connectors/sync.ts
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -45,7 +49,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.refreshStockMotStatus = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
+exports.healthCheck = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -59,6 +63,9 @@ Object.defineProperty(exports, "cancelScheduledResponse", { enumerable: true, ge
 Object.defineProperty(exports, "sendScheduledResponseNow", { enumerable: true, get: function () { return schedule_1.sendScheduledResponseNow; } });
 var motSweep_1 = require("./vehicle/motSweep");
 Object.defineProperty(exports, "refreshStockMotStatus", { enumerable: true, get: function () { return motSweep_1.refreshStockMotStatus; } });
+// Export database triggers
+var sync_1 = require("./connectors/sync");
+Object.defineProperty(exports, "syncVehicleToWebsite", { enumerable: true, get: function () { return sync_1.syncVehicleToWebsite; } });
 // Export callable functions for client-side use
 var oauth_1 = require("./gmail/oauth");
 Object.defineProperty(exports, "exchangeGmailCode", { enumerable: true, get: function () { return oauth_1.exchangeGmailCode; } });
@@ -69,6 +76,11 @@ var lookup_1 = require("./vehicle/lookup");
 Object.defineProperty(exports, "lookupVehicleByReg", { enumerable: true, get: function () { return lookup_1.lookupVehicleByReg; } });
 var motSweep_2 = require("./vehicle/motSweep");
 Object.defineProperty(exports, "runMotSweepNow", { enumerable: true, get: function () { return motSweep_2.runMotSweepNow; } });
+var link_1 = require("./connectors/link");
+Object.defineProperty(exports, "linkWebsite", { enumerable: true, get: function () { return link_1.linkWebsite; } });
+Object.defineProperty(exports, "unlinkWebsite", { enumerable: true, get: function () { return link_1.unlinkWebsite; } });
+Object.defineProperty(exports, "previewWebsiteSync", { enumerable: true, get: function () { return link_1.previewWebsiteSync; } });
+Object.defineProperty(exports, "pushAllStockNow", { enumerable: true, get: function () { return link_1.pushAllStockNow; } });
 // Health check function
 exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({

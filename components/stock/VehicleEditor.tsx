@@ -130,9 +130,55 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
     if (result.taxStatus) {
         facts.push(['Tax', `${result.taxStatus}${result.taxDueDate ? ` — ${formatDate(result.taxDueDate)}` : ''}`]);
     }
+
+    // What the tax costs, not just whether it is paid. No government API
+    // answers this — it comes off the published VED tables, so the workings
+    // sit underneath where they can be checked.
+    if (typeof result.annualRoadTax === 'number') {
+        facts.push(['Road tax', (
+            <span>
+                £{result.annualRoadTax.toLocaleString('en-GB')} a year
+                {result.ved?.band ? ` (band ${result.ved.band})` : ''}
+            </span>
+        )]);
+    }
+    if (result.runningCosts) {
+        const rc = result.runningCosts;
+        facts.push([
+            rc.fuel === 'Electric' ? 'Home charging' : 'Fuel',
+            `≈ £${rc.annualFuelCost.toLocaleString('en-GB')} a year${rc.mpg ? ` · ${rc.mpg} mpg` : ''}`,
+        ]);
+    }
+    if (result.annualCost) {
+        facts.push(['Tax + fuel', `≈ £${result.annualCost.total.toLocaleString('en-GB')} a year`]);
+    }
+    if (result.companyCarTax) {
+        facts.push(['Company car band', `${result.companyCarTax.percent}% (${result.companyCarTax.taxYear})`]);
+    }
+    if (result.zones?.ulez) {
+        facts.push(['ULEZ', (
+            <span className={result.zones.ulez.compliant ? 'text-green-300' : 'text-red-300'}>
+                {result.zones.ulez.compliant ? 'Compliant' : 'Not compliant'}
+                {result.zones.ulez.assumed ? ' (from the date)' : ''}
+            </span>
+        )]);
+    }
+    if (result.ageAndUse?.milesPerYear) {
+        facts.push(['Miles a year', result.ageAndUse.milesPerYear.toLocaleString('en-GB')]);
+    }
+
     if (result.hasOutstandingRecall && result.hasOutstandingRecall !== 'Unknown') {
         facts.push(['Outstanding recall', result.hasOutstandingRecall]);
     }
+
+    // The sentences behind the derived figures. Shown as written — they are
+    // drafted to be readable by a customer, not only by Steve.
+    const workings = [
+        result.ved?.basis,
+        result.runningCosts?.basis,
+        result.companyCarTax?.basis,
+        result.ageAndUse?.versusAverageBasis || result.ageAndUse?.firstMotNote,
+    ].filter((s): s is string => !!s);
 
     return (
         <div className="rounded-lg border border-gray-700 bg-gray-900/60 px-4 py-3 space-y-3">
@@ -168,6 +214,17 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
                 </dl>
             )}
 
+            {!!workings.length && (
+                <details className="text-xs text-gray-400">
+                    <summary className="cursor-pointer select-none hover:text-gray-200">
+                        How the tax and running costs were worked out
+                    </summary>
+                    <ul className="mt-1 space-y-1 list-disc list-inside text-gray-300">
+                        {workings.map((text, i) => <li key={i}>{text}</li>)}
+                    </ul>
+                </details>
+            )}
+
             {!!advisories.length && (
                 <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Latest MOT advisories</p>
@@ -201,6 +258,7 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
   const formDataRef = useRef<Partial<Vehicle>>({});
   formDataRef.current = formData;
   const [priceStr, setPriceStr] = useState('');
+  const [advertisedPriceStr, setAdvertisedPriceStr] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress>({ step: 'idle', message: '' });
   const [lastFile, setLastFile] = useState<File | null>(null);
@@ -224,10 +282,12 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
         sorOwner: { name: '', address: '' },
     };
     let initialPrice = '';
-    
+    let initialAdvertisedPrice = '';
+
     if (editingVehicle) {
       initialState = { ...editingVehicle };
       initialPrice = String(editingVehicle.purchasePrice || '');
+      initialAdvertisedPrice = String(editingVehicle.advertisedPrice || '');
     } else {
         if (initialState.ownershipType === 'Owned Stock') {
             initialState.stockNumber = calculateNextStockNumber(vehicles);
@@ -244,6 +304,7 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
 
     setFormData(initialState);
     setPriceStr(initialPrice);
+    setAdvertisedPriceStr(initialAdvertisedPrice);
     setScannedDeliveryDetails(null);
     setLookup({ status: 'idle' });
   }, [editingVehicle, prefillData, vehicles]);
@@ -409,6 +470,13 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
     if (submissionData.ownershipType === 'Owned Stock') {
         delete submissionData.sorOwner;
     }
+
+    // A blank advertised price is genuinely blank — a car not yet worth
+    // advertising. Storing a zero would put "£0" on a website. It is written as
+    // null rather than dropped because an edit is an update(), and a key that
+    // is simply absent there leaves the previous price sitting in the record.
+    const advertised = parseFloat(advertisedPriceStr);
+    submissionData.advertisedPrice = Number.isFinite(advertised) && advertised > 0 ? advertised : null;
     
     await onSubmit(
         submissionData as NewVehicle, 
@@ -513,6 +581,13 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                     </Select>
                 </div>
                 <div className="md:col-span-2"><label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-300">{isSor ? 'Owner Payout Amount' : 'Purchase Price'}</label><CurrencyInput id="purchasePrice" value={priceStr} onChange={e => setPriceStr(e.target.value)} required={!isSor} className="mt-1"/></div>
+                <div className="md:col-span-2">
+                    <label htmlFor="advertisedPrice" className="block text-sm font-medium text-gray-300">Advertised Price</label>
+                    <CurrencyInput id="advertisedPrice" value={advertisedPriceStr} onChange={e => setAdvertisedPriceStr(e.target.value)} className="mt-1"/>
+                    {/* The only price a linked website is ever sent. Left blank until
+                        the car is worth advertising, which is usually weeks later. */}
+                    <p className="mt-1 text-xs text-gray-500">Optional — what it goes on the forecourt at. Sent to a linked website; the purchase price never is.</p>
+                </div>
                 <div className="md:col-span-2"><label htmlFor="purchaseDate" className="block text-sm font-medium text-gray-300">{isSor ? 'Agreement Date' : 'Purchase Date'}</label><UkDateInput id="purchaseDate" name="purchaseDate" value={formData.purchaseDate || ''} onChange={handleChange} className="mt-1" /></div>
             </div>
 

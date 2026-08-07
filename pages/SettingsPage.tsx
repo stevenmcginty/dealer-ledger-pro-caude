@@ -4,8 +4,9 @@ import DataManagement from '../components/settings/DataManagement';
 import SupplierManagement from '../components/settings/SupplierManagement';
 import AccountManagement from '../components/settings/AccountManagement';
 import IntegrationsPage from '../components/settings/IntegrationsPage';
+import ConnectorsPage from '../components/settings/ConnectorsPage';
 
-type SettingsTab = 'details' | 'suppliers' | 'accounts' | 'integrations' | 'data';
+type SettingsTab = 'details' | 'suppliers' | 'accounts' | 'integrations' | 'connectors' | 'data';
 
 const SettingsPage = () => {
     const [activeTab, setActiveTab] = useState<SettingsTab>('details');
@@ -45,6 +46,12 @@ const SettingsPage = () => {
                         <span>Integrations</span>
                     </button>
                     <button
+                        onClick={() => setActiveTab('connectors')}
+                        className={`group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium ${getTabClassName('connectors')}`}
+                    >
+                        <span>Connectors</span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab('data')}
                         className={`group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium ${getTabClassName('data')}`}
                     >
@@ -57,6 +64,7 @@ const SettingsPage = () => {
                 <div className={activeTab === 'suppliers' ? '' : 'hidden'}><SupplierManagement /></div>
                 <div className={activeTab === 'accounts' ? '' : 'hidden'}><AccountManagement /></div>
                 <div className={activeTab === 'integrations' ? '' : 'hidden'}><IntegrationsPage /></div>
+                <div className={activeTab === 'connectors' ? '' : 'hidden'}><ConnectorsPage /></div>
                 <div className={activeTab === 'data' ? '' : 'hidden'}><DataManagement /></div>
             </div>
         </div>

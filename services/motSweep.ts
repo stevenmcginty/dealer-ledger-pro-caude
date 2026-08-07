@@ -10,13 +10,26 @@ import firebase from 'firebase/compat/app';
 import { db } from './firebase';
 import { MotSweepSummary } from '../types';
 
+/**
+ * Realtime Database drops empty arrays rather than storing them, so a sweep that
+ * found nothing comes back with no `expired`, `expiringSoon` or `errors` key at all.
+ * Put them back before anything downstream reads `.length`.
+ */
+const withEmptyLists = (raw: Partial<MotSweepSummary>): MotSweepSummary => ({
+    ...raw,
+    expired: raw.expired || [],
+    expiringSoon: raw.expiringSoon || [],
+    errors: raw.errors || [],
+} as MotSweepSummary);
+
 /** Live view of the last sweep, scheduled or manual. */
 export const subscribeToMotSweep = (
     companyId: string,
     cb: (summary: MotSweepSummary | null) => void
 ) => {
     const sweepRef = db.ref(`companies/${companyId}/motSweep/latest`);
-    const listener = (snap: firebase.database.DataSnapshot) => cb(snap.exists() ? snap.val() : null);
+    const listener = (snap: firebase.database.DataSnapshot) =>
+        cb(snap.exists() ? withEmptyLists(snap.val()) : null);
     sweepRef.on('value', listener);
     return () => sweepRef.off('value', listener);
 };

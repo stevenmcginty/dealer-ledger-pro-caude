@@ -5,7 +5,14 @@
  *  - DVSA MOT History API (make, model, colour, engine, MOT expiry, odometer history)
  *  - DVLA Vehicle Enquiry Service (tax status, CO2, V5C dates) — only when a VES key
  *    is configured; the fields stay undefined otherwise.
+ *
+ * On top of the two records sits a third layer that is derived rather than
+ * fetched: what the road tax actually costs, what the fuel costs, the company
+ * car band, clean air zone compliance, age and use. Neither API publishes any
+ * of it — see vehicle/ved.ts for the tables and the workings.
  */
+
+import { VedResult, RunningCosts, AnnualCost, CompanyCarTax, Zones, AgeAndUse } from './ved';
 
 export interface MotTestSummary {
     completedDate: string;
@@ -56,6 +63,22 @@ export interface VehicleLookupResult {
     revenueWeight?: number;
     dateOfLastV5CIssued?: string;
     markedForExport?: boolean;
+
+    // --- Derived, not fetched (vehicle/ved.ts) ---
+    /** Annual road tax in pounds, ready for the vehicle form. Null when unknowable. */
+    annualRoadTax?: number | null;
+    /** The road tax figure with its band, supplement position and workings. */
+    ved?: VedResult;
+    /** Estimated mpg and annual fuel spend, worked back from CO2. */
+    runningCosts?: RunningCosts | null;
+    /** Tax plus fuel — the figure a buyer compares between two cars. */
+    annualCost?: AnnualCost | null;
+    /** Benefit-in-kind band, for stock going onto a business. */
+    companyCarTax?: CompanyCarTax | null;
+    /** ULEZ, clean air zones, Scottish LEZ and the congestion charge. */
+    zones?: Zones;
+    /** Age, plate identifier and mileage against the UK average. */
+    ageAndUse?: AgeAndUse | null;
 
     /** Non-fatal problems (e.g. one source down) so the UI can say what's missing. */
     warnings?: string[];
