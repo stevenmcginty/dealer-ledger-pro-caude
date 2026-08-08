@@ -2,11 +2,6 @@
 /**
  * Firebase Cloud Functions for Dealer Ledger Pro
  *
- * Email Auto-Response System
- * - Polls Gmail for new emails every 5 minutes
- * - Processes scheduled auto-responses every 1 minute
- * - Handles OAuth token refresh
- *
  * Vehicle Lookup
  * - Merges DVSA MOT History and DVLA VES data for a registration
  * - Refreshes MOT status for all vehicles in stock, daily and on demand
@@ -14,6 +9,31 @@
  * Website Connector
  * - Pushes stock to a linked dealer website as it changes
  * - Inert until a site is paired; see connectors/sync.ts
+ *
+ * ---------------------------------------------------------------------------
+ * DISCONTINUED: the Gmail auto-response system (8 Aug 2026)
+ *
+ * The pollers, the OAuth exchange and the scheduled sender are no longer
+ * exported. They were never deployed to this project, and the exports were the
+ * one thing standing between a plain `firebase deploy --only functions` and a
+ * mailbox being polled every five minutes on Steve's behalf. Taking them out
+ * makes "do not deploy these" a property of the code rather than something
+ * somebody has to remember.
+ *
+ * Nothing in the app breaks. The client never reached these: services/
+ * gmailService.ts posts to /api/gmail/exchange-code — a path Firebase Hosting
+ * rewrites to index.html, so it was never a working call — and sends mail
+ * straight to the Gmail REST API from the browser with the user's own token.
+ *
+ * The code is untouched under ./gmail and ./autoResponse, and the settings
+ * screen still exists. Reviving it is putting these four lines back:
+ *
+ *   export { pollAllGmailInboxes } from './gmail/poll';
+ *   export { processScheduledResponses, cancelScheduledResponse,
+ *            sendScheduledResponseNow } from './autoResponse/schedule';
+ *   export { exchangeGmailCode, refreshGmailToken } from './gmail/oauth';
+ *   export { sendGmailEmail } from './gmail/send';
+ * ---------------------------------------------------------------------------
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -49,29 +69,18 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.sendGmailEmail = exports.refreshGmailToken = exports.exchangeGmailCode = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = exports.sendScheduledResponseNow = exports.cancelScheduledResponse = exports.processScheduledResponses = exports.pollAllGmailInboxes = void 0;
+exports.healthCheck = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
 admin.initializeApp();
 // Export scheduled functions
-var poll_1 = require("./gmail/poll");
-Object.defineProperty(exports, "pollAllGmailInboxes", { enumerable: true, get: function () { return poll_1.pollAllGmailInboxes; } });
-var schedule_1 = require("./autoResponse/schedule");
-Object.defineProperty(exports, "processScheduledResponses", { enumerable: true, get: function () { return schedule_1.processScheduledResponses; } });
-Object.defineProperty(exports, "cancelScheduledResponse", { enumerable: true, get: function () { return schedule_1.cancelScheduledResponse; } });
-Object.defineProperty(exports, "sendScheduledResponseNow", { enumerable: true, get: function () { return schedule_1.sendScheduledResponseNow; } });
 var motSweep_1 = require("./vehicle/motSweep");
 Object.defineProperty(exports, "refreshStockMotStatus", { enumerable: true, get: function () { return motSweep_1.refreshStockMotStatus; } });
 // Export database triggers
 var sync_1 = require("./connectors/sync");
 Object.defineProperty(exports, "syncVehicleToWebsite", { enumerable: true, get: function () { return sync_1.syncVehicleToWebsite; } });
 // Export callable functions for client-side use
-var oauth_1 = require("./gmail/oauth");
-Object.defineProperty(exports, "exchangeGmailCode", { enumerable: true, get: function () { return oauth_1.exchangeGmailCode; } });
-Object.defineProperty(exports, "refreshGmailToken", { enumerable: true, get: function () { return oauth_1.refreshGmailToken; } });
-var send_1 = require("./gmail/send");
-Object.defineProperty(exports, "sendGmailEmail", { enumerable: true, get: function () { return send_1.sendGmailEmail; } });
 var lookup_1 = require("./vehicle/lookup");
 Object.defineProperty(exports, "lookupVehicleByReg", { enumerable: true, get: function () { return lookup_1.lookupVehicleByReg; } });
 var motSweep_2 = require("./vehicle/motSweep");
@@ -86,7 +95,7 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        service: 'Dealer Ledger Pro Email Functions'
+        service: 'Dealer Ledger Pro Functions'
     });
 });
 //# sourceMappingURL=index.js.map
