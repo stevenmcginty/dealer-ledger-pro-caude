@@ -115,7 +115,7 @@ exports.linkWebsite = functions
     const companyId = await (0, sync_1.companyIdForUser)(uid);
     const pairing = parsePairing(data?.pairing);
     const probe = await (0, push_1.callIngest)({ endpoint: pairing.url, token: pairing.token }, { action: 'status' });
-    if (!probe.ok) {
+    if ((0, push_1.ingestFailed)(probe)) {
         throw new functions.https.HttpsError('failed-precondition', probe.message);
     }
     const site = probe.data;
@@ -178,7 +178,7 @@ exports.pushAllStockNow = functions
     }
     if (data?.goLive) {
         const promoted = await (0, push_1.callIngest)(connector, { action: 'go-live' });
-        if (!promoted.ok) {
+        if ((0, push_1.ingestFailed)(promoted)) {
             throw new functions.https.HttpsError('unavailable', promoted.message);
         }
         await db().ref(connectorPath(companyId)).update({ mode: 'live' });

@@ -41,7 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pushVehicles = exports.callIngest = exports.readStockForWebsite = exports.readConnector = void 0;
+exports.pushVehicles = exports.callIngest = exports.ingestFailed = exports.readStockForWebsite = exports.readConnector = void 0;
 const admin = __importStar(require("firebase-admin"));
 const payload_1 = require("./payload");
 const db = () => admin.database();
@@ -53,20 +53,61 @@ const readConnector = async (companyId) => {
     return snap.exists() ? snap.val() : null;
 };
 exports.readConnector = readConnector;
-/** Unsold stock, oldest first. A car sold before it was ever advertised has
- *  nothing to say to a website, so the backfill leaves it out entirely. */
+/**
+ * What a manual push should carry.
+ *
+ * Everything still in stock, plus any car the website already knows about even
+ * once it is sold. That second half is what makes "push all stock now" able to
+ * put things right: if the site was down at the moment a sales invoice was
+ * raised, the trigger's one attempt is gone, and without this the sold car
+ * would sit on the website as for sale forever with no way to correct it.
+ *
+ * A car sold before it was ever advertised is still left out — the website has
+ * never heard of it and has nothing to publish.
+ */
 const readStockForWebsite = async (companyId) => {
-    const snap = await db().ref(`companies/${companyId}/vehicles`).once('value');
-    const raw = snap.val();
+    const [vehiclesSnap, knownSnap] = await Promise.all([
+        db().ref(`companies/${companyId}/vehicles`).once('value'),
+        db().ref(`${connectorPath(companyId)}/known`).once('value'),
+    ]);
+    const raw = vehiclesSnap.val();
     if (!raw)
         return [];
+    const known = knownSnap.val() || {};
     return Object.entries(raw)
-        .filter(([, v]) => v && v.status !== 'Sold')
         .map(([id, v]) => (0, payload_1.buildVehiclePayload)({ ...v, id }))
         .filter((p) => p !== null)
+        .filter(p => p.status !== 'Sold' || known[p.reg] === true)
         .slice(0, MAX_PER_PUSH);
 };
 exports.readStockForWebsite = readStockForWebsite;
+/**
+ * Remember which registrations the website is actually holding.
+ *
+ * Kept here on the connector rather than as a flag on the vehicle record: the
+ * vehicle list is the ledger's own live data and this feature does not write to
+ * it. Storage keys cannot contain a full stop, and a UK registration never
+ * does, so the reg is safe to use directly.
+ */
+const rememberRegs = async (companyId, results) => {
+    const updates = {};
+    results.forEach(r => {
+        if (r.action === 'created' || r.action === 'updated' || r.action === 'unchanged') {
+            updates[r.reg] = true;
+        }
+    });
+    if (!Object.keys(updates).length)
+        return;
+    await db().ref(`${connectorPath(companyId)}/known`).update(updates);
+};
+/**
+ * Written as a type guard rather than leaning on `if (result.ok)`. This package
+ * is compiled twice — once by its own strict tsconfig for deployment, and once
+ * by the app's non-strict one, which sweeps the whole repo. Narrowing on the
+ * boolean is only reliable under the first of those; a guard holds under both.
+ */
+const ingestFailed = (result) => !result.ok;
+exports.ingestFailed = ingestFailed;
 /**
  * Talk to the site.
  *
@@ -74,7 +115,7 @@ exports.readStockForWebsite = readStockForWebsite;
  * is down for ten minutes must not turn into a failed vehicle write in the
  * ledger, which is the one thing that would make this feature dangerous.
  */
-const callIngest = async (connector, body) => {
+const callIngest = async (connector, body, timeoutMs = 30000) => {
     let response;
     try {
         response = await fetch(connector.endpoint, {
@@ -84,10 +125,20 @@ const callIngest = async (connector, body) => {
                 Authorization: `Bearer ${connector.token}`,
             },
             body: JSON.stringify(body),
+            // Without this a website that accepts the connection and then never
+            // answers would hold the function open until its own timeout kills
+            // it, and the log would say nothing about why.
+            signal: AbortSignal.timeout(timeoutMs),
         });
     }
     catch (error) {
-        return { ok: false, message: `Could not reach ${hostOf(connector.endpoint)} — ${error?.message || 'no answer'}.` };
+        const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+        return {
+            ok: false,
+            message: timedOut
+                ? `${hostOf(connector.endpoint)} did not answer in time.`
+                : `Could not reach ${hostOf(connector.endpoint)} — ${error?.message || 'no answer'}.`,
+        };
     }
     const text = await response.text();
     let data = null;
@@ -116,6 +167,23 @@ const hostOf = (endpoint) => {
     }
 };
 /**
+ * How many cars go in one request.
+ *
+ * The far end reads two files and writes two files per car, and it is a
+ * serverless function with a hard ceiling on how long it may run — a whole
+ * forecourt in a single request would be cut off partway through, with no way
+ * to tell which cars made it. Fifteen keeps every request comfortably inside
+ * even the shortest of those ceilings, and a backfill is a handful of requests
+ * rather than one that cannot finish.
+ */
+const CHUNK = 15;
+const chunk = (items, size) => {
+    const out = [];
+    for (let i = 0; i < items.length; i += size)
+        out.push(items.slice(i, i + size));
+    return out;
+};
+/**
  * Push a set of vehicles and record what came back.
  *
  * `mode` is what this ledger is asking for. A link the website still has in
@@ -127,27 +195,61 @@ const pushVehicles = async (companyId, vehicles, mode, trigger) => {
     if (!connector || !connector.enabled) {
         return { at: Date.now(), trigger, mode, error: 'No website is linked to this company.' };
     }
-    const result = await (0, exports.callIngest)(connector, {
-        mode,
-        companyId,
-        vehicles,
-    });
-    const summary = result.ok
-        ? {
-            at: Date.now(),
-            trigger,
-            mode: result.data.mode,
-            counts: result.data.counts,
-            results: result.data.results,
+    const counts = { created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 0 };
+    const results = [];
+    let answeredMode = mode;
+    let linkMode;
+    const batches = chunk(vehicles, CHUNK);
+    // An empty push still goes once: it is how a link proves it works.
+    if (!batches.length)
+        batches.push([]);
+    for (const batch of batches) {
+        const result = await (0, exports.callIngest)(connector, { mode, companyId, vehicles: batch }, 30000 + batch.length * 2000);
+        if ((0, exports.ingestFailed)(result)) {
+            // Report where it stopped rather than pretending the whole push
+            // failed — the cars already sent are on the website and saying
+            // otherwise would send somebody looking for a problem that is not
+            // there. Running it again picks up where this left off.
+            const done = results.length;
+            const summary = {
+                at: Date.now(),
+                trigger,
+                mode,
+                error: done
+                    ? `${result.message} ${done} of ${vehicles.length} cars had already been sent — run it again to finish.`
+                    : result.message,
+                counts,
+                results,
+            };
+            await writeLog(companyId, summary);
+            return summary;
         }
-        : { at: Date.now(), trigger, mode, error: result.message };
+        answeredMode = result.data.mode;
+        linkMode = result.data.linkMode;
+        results.push(...(result.data.results || []));
+        Object.keys(counts).forEach(key => {
+            counts[key] += result.data.counts?.[key] || 0;
+        });
+        // Only a real push proves the website is holding these cars; a dry run
+        // wrote nothing, so it must not leave the ledger believing otherwise.
+        if (result.data.mode === 'live') {
+            await rememberRegs(companyId, result.data.results || []);
+        }
+    }
+    const summary = {
+        at: Date.now(),
+        trigger,
+        mode: answeredMode,
+        counts,
+        results,
+    };
     await writeLog(companyId, summary);
     // The website is the authority on whether a link is still in preview, so a
     // reply is also how the ledger finds out it was moved on at the far end.
-    if (result.ok && result.data.linkMode && result.data.linkMode !== connector.mode) {
+    if (linkMode && linkMode !== connector.mode) {
         await db().ref(connectorPath(companyId)).update({
-            mode: result.data.linkMode === 'live' ? 'live' : 'preview',
-            enabled: result.data.linkMode !== 'revoked',
+            mode: linkMode === 'live' ? 'live' : 'preview',
+            enabled: linkMode !== 'revoked',
         });
     }
     return summary;

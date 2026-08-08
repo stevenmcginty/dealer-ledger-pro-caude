@@ -259,8 +259,12 @@ export interface MotSweepSummary {
  */
 export interface WebsiteConnector {
     endpoint: string;
-    /** A write credential. Held here, never shown again after pairing. */
-    token: string;
+    /**
+     * A write credential. Stored by the Cloud Functions and stripped before it
+     * reaches the page — see subscribeToWebsiteConnector, which is why this is
+     * optional on the client's copy.
+     */
+    token?: string;
     /** What the website calls this ledger, e.g. "Steve — Motor Ledger Pro". */
     dealer: string;
     linkId: string;
@@ -270,6 +274,8 @@ export interface WebsiteConnector {
     connectedAt: number;
     connectedBy?: string;
     host?: string;
+    /** The registrations the website is holding, so a missed sale can be put right. */
+    known?: Record<string, true>;
     log?: {
         /** The last full push — a dry run or a "push all stock now". */
         latest?: WebsitePushSummary;

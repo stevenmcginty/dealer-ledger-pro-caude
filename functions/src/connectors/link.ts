@@ -11,7 +11,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
-import { callIngest, pushVehicles, readConnector, readStockForWebsite } from './push';
+import { callIngest, ingestFailed, pushVehicles, readConnector, readStockForWebsite } from './push';
 import { companyIdForUser } from './sync';
 import { WebsiteConnector } from './types';
 
@@ -98,7 +98,7 @@ export const linkWebsite = functions
             { action: 'status' }
         );
 
-        if (!probe.ok) {
+        if (ingestFailed(probe)) {
             throw new functions.https.HttpsError('failed-precondition', probe.message);
         }
 
@@ -172,7 +172,7 @@ export const pushAllStockNow = functions
 
         if (data?.goLive) {
             const promoted = await callIngest(connector, { action: 'go-live' });
-            if (!promoted.ok) {
+            if (ingestFailed(promoted)) {
                 throw new functions.https.HttpsError('unavailable', promoted.message);
             }
             await db().ref(connectorPath(companyId)).update({ mode: 'live' });

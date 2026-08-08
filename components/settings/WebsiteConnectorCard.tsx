@@ -141,7 +141,9 @@ const WebsiteConnectorCard = () => {
     const [confirmUnlink, setConfirmUnlink] = useState(false);
 
     useEffect(() => {
-        if (!companyId) return;
+        // No company yet means nothing to link to. Saying so beats a spinner
+        // that never resolves.
+        if (!companyId) { setLoaded(true); return; }
         return subscribeToWebsiteConnector(companyId, next => {
             setConnector(next);
             setLoaded(true);

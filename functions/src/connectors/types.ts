@@ -80,6 +80,12 @@ export interface WebsiteConnector {
     connectedAt: number;
     connectedBy?: string;
     host?: string;
+    /**
+     * The registrations the website is actually holding, so a sale can still be
+     * put right after a failed attempt. Kept here rather than as a flag on the
+     * vehicle record — this feature does not write to the ledger's own data.
+     */
+    known?: Record<string, true>;
 }
 
 export interface WebsitePushSummary {

@@ -21,7 +21,13 @@ const withEmptyLists = (raw: any): WebsitePushSummary | undefined => {
     return { ...raw, results: raw.results || [] } as WebsitePushSummary;
 };
 
-/** Live view of the connector, including the last push it made. */
+/**
+ * Live view of the connector, including the last push it made.
+ *
+ * The write token is dropped on the way through. Only the Cloud Functions ever
+ * need it, and a credential that never enters the page cannot leave in a screen
+ * share, a screenshot or a stray console.log.
+ */
 export const subscribeToWebsiteConnector = (
     companyId: string,
     cb: (connector: WebsiteConnector | null) => void
@@ -29,7 +35,7 @@ export const subscribeToWebsiteConnector = (
     const ref = db.ref(`companies/${companyId}/connectors/website`);
     const listener = (snap: firebase.database.DataSnapshot) => {
         if (!snap.exists()) return cb(null);
-        const raw = snap.val();
+        const { token, ...raw } = snap.val() || {};
         cb({
             ...raw,
             log: {

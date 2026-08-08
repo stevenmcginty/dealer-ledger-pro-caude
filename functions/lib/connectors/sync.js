@@ -71,6 +71,11 @@ exports.syncVehicleToWebsite = functions
     const payload = (0, payload_1.buildVehiclePayload)({ ...after, id: vehicleId });
     if (!payload)
         return null;
+    // Selling a car the website never had is not news to it. Checking here
+    // rather than letting the endpoint answer "never advertised" saves a
+    // round trip on every sale of a car that was never online.
+    if (payload.status === 'Sold' && !connector.known?.[payload.reg])
+        return null;
     try {
         const summary = await (0, push_1.pushVehicles)(companyId, [payload], 'live', 'vehicle');
         if (summary.error) {
