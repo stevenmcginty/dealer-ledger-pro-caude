@@ -51,6 +51,32 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
         };
         const brand = readThemeColor('--color-brand-800', [7, 89, 133]);
         const brandAccent = readThemeColor('--color-brand-600', [2, 132, 199]);
+        let fontFamily = 'helvetica';
+
+        // Embed the same Inter font used by the app so PDF viewers do not
+        // substitute a different device font with different glyph metrics.
+        try {
+            const fontUrls = [
+                'https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfMZg.ttf',
+                'https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf',
+            ];
+            const toBase64 = async (url: string) => {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Font request failed: ${response.status}`);
+                const bytes = new Uint8Array(await response.arrayBuffer());
+                let binary = '';
+                bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+                return btoa(binary);
+            };
+            const [regular, bold] = await Promise.all(fontUrls.map(toBase64));
+            pdf.addFileToVFS('Inter-Regular.ttf', regular);
+            pdf.addFileToVFS('Inter-Bold.ttf', bold);
+            pdf.addFont('Inter-Regular.ttf', 'Inter', 'normal');
+            pdf.addFont('Inter-Bold.ttf', 'Inter', 'bold');
+            fontFamily = 'Inter';
+        } catch (error) {
+            console.warn('Could not embed Inter in worksheet PDF; using a standard PDF font.', error);
+        }
         let y = 16;
 
         const addPageIfNeeded = (height: number) => {
@@ -60,7 +86,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
         };
 
         const addWrappedText = (value: string, x: number, width: number, size: number, color: [number, number, number], weight: 'normal' | 'bold' = 'normal') => {
-            pdf.setFont('helvetica', weight);
+            pdf.setFont(fontFamily, weight);
             pdf.setFontSize(size);
             pdf.setTextColor(...color);
             const lines = pdf.splitTextToSize(value, width) as string[];
@@ -72,21 +98,21 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
         const addHeader = () => {
             pdf.setFillColor(...brand);
             pdf.rect(0, 0, pageWidth, 31, 'F');
-            pdf.setFont('helvetica', 'bold');
+            pdf.setFont(fontFamily, 'bold');
             pdf.setFontSize(18);
             pdf.setTextColor(255, 255, 255);
             pdf.text(businessDetails?.name || docType, margin, 13);
             if (businessDetails?.name) {
-                pdf.setFont('helvetica', 'normal');
+                pdf.setFont(fontFamily, 'normal');
                 pdf.setFontSize(8.5);
                 pdf.text(docType, margin, 19);
             }
             const rightTitle = makeModel || car.reg;
             const rightSubtitle = vehicleSubtitle || car.reg;
-            pdf.setFont('helvetica', 'bold');
+            pdf.setFont(fontFamily, 'bold');
             pdf.setFontSize(11);
             pdf.text(rightTitle || '', pageWidth - margin, 13, { align: 'right' });
-            pdf.setFont('helvetica', 'normal');
+            pdf.setFont(fontFamily, 'normal');
             pdf.setFontSize(8.5);
             pdf.text(rightSubtitle || '', pageWidth - margin, 19, { align: 'right' });
             y = 42;
@@ -99,7 +125,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             pdf.line(margin, y + 2, pageWidth - margin, y + 2);
             pdf.setFillColor(...brandAccent);
             pdf.rect(margin, y - 5, 1.2, 5, 'F');
-            pdf.setFont('helvetica', 'bold');
+            pdf.setFont(fontFamily, 'bold');
             pdf.setFontSize(8.5);
             pdf.setTextColor(...brand);
             pdf.text(title.toUpperCase(), margin + 4, y - 1);
@@ -114,15 +140,15 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             const valueLines = pdf.splitTextToSize(valueText, valueWidth) as string[];
             const rowHeight = Math.max(5, valueLines.length * 4.5);
             addPageIfNeeded(rowHeight + 1);
-            pdf.setFont('helvetica', 'normal');
+            pdf.setFont(fontFamily, 'normal');
             pdf.setFontSize(8);
             pdf.setTextColor(105, 105, 105);
             pdf.text(label, margin, y);
-            pdf.setFont('helvetica', 'bold');
+            pdf.setFont(fontFamily, 'bold');
             pdf.setTextColor(25, 25, 25);
             pdf.text(valueLines, margin + 39, y);
             if (note) {
-                pdf.setFont('helvetica', 'normal');
+                pdf.setFont(fontFamily, 'normal');
                 pdf.setFontSize(7.2);
                 pdf.setTextColor(105, 105, 105);
                 pdf.text(pdf.splitTextToSize(note, noteWidth) as string[], pageWidth - margin, y, { align: 'right' });
@@ -152,7 +178,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             addRow('', 'No work items listed.');
         } else if (hasAmounts) {
             addPageIfNeeded(10);
-            pdf.setFont('helvetica', 'bold');
+            pdf.setFont(fontFamily, 'bold');
             pdf.setFontSize(7.5);
             pdf.setTextColor(105, 105, 105);
             pdf.text('DESCRIPTION', margin, y);
@@ -162,11 +188,11 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
                 const descriptionLines = pdf.splitTextToSize(item.description || '-', contentWidth - 35) as string[];
                 const rowHeight = Math.max(5, descriptionLines.length * 4.5);
                 addPageIfNeeded(rowHeight + 1);
-                pdf.setFont('helvetica', 'normal');
+                pdf.setFont(fontFamily, 'normal');
                 pdf.setFontSize(8);
                 pdf.setTextColor(35, 35, 35);
                 pdf.text(descriptionLines, margin, y);
-                pdf.setFont('helvetica', 'bold');
+                pdf.setFont(fontFamily, 'bold');
                 pdf.text(typeof item.amount === 'number' ? formatCurrency(item.amount) : '', pageWidth - margin, y, { align: 'right' });
                 y += rowHeight;
                 pdf.setDrawColor(225, 225, 225);
@@ -175,7 +201,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             y += 3;
             const totalsX = pageWidth - margin - 65;
             const addTotal = (label: string, amount: number, bold = false) => {
-                pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+                pdf.setFont(fontFamily, bold ? 'bold' : 'normal');
                 pdf.setFontSize(bold ? 9 : 8);
                 pdf.setTextColor(35, 35, 35);
                 pdf.text(label, totalsX, y);
@@ -217,7 +243,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             pdf.line(margin, y, pageWidth - margin, y);
             y += 6;
             footerLines.forEach(line => {
-                pdf.setFont('helvetica', 'normal');
+                pdf.setFont(fontFamily, 'normal');
                 pdf.setFontSize(7);
                 pdf.setTextColor(105, 105, 105);
                 pdf.text(pdf.splitTextToSize(line, contentWidth) as string[], margin, y);
