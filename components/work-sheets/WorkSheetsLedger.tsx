@@ -81,6 +81,7 @@ const WorkSheetsLedger = ({ sheets }: WorkSheetsLedgerProps) => {
                                     <div className="px-4 py-4 sm:px-6">
                                         <div className="flex items-center justify-between">
                                             <p className="text-sm font-medium text-brand-400 truncate">Sheet #{sheet.workSheetNumber}</p>
+                                            <span className="inline-flex items-center rounded-full bg-brand-900/60 px-2 py-1 text-[11px] font-medium text-brand-300">View &amp; download</span>
                                         </div>
                                         <div className="mt-2 sm:flex sm:justify-between">
                                             <div className="sm:flex">

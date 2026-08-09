@@ -26,6 +26,7 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
     const [workDate, setWorkDate] = useState(new Date().toISOString().split('T')[0]);
     const [recordType, setRecordType] = useState<'customer' | 'internal'>('customer');
+    const [vatApplied, setVatApplied] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [mileageStr, setMileageStr] = useState('');
     const [items, setItems] = useState<WorkItem[]>([{ description: '', amount: undefined, amountStr: '' }]);
@@ -58,6 +59,7 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
             setSelectedVehicleId(editingSheet.vehicleId);
             setWorkDate(editingSheet.workDate);
             setRecordType(workSheetRecordType(editingSheet));
+            setVatApplied(editingSheet.vatApplied === true);
             setCustomerName(editingSheet.customerName || '');
             setMileageStr(typeof editingSheet.serviceMileage === 'number' ? String(editingSheet.serviceMileage) : '');
             setItems(editingSheet.items.length > 0 ? editingSheet.items.map(i => ({...i, amountStr: i.amount !== undefined ? String(i.amount) : ''})) : [{ description: '', amount: undefined, amountStr: '' }]);
@@ -66,6 +68,7 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
             setRegInput('');
             setWorkDate(new Date().toISOString().split('T')[0]);
             setRecordType('customer');
+            setVatApplied(false);
             setCustomerName('');
             setMileageStr('');
             setItems([{ description: '', amount: undefined, amountStr: '' }]);
@@ -116,6 +119,8 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
     };
     
     const totalAmount = useMemo(() => items.reduce((sum, item) => sum + (item.amount || 0), 0), [items]);
+    const vatAmount = recordType === 'customer' && vatApplied ? totalAmount * 0.2 : 0;
+    const totalDue = totalAmount + vatAmount;
     
     const handleGeneratePreview = (e: React.FormEvent) => {
         e.preventDefault();
@@ -150,6 +155,7 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
             carDetails: carDetailsForSheet,
             workDate,
             recordType,
+            vatApplied: recordType === 'customer' && vatApplied,
             // null rather than undefined: Firebase rejects undefined, and on an update
             // an omitted key would silently keep the old value instead of clearing it.
             customerName: recordType === 'customer' && customerName.trim() ? customerName.trim() : null,
@@ -342,10 +348,24 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
                         </button>
                     </div>
                 </div>
+                {recordType === 'customer' && (
+                    <label className="flex items-start gap-3 rounded-md border border-gray-700 bg-gray-800/60 p-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={vatApplied}
+                            onChange={e => setVatApplied(e.target.checked)}
+                            className="mt-1 h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-500"
+                        />
+                        <span>
+                            <span className="block text-sm font-medium text-gray-200">Add VAT (20%)</span>
+                            <span className="block text-xs text-gray-400">Adds VAT to the chargeable work subtotal on the receipt.</span>
+                        </span>
+                    </label>
+                )}
                  {totalAmount > 0 && (
                     <div className="pt-4 border-t border-gray-700 text-right">
-                        <p className="text-lg font-bold text-brand-400">Total</p>
-                        <p className="text-3xl font-bold text-white">{formatCurrency(totalAmount)}</p>
+                        <p className="text-lg font-bold text-brand-400">{vatApplied && recordType === 'customer' ? 'Total including VAT' : 'Total'}</p>
+                        <p className="text-3xl font-bold text-white">{formatCurrency(totalDue)}</p>
                     </div>
                 )}
             </form>

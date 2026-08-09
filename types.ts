@@ -417,6 +417,8 @@ export interface WorkSheet {
      * Absent on sheets created before this field existed - infer from customerName.
      */
     recordType?: 'customer' | 'internal';
+    /** When true, the chargeable worksheet adds standard-rate VAT to its subtotal. */
+    vatApplied?: boolean;
     /** Odometer reading at the time of the work. Falls back to the vehicle's stored mileage. */
     serviceMileage?: number | null;
     workDate: string;

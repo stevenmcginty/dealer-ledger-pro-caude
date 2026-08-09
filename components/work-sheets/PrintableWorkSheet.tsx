@@ -1,6 +1,5 @@
 import React from 'react';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { WorkSheet, BusinessDetails, workSheetRecordType } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
@@ -23,6 +22,8 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
     const items = sheet?.items || [];
     const hasAmounts = items.length > 0 && items.some(item => typeof item.amount === 'number');
     const totalAmount = hasAmounts ? items.reduce((sum, item) => sum + (item.amount || 0), 0) : 0;
+    const vatAmount = !isInternal && sheet?.vatApplied ? totalAmount * 0.2 : 0;
+    const totalDue = totalAmount + vatAmount;
 
     const workDateLabel = sheet?.workDate ? formatDate(sheet.workDate) : null;
 
@@ -35,17 +36,195 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
     const fileName = `${isInternal ? 'Internal-Work-Record' : 'Work-Receipt'}-${sheet?.workSheetNumber || 'draft'}-${car.reg || 'vehicle'}.pdf`;
 
     const handleDownloadPdf = async () => {
-        const input = document.getElementById('printable-worksheet');
-        if (!input) return;
+        // Build the PDF from the worksheet values instead of rasterising the
+        // DOM. This keeps the PDF's text selectable/searchable and gives the
+        // same A4 result in desktop browsers, PWAs, and Android WebViews.
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 16;
+        const contentWidth = pageWidth - margin * 2;
+        const readThemeColor = (name: string, fallback: [number, number, number]): [number, number, number] => {
+            const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            const parts = value.split(/\s+/).map(Number);
+            return parts.length === 3 && parts.every(Number.isFinite) ? parts as [number, number, number] : fallback;
+        };
+        const brand = readThemeColor('--color-brand-800', [7, 89, 133]);
+        const brandAccent = readThemeColor('--color-brand-600', [2, 132, 199]);
+        let y = 16;
 
-        const canvas = await html2canvas(input, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+        const addPageIfNeeded = (height: number) => {
+            if (y + height <= pageHeight - margin) return;
+            pdf.addPage();
+            y = margin;
+        };
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.8);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        const addWrappedText = (value: string, x: number, width: number, size: number, color: [number, number, number], weight: 'normal' | 'bold' = 'normal') => {
+            pdf.setFont('helvetica', weight);
+            pdf.setFontSize(size);
+            pdf.setTextColor(...color);
+            const lines = pdf.splitTextToSize(value, width) as string[];
+            pdf.text(lines, x, y);
+            y += lines.length * (size * 0.42);
+            return lines.length;
+        };
+
+        const addHeader = () => {
+            pdf.setFillColor(...brand);
+            pdf.rect(0, 0, pageWidth, 31, 'F');
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(18);
+            pdf.setTextColor(255, 255, 255);
+            pdf.text(businessDetails?.name || docType, margin, 13);
+            if (businessDetails?.name) {
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(8.5);
+                pdf.text(docType, margin, 19);
+            }
+            const rightTitle = makeModel || car.reg;
+            const rightSubtitle = vehicleSubtitle || car.reg;
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(11);
+            pdf.text(rightTitle || '', pageWidth - margin, 13, { align: 'right' });
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(8.5);
+            pdf.text(rightSubtitle || '', pageWidth - margin, 19, { align: 'right' });
+            y = 42;
+        };
+
+        const addSection = (title: string) => {
+            addPageIfNeeded(12);
+            pdf.setDrawColor(190, 190, 190);
+            pdf.setLineWidth(0.25);
+            pdf.line(margin, y + 2, pageWidth - margin, y + 2);
+            pdf.setFillColor(...brandAccent);
+            pdf.rect(margin, y - 5, 1.2, 5, 'F');
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(8.5);
+            pdf.setTextColor(...brand);
+            pdf.text(title.toUpperCase(), margin + 4, y - 1);
+            y += 8;
+        };
+
+        const addRow = (label: string, value?: string | number | null, note?: string | null) => {
+            if (value === undefined || value === null || value === '') return;
+            const valueText = String(value);
+            const noteWidth = note ? 46 : 0;
+            const valueWidth = contentWidth - 39 - noteWidth;
+            const valueLines = pdf.splitTextToSize(valueText, valueWidth) as string[];
+            const rowHeight = Math.max(5, valueLines.length * 4.5);
+            addPageIfNeeded(rowHeight + 1);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(8);
+            pdf.setTextColor(105, 105, 105);
+            pdf.text(label, margin, y);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(25, 25, 25);
+            pdf.text(valueLines, margin + 39, y);
+            if (note) {
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(7.2);
+                pdf.setTextColor(105, 105, 105);
+                pdf.text(pdf.splitTextToSize(note, noteWidth) as string[], pageWidth - margin, y, { align: 'right' });
+            }
+            y += rowHeight;
+        };
+
+        addHeader();
+        addSection(isInternal ? 'Record' : 'Work Receipt');
+        addRow('Date', workDateLabel);
+        addRow('Reference', sheet?.workSheetNumber);
+        if (!isInternal) addRow('Customer', sheet?.customerName);
+        addRow('Type', isInternal ? 'Internal / in-house work' : 'Chargeable work', isInternal ? 'not a VAT invoice' : null);
+
+        addSection('Vehicle');
+        addRow('Registration', car.reg);
+        addRow('Make & Model', makeModel, car.year ? `Model year ${car.year}` : null);
+        addRow('VIN', car.vin);
+        addRow('Stock number', car.stockNumber);
+        addRow('Odometer', typeof odometer === 'number' ? `${odometer.toLocaleString()} miles` : null, workDateLabel ? `recorded ${workDateLabel}` : null);
+        addRow('Exterior', car.color);
+        addRow('Engine', car.engineSize);
+        addRow('MOT due', car.motDueDate ? formatDate(car.motDueDate) : null);
+
+        addSection('Work Carried Out');
+        if (items.length === 0) {
+            addRow('', 'No work items listed.');
+        } else if (hasAmounts) {
+            addPageIfNeeded(10);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(7.5);
+            pdf.setTextColor(105, 105, 105);
+            pdf.text('DESCRIPTION', margin, y);
+            pdf.text('AMOUNT', pageWidth - margin, y, { align: 'right' });
+            y += 5;
+            items.forEach(item => {
+                const descriptionLines = pdf.splitTextToSize(item.description || '-', contentWidth - 35) as string[];
+                const rowHeight = Math.max(5, descriptionLines.length * 4.5);
+                addPageIfNeeded(rowHeight + 1);
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(8);
+                pdf.setTextColor(35, 35, 35);
+                pdf.text(descriptionLines, margin, y);
+                pdf.setFont('helvetica', 'bold');
+                pdf.text(typeof item.amount === 'number' ? formatCurrency(item.amount) : '', pageWidth - margin, y, { align: 'right' });
+                y += rowHeight;
+                pdf.setDrawColor(225, 225, 225);
+                pdf.line(margin, y - 1.5, pageWidth - margin, y - 1.5);
+            });
+            y += 3;
+            const totalsX = pageWidth - margin - 65;
+            const addTotal = (label: string, amount: number, bold = false) => {
+                pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+                pdf.setFontSize(bold ? 9 : 8);
+                pdf.setTextColor(35, 35, 35);
+                pdf.text(label, totalsX, y);
+                pdf.text(formatCurrency(amount), pageWidth - margin, y, { align: 'right' });
+                y += bold ? 6 : 5;
+            };
+            addTotal('Subtotal', totalAmount);
+            if (!isInternal && sheet?.vatApplied) addTotal('VAT (20%)', vatAmount);
+            pdf.setDrawColor(...brand);
+            pdf.setLineWidth(0.6);
+            pdf.line(totalsX, y - 2, pageWidth - margin, y - 2);
+            addTotal(isInternal ? 'Total internal cost' : 'Total due', totalDue, true);
+        } else {
+            items.forEach(item => addRow('', `- ${item.description || ''}`));
+        }
+
+        if (!isInternal && businessDetails?.invoiceTerms) {
+            addSection('Terms');
+            addWrappedText(businessDetails.invoiceTerms, margin, contentWidth, 8, [70, 70, 70]);
+            y += 3;
+        }
+        if (!isInternal && hasAmounts && businessDetails?.bankDetails) {
+            addSection('Payment Details');
+            addWrappedText(businessDetails.bankDetails, margin, contentWidth, 8, [70, 70, 70]);
+            y += 3;
+        }
+
+        const footerLines = [
+            [businessDetails?.name, workDateLabel && `Prepared ${workDateLabel}`].filter(Boolean).join('  |  '),
+            isInternal && 'Internal record for cost tracking only. This is not a VAT invoice.',
+            registrationLine,
+            businessDetails?.address?.replace(/\n/g, ' - '),
+            contactLine,
+        ].filter((line): line is string => typeof line === 'string' && line.trim() !== '');
+        if (footerLines.length) {
+            addPageIfNeeded(10 + footerLines.length * 4);
+            pdf.setDrawColor(190, 190, 190);
+            pdf.setLineWidth(0.25);
+            pdf.line(margin, y, pageWidth - margin, y);
+            y += 6;
+            footerLines.forEach(line => {
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(7);
+                pdf.setTextColor(105, 105, 105);
+                pdf.text(pdf.splitTextToSize(line, contentWidth) as string[], margin, y);
+                y += 4;
+            });
+        }
+
         pdf.save(fileName);
     };
 
@@ -64,7 +243,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             <SheetToolbar title={isPreview ? `${docType} Preview` : `${docType} #${sheet?.workSheetNumber}`}>
                 {!isPreview && (
                     <>
-                        <button onClick={handleDownloadPdf} className="p-2 mr-1 rounded-full text-gray-300 hover:bg-gray-700" title="Download PDF"><ArrowDownTrayIcon className="h-5 w-5" /></button>
+                        <button onClick={handleDownloadPdf} aria-label="Download worksheet as PDF" className="inline-flex items-center gap-2 px-3 py-2 mr-1 rounded-md text-sm font-semibold text-white bg-brand-600 hover:bg-brand-500 active:bg-brand-700 shadow-sm" title="Download PDF"><ArrowDownTrayIcon className="h-5 w-5" /><span>Download PDF</span></button>
                         <button onClick={() => window.print()} className="p-2 mr-1 rounded-full text-gray-300 hover:bg-gray-700" title="Print"><PrinterIcon className="h-5 w-5" /></button>
                     </>
                 )}
@@ -140,9 +319,15 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
                                             <span>Subtotal</span>
                                             <span className="font-semibold text-gray-900">{formatCurrency(totalAmount)}</span>
                                         </div>
+                                        {!isInternal && sheet?.vatApplied && (
+                                            <div className="flex justify-between py-1 text-[12px] text-gray-700">
+                                                <span>VAT (20%)</span>
+                                                <span className="font-semibold text-gray-900">{formatCurrency(vatAmount)}</span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between py-1.5 border-t-2 border-brand-800 text-[13px] font-bold text-gray-900">
                                             <span>{isInternal ? 'Total internal cost' : 'Total due'}</span>
-                                            <span>{formatCurrency(totalAmount)}</span>
+                                            <span>{formatCurrency(totalDue)}</span>
                                         </div>
                                     </div>
                                 </div>
