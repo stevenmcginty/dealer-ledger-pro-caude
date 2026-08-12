@@ -456,9 +456,12 @@ export const addSalesDocument = async (companyId: string, data: NewSalesDocument
 
     updates[`${roots.salesDocuments}/${newDocKey}`] = { ...docData, createdAt: firebase.database.ServerValue.TIMESTAMP };
     
-    let status: Vehicle['status'] = 'Sold';
-    if (data.documentType === 'Deposit Slip') status = 'Deposit Paid';
-    updates[`${roots.vehicles}/${data.vehicleId}/status`] = status;
+    // A proforma is a request for payment, not a sale - it leaves the vehicle's status alone.
+    if (data.documentType !== 'Proforma Invoice') {
+        let status: Vehicle['status'] = 'Sold';
+        if (data.documentType === 'Deposit Slip') status = 'Deposit Paid';
+        updates[`${roots.vehicles}/${data.vehicleId}/status`] = status;
+    }
     
     if (data.documentType === 'Sales Invoice' && data.pxValue > 0 && data.partExchangeDetails) {
         const pxVehicleKey = db.ref(roots.vehicles).push().key;

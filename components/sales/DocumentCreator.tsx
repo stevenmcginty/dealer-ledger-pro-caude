@@ -124,7 +124,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         let initialPxValue = '';
         let initialPxDetails: Partial<PartExchangeVehicle> = { reg: '', make: '', model: '' };
 
-        if (priorDeposit && documentType === 'Sales Invoice') {
+        if (priorDeposit && (documentType === 'Sales Invoice' || documentType === 'Proforma Invoice')) {
             initialCustomerName = priorDeposit.customerName;
             initialCustomerAddress = priorDeposit.customerAddress;
             initialAdditionalNotes = priorDeposit.additionalNotes || '';

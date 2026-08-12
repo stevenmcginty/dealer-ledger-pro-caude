@@ -106,6 +106,10 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                                 <span>Edit Deposit Slip</span>
                             </ActionButton>
                         )}
+                        <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                            <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
+                            <span>Create Proforma</span>
+                        </ActionButton>
                         <ActionButton onClick={() => onActionClick('Sales Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
                             <DocumentTextIcon className="h-5 w-5 text-green-400" />
                             <span>Finalise Sale</span>
