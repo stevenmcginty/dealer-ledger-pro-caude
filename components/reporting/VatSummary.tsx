@@ -5,6 +5,7 @@ import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { exportMtdVatSheet } from '../../utils/mtdVatExport';
 
 const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Date; end: Date } => {
     // Fallback to standard calendar quarters if no anchor date is set or is invalid
@@ -162,6 +163,26 @@ const VatSummary = () => {
     };
   }, [startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices]);
 
+  const handleExportMtdSheet = async () => {
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    const box1 = round2(vatData.totalOutputVat);
+    const box2 = 0;
+    const box3 = round2(box1 + box2);
+    const box4 = round2(vatData.totalInputVat);
+    const box5 = round2(box3 - box4);
+    try {
+      await exportMtdVatSheet({
+        companyName: businessDetails?.name ?? '',
+        vatNumber: businessDetails?.vatNumber ?? '',
+        periodStart: startDate,
+        periodEnd: endDate,
+        boxes: [box1, box2, box3, box4, box5, Math.floor(vatData.totalSalesNet - vatData.totalMarginVat), Math.floor(vatData.totalExpensesNet), 0, 0],
+      });
+    } catch (err) {
+      console.error('MTD sheet export failed:', err);
+    }
+  };
+
   const setPeriod = (period: 'this_quarter' | 'last_quarter') => {
     const today = new Date();
     // Use day 15 to avoid month-end issues when subtracting months
@@ -178,7 +199,7 @@ const VatSummary = () => {
                 <div><label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label><UkDateInput id="start-date" name="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/></div>
                 <div><label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label><UkDateInput id="end-date" name="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/></div>
             </div>
-            <div className="flex flex-wrap items-center gap-2"><button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button><button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button><button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-md flex items-center gap-1.5">{exportingPdf ? '⏳ Saving...' : '📄 Save PDF'}</button></div>
+            <div className="flex flex-wrap items-center gap-2"><button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button><button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button><button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-md flex items-center gap-1.5">{exportingPdf ? '⏳ Saving...' : '📄 Save PDF'}</button>{businessDetails?.mtdVatExportEnabled && <button onClick={handleExportMtdSheet} className="px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-md flex items-center gap-1.5">📊 Export MTD Sheet</button>}</div>
         </div>
 
         <div ref={summaryRef} className="space-y-6">

@@ -382,6 +382,7 @@ export interface BusinessDetails {
     vatStartDate: string;
     operatingMode: 'dealership' | 'paint_shop' | 'mechanic';
     isVatRegistered: boolean;
+    mtdVatExportEnabled?: boolean;
 }
 
 export interface ToDoItem {

@@ -93,7 +93,7 @@ const BusinessDetailsPage = () => {
     const { businessDetails, updateBusinessDetails, companyId } = useData();
     const { openModal } = useUI();
     const [formData, setFormData] = useState<BusinessDetails>({
-        name: '', address: '', phone: '', email: '', vatNumber: '', companyNumber: '', bankDetails: '', invoiceTerms: '', theme: 'blue', vatStartDate: '', operatingMode: 'dealership', isVatRegistered: false
+        name: '', address: '', phone: '', email: '', vatNumber: '', companyNumber: '', bankDetails: '', invoiceTerms: '', theme: 'blue', vatStartDate: '', operatingMode: 'dealership', isVatRegistered: false, mtdVatExportEnabled: false
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
@@ -113,7 +113,7 @@ const BusinessDetailsPage = () => {
 
     useEffect(() => {
         if (businessDetails) {
-            setFormData({ operatingMode: 'dealership', isVatRegistered: false, ...businessDetails });
+            setFormData({ operatingMode: 'dealership', isVatRegistered: false, mtdVatExportEnabled: false, ...businessDetails });
         }
     }, [businessDetails]);
 
@@ -192,6 +192,23 @@ const BusinessDetailsPage = () => {
                         <label htmlFor="vatStartDate" className="block text-sm font-medium text-gray-300">VAT Quarter Start Date</label>
                         <UkDateInput id="vatStartDate" name="vatStartDate" value={formData.vatStartDate || ''} onChange={handleChange} className="mt-1" />
                         <p className="text-xs text-gray-400 mt-1">Set the first day of any of your VAT quarters to get correct date ranges in the VAT Summary. E.g., if your quarters are Feb-Apr, May-Jul etc., set this to a Feb 1st.</p>
+                    </div>
+                    <div className={`md:col-span-2 relative flex items-start ${formData.isVatRegistered ? '' : 'opacity-50'}`}>
+                        <div className="flex h-6 items-center">
+                            <input
+                                id="mtdVatExportEnabled"
+                                name="mtdVatExportEnabled"
+                                type="checkbox"
+                                checked={formData.mtdVatExportEnabled || false}
+                                onChange={(e) => setFormData(prev => ({ ...prev, mtdVatExportEnabled: e.target.checked }))}
+                                disabled={!formData.isVatRegistered}
+                                className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        <div className="ml-3 text-sm leading-6">
+                            <label htmlFor="mtdVatExportEnabled" className="font-medium text-gray-300">Enable MTD VAT bridging export</label>
+                            <p className="text-gray-400">Adds an MTD spreadsheet export to the VAT page for bridging software submissions.</p>
+                        </div>
                     </div>
                     <div className="md:col-span-2">
                         <label htmlFor="bankDetails" className="block text-sm font-medium text-gray-300">Bank Details</label>
