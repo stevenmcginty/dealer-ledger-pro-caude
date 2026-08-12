@@ -10,6 +10,7 @@ interface VehicleActionsModalProps {
         vehicle: Vehicle;
         depositDoc?: SalesDocument;
         salesDoc?: SalesDocument;
+        proformaDoc?: SalesDocument;
     };
 }
 
@@ -30,7 +31,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({ onClick, children, classNam
 
 const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
     const { openModal, closeModal } = useUI();
-    const { vehicle, depositDoc, salesDoc } = data;
+    const { vehicle, depositDoc, salesDoc, proformaDoc } = data;
 
     const handleAction = (action: () => void) => {
         closeModal(); // Close this modal first
@@ -81,10 +82,23 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                             <DocumentTextIcon className="h-5 w-5 text-cyan-400" />
                             <span>Create Deposit Slip</span>
                         </ActionButton>
-                        <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
-                            <span>Create Proforma</span>
-                        </ActionButton>
+                        {proformaDoc ? (
+                            <>
+                                <ActionButton onClick={() => onViewDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                    <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
+                                    <span>View Proforma</span>
+                                </ActionButton>
+                                <ActionButton onClick={() => onEditDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                    <EditIcon className="h-5 w-5" />
+                                    <span>Edit Proforma</span>
+                                </ActionButton>
+                            </>
+                        ) : (
+                            <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
+                                <span>Create Proforma</span>
+                            </ActionButton>
+                        )}
                         <ActionButton onClick={() => onActionClick('Sales Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
                            <DocumentTextIcon className="h-5 w-5 text-green-400" />
                            <span>Create Sales Invoice</span>
@@ -106,10 +120,23 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                                 <span>Edit Deposit Slip</span>
                             </ActionButton>
                         )}
-                        <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
-                            <span>Create Proforma</span>
-                        </ActionButton>
+                        {proformaDoc ? (
+                            <>
+                                <ActionButton onClick={() => onViewDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                    <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
+                                    <span>View Proforma</span>
+                                </ActionButton>
+                                <ActionButton onClick={() => onEditDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                    <EditIcon className="h-5 w-5" />
+                                    <span>Edit Proforma</span>
+                                </ActionButton>
+                            </>
+                        ) : (
+                            <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                                <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
+                                <span>Create Proforma</span>
+                            </ActionButton>
+                        )}
                         <ActionButton onClick={() => onActionClick('Sales Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
                             <DocumentTextIcon className="h-5 w-5 text-green-400" />
                             <span>Finalise Sale</span>

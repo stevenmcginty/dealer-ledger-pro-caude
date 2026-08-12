@@ -344,7 +344,8 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
     const handleActionsClick = (vehicle: Vehicle) => {
         const depositDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Deposit Slip');
         const salesDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Sales Invoice');
-        openModal('vehicleActions', { vehicle, depositDoc, salesDoc });
+        const proformaDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Proforma Invoice');
+        openModal('vehicleActions', { vehicle, depositDoc, salesDoc, proformaDoc });
     };
 
     const EmptyState = () => (
