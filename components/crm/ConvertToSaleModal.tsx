@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Button, Badge } from '../ui';
+import { Button, Badge, useToast } from '../ui';
 import { XMarkIcon, CurrencyPoundIcon, TruckIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
@@ -14,6 +14,7 @@ interface ConvertToSaleModalProps {
 const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }) => {
     const { vehicles, updateLeadStage, addLeadActivity } = useData();
     const { openModal, closeModal } = useUI();
+    const toast = useToast();
     const [selectedVehicleId, setSelectedVehicleId] = useState(lead.vehicleId || '');
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -64,6 +65,7 @@ const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }
             });
         } catch (error) {
             console.error('Error initiating sale:', error);
+            toast.error("Could not start the sale. Please try again.");
         } finally {
             setIsProcessing(false);
         }
@@ -81,6 +83,7 @@ const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }
             onClose();
         } catch (error) {
             console.error('Error marking lead as lost:', error);
+            toast.error("Could not mark the lead as lost. Please try again.");
         } finally {
             setIsProcessing(false);
         }

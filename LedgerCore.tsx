@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useWindowSize } from './hooks/useWindowSize';
 import { useUI } from './hooks/useUI';
 import { useData } from './hooks/useData';
@@ -14,32 +14,35 @@ import NotificationBell from './components/nav/NotificationBell';
 import Spinner from './components/common/Spinner';
 import ModalManager from './components/common/ModalManager';
 import PermissionDeniedHandler from './components/auth/PermissionDeniedHandler';
+import { useToast } from './components/ui';
 import { CarIcon, PlusIcon, ExclamationTriangleIcon, WrenchScrewdriverIcon, ClipboardDocumentListIcon, ArrowUpTrayIcon, ClipboardIcon, CalendarIcon } from './components/icons';
 
-// Import Page Components
-import DashboardPage from './pages/DashboardPage';
-import WorkSheetsPage from './pages/WorkSheetsPage';
-import StockPage from './pages/StockPage';
-import SalesPage from './pages/SalesPage';
-import ExpensesPage from './pages/ExpensesPage';
-import IncomePage from './pages/IncomePage';
-import LedgerPage from './pages/LedgerPage';
-import VatPage from './pages/VatPage';
-import FilingCabinetPage from './pages/FilingCabinetPage';
-import SettingsPage from './pages/SettingsPage';
-import AccountantPage from './pages/AccountantPage';
-import GaragePage from './pages/GaragePage';
-import CanvasPage from './pages/CanvasPage';
-import JobInvoicesPage from './pages/JobInvoicesPage';
-import WorkPrepPage from './pages/WorkPrepPage';
-import InternalJobsPage from './pages/InternalJobsPage';
-import PipelinePage from './pages/PipelinePage';
-import InboxPage from './pages/InboxPage';
-import LeadDetailPage from './pages/LeadDetailPage';
+// Import Page Components (lazy: each page ships as its own chunk so the
+// initial entry only carries the shell)
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const WorkSheetsPage = lazy(() => import('./pages/WorkSheetsPage'));
+const StockPage = lazy(() => import('./pages/StockPage'));
+const SalesPage = lazy(() => import('./pages/SalesPage'));
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage'));
+const IncomePage = lazy(() => import('./pages/IncomePage'));
+const LedgerPage = lazy(() => import('./pages/LedgerPage'));
+const VatPage = lazy(() => import('./pages/VatPage'));
+const FilingCabinetPage = lazy(() => import('./pages/FilingCabinetPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AccountantPage = lazy(() => import('./pages/AccountantPage'));
+const GaragePage = lazy(() => import('./pages/GaragePage'));
+const CanvasPage = lazy(() => import('./pages/CanvasPage'));
+const JobInvoicesPage = lazy(() => import('./pages/JobInvoicesPage'));
+const WorkPrepPage = lazy(() => import('./pages/WorkPrepPage'));
+const InternalJobsPage = lazy(() => import('./pages/InternalJobsPage'));
+const PdiPage = lazy(() => import('./pages/PdiPage'));
+const PipelinePage = lazy(() => import('./pages/PipelinePage'));
+const LeadDetailPage = lazy(() => import('./pages/LeadDetailPage'));
 
 
 const LedgerCore = () => {
   const { view, openModal, setView, triggerCanvasUpload } = useUI();
+  const toast = useToast();
   const { isLoading, error, businessDetails, theme, vehicles, addCanvasItem, isServiceBusiness, isVatRegistered } = useData();
   const { width } = useWindowSize();
   const [isMobile, setIsMobile] = useState(true);
@@ -126,7 +129,7 @@ const LedgerCore = () => {
           await signOut();
       } catch (error) {
           console.error("Error signing out:", error);
-          alert("Failed to sign out.");
+          toast.error("Failed to sign out.");
       }
   };
   
@@ -134,6 +137,7 @@ const LedgerCore = () => {
       const titles: Record<View, string> = {
         dashboard: 'Dashboard',
         workSheets: 'Work Sheets',
+        pdi: 'Pre-Delivery Inspections',
         workPrep: 'Work Prep',
         internalJobs: 'Internal Job Sheets',
         stock: 'Vehicle Stock',
@@ -149,7 +153,6 @@ const LedgerCore = () => {
         canvas: 'AI Canvas',
         jobInvoices: 'Jobs & Invoices',
         pipeline: 'Pipeline',
-        inbox: 'Inbox',
         leadDetail: 'Lead Details'
       };
       return titles[view];
@@ -170,6 +173,7 @@ const LedgerCore = () => {
         garage: { label: 'Add Informal Car', action: () => openModal('addInformalVehicle') },
         expenses: { label: 'Add Receipt', action: () => openModal('expense') },
         workSheets: { label: 'Add Work Sheet', action: () => openModal('workSheet') },
+        pdi: { label: 'Add PDI', action: () => openModal('pdi') },
         internalJobs: { label: 'Add Job Sheet', action: () => openModal('internalJob') },
         income: { label: 'Add Invoice', action: () => openModal('miscInvoice') },
         pipeline: { label: 'Add Lead', action: () => openModal('lead') },
@@ -208,6 +212,7 @@ const LedgerCore = () => {
     switch (view) {
       case 'dashboard': return <DashboardPage />;
       case 'workSheets': return <WorkSheetsPage />;
+      case 'pdi': return isServiceBusiness ? null : <PdiPage />;
       case 'workPrep': return <WorkPrepPage />;
       case 'internalJobs': return <InternalJobsPage />;
       case 'stock': return isServiceBusiness ? null : <StockPage />;
@@ -223,7 +228,6 @@ const LedgerCore = () => {
       case 'accountant': return <AccountantPage />;
       case 'canvas': return <CanvasPage />;
       case 'pipeline': return <PipelinePage />;
-      case 'inbox': return <InboxPage />;
       case 'leadDetail': return <LeadDetailPage />;
       default: return <div>Not implemented</div>;
     }
@@ -384,7 +388,9 @@ const LedgerCore = () => {
 
          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-6">
             <div className="max-w-7xl mx-auto">
-                {renderView()}
+                <Suspense fallback={<div className="flex items-center justify-center py-24"><Spinner className="h-8 w-8 text-brand-500" /></div>}>
+                    {renderView()}
+                </Suspense>
             </div>
         </div>
       </main>

@@ -11,6 +11,7 @@ import {
     CheckCircleIcon,
     XCircleIcon
 } from '../components/icons';
+import { useToast } from '../components/ui';
 
 type FeatureCategory = 'core' | 'crm' | 'reporting' | 'integrations' | 'advanced';
 
@@ -257,6 +258,7 @@ const FeatureFormModal: React.FC<{
 
 const FeatureManagement: React.FC = () => {
     const { features, plans, createFeature, updateFeature, deleteFeature, isDataLoading } = useAdmin();
+    const toast = useToast();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingFeature, setEditingFeature] = useState<Feature | undefined>(undefined);
     const [isSaving, setIsSaving] = useState(false);
@@ -312,7 +314,7 @@ const FeatureManagement: React.FC = () => {
     const handleDelete = async (feature: Feature) => {
         const usage = featureUsage[feature.id];
         if (usage > 0) {
-            alert(`Cannot delete "${feature.name}" - it's used in ${usage} plan(s). Remove it from all plans first.`);
+            toast.error(`Cannot delete "${feature.name}" - it's used in ${usage} plan(s). Remove it from all plans first.`);
             return;
         }
         if (confirm(`Are you sure you want to delete the "${feature.name}" feature? This action cannot be undone.`)) {

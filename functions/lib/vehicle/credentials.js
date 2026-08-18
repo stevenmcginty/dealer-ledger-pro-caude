@@ -2,8 +2,9 @@
 /**
  * Credential loading for the government vehicle APIs.
  *
- * Follows the same pattern as the Gmail functions: prefer process.env (populated
- * from functions/.env at deploy time), fall back to the legacy functions.config().
+ * Loads DVSA/DVLA credentials from environment config: prefer process.env
+ * (populated from functions/.env at deploy time), fall back to the legacy
+ * functions.config().
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;

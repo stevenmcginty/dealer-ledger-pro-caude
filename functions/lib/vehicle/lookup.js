@@ -212,7 +212,12 @@ const lookupVehicle = async (rawReg, force = false) => {
 exports.lookupVehicle = lookupVehicle;
 /**
  * Callable used by the vehicle form and the invoice scanner.
- * data: { reg: string, force?: boolean }
+ * data: { reg: string }
+ *
+ * The 24h cache applies to every caller. A `force` flag from the client is
+ * ignored: letting a client opt out of the cache is letting it spend the
+ * government APIs' rate limit at will. Only server-side callers (the MOT
+ * sweep, whose period matches the cache's) may bypass it.
  */
 exports.lookupVehicleByReg = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
@@ -223,11 +228,11 @@ exports.lookupVehicleByReg = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'A valid UK registration is required');
     }
     try {
-        return await (0, exports.lookupVehicle)(reg, !!data?.force);
+        return await (0, exports.lookupVehicle)(reg);
     }
     catch (error) {
         console.error(`Vehicle lookup failed for ${reg}:`, error);
-        throw new functions.https.HttpsError('internal', error?.message || 'Vehicle lookup failed');
+        throw new functions.https.HttpsError('internal', 'Vehicle lookup failed');
     }
 });
 //# sourceMappingURL=lookup.js.map

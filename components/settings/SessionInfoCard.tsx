@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useData } from '../../hooks/useData';
 import { auth } from '../../services/firebase';
+import { useToast } from '../ui';
 import { ClipboardIcon, CheckCircleIcon } from '../icons';
 
 const SessionInfoCard = () => {
     const { companyId, userId } = useData();
+    const toast = useToast();
     const userEmail = auth.currentUser?.email;
     const [copied, setCopied] = useState<string | null>(null);
 
@@ -15,6 +17,7 @@ const SessionInfoCard = () => {
             setTimeout(() => setCopied(null), 2000);
         }).catch(err => {
             console.error('Failed to copy text: ', err);
+            toast.error("Could not copy to the clipboard.");
         });
     };
 

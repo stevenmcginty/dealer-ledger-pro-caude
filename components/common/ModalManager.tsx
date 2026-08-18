@@ -4,7 +4,7 @@
 import React, { useMemo } from 'react';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
-import { SalesDocument, Vehicle, NewVehicle, VehicleUpdate, NewReceipt, ReceiptUpdate, NewSalesDocument, SalesDocumentUpdate, StatementTransaction, StatementTransactionUpdate, NewWorkSheet, NewMiscInvoice, Receipt, MiscInvoiceUpdate, WorkSheet, JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate, InternalJob, NewInternalJob, InternalJobUpdate } from '../../types';
+import { SalesDocument, Vehicle, NewVehicle, VehicleUpdate, NewReceipt, ReceiptUpdate, NewSalesDocument, SalesDocumentUpdate, StatementTransaction, StatementTransactionUpdate, NewWorkSheet, NewMiscInvoice, Receipt, MiscInvoiceUpdate, WorkSheet, JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate, InternalJob, NewInternalJob, InternalJobUpdate, PDI, NewPDI, PDIUpdate } from '../../types';
 import * as dataService from '../../services/dataService';
 
 // Import Modal/Editor Components
@@ -17,6 +17,9 @@ import UploadProgress from './UploadProgress';
 import PrintableView from '../sales/PrintableView';
 import MultiReceiptReconciler from '../expenses/MultiReceiptReconciler';
 import CategoryManager from '../expenses/CategoryManager';
+import PdiEditor from '../pdi/PdiEditor';
+import PrintablePdi from '../pdi/PrintablePdi';
+import DeletePdiConfirmModal from './DeletePdiConfirmModal';
 import WorkSheetEditor from '../work-sheets/WorkSheetEditor';
 import PrintableWorkSheet from '../work-sheets/PrintableWorkSheet';
 import MiscInvoiceEditor from '../income/MiscInvoiceEditor';
@@ -56,9 +59,6 @@ import RestoreDrawer from '../filing-cabinet/RestoreModal';
 import LeadForm from '../crm/LeadForm';
 import AddNoteModal from '../crm/AddNoteModal';
 import LogCallModal from '../crm/LogCallModal';
-import CreateLeadFromEmailModal from '../crm/CreateLeadFromEmailModal';
-import EmailComposer from '../crm/EmailComposer';
-import AddTestEmailModal from '../crm/AddTestEmailModal';
 import ConvertToSaleModal from '../crm/ConvertToSaleModal';
 import StatementMappingWizard from '../expenses/StatementMappingWizard';
 
@@ -160,6 +160,15 @@ const ModalManager = () => {
         closeModal();
     };
     
+    const handlePdiSubmit = async (formData: NewPDI | PDIUpdate, id?: string) => {
+        if (id) {
+            await data.updatePdi(id, formData as PDIUpdate);
+        } else {
+            await data.addPdi(formData as NewPDI);
+        }
+        closeModal();
+    };
+
     const handleInternalJobSubmit = async (formData: NewInternalJob | InternalJobUpdate, id?: string) => {
         if (id) {
             await data.updateInternalJob(id, formData as InternalJobUpdate);
@@ -281,6 +290,32 @@ const ModalManager = () => {
             }
             case 'deleteWorkSheetConfirm':
                 return <DeleteWorkSheetConfirmModal sheet={modal.data} />;
+            case 'pdi': {
+                if (modal.data?.viewOnly && modal.data?.pdi) {
+                    let pdiForView = modal.data.pdi as PDI;
+                    if (!pdiForView.carDetails) {
+                        const vehicleForPdi = data.vehicles.find(v => v.id === pdiForView.vehicleId);
+                        if (vehicleForPdi) {
+                            const { id, createdAt, status, ...carDetails } = vehicleForPdi;
+                            pdiForView = { ...pdiForView, carDetails };
+                        } else {
+                            pdiForView = { ...pdiForView, carDetails: {} as any };
+                        }
+                    }
+                    return <PrintablePdi pdi={pdiForView} businessDetails={data.businessDetails} onClose={closeModal} />;
+                }
+                return <PdiEditor
+                            vehicles={data.vehicles}
+                            pdis={data.pdis}
+                            businessDetails={data.businessDetails}
+                            onSubmit={handlePdiSubmit}
+                            onCancel={closeModal}
+                            editingPdi={modal.data?.editingPdi || null}
+                            presetVehicle={modal.data?.vehicle || null}
+                        />;
+            }
+            case 'deletePdiConfirm':
+                return <DeletePdiConfirmModal pdi={modal.data} />;
             case 'internalJob': {
                 if (modal.data?.viewOnly && modal.data?.job) {
                     let jobForView = modal.data.job as InternalJob;
@@ -359,12 +394,6 @@ const ModalManager = () => {
                 return <AddNoteModal lead={modal.data.lead} onClose={closeModal} />;
             case 'logCall':
                 return <LogCallModal lead={modal.data.lead} onClose={closeModal} />;
-            case 'createLeadFromEmail':
-                return <CreateLeadFromEmailModal email={modal.data.email} onClose={closeModal} />;
-            case 'emailComposer':
-                return <EmailComposer email={modal.data?.email} lead={modal.data?.lead} replyTo={modal.data?.replyTo} onClose={closeModal} />;
-            case 'addTestEmail':
-                return <AddTestEmailModal onClose={closeModal} />;
             case 'convertToSale':
                 return <ConvertToSaleModal lead={modal.data.lead} onClose={closeModal} />;
             case 'statementMapping':
@@ -379,6 +408,7 @@ const ModalManager = () => {
             case 'invoice':
             case 'editInvoice':
             case 'workSheet':
+            case 'pdi':
             case 'internalJob':
             case 'jobInvoice':
             case 'customerDetailView':
@@ -396,11 +426,8 @@ const ModalManager = () => {
             case 'lead':
             case 'addNote':
             case 'logCall':
-            case 'createLeadFromEmail':
-            case 'addTestEmail':
             case 'convertToSale':
                 return 'lg';
-            case 'emailComposer':
             case 'statementMapping':
                 return '2xl';
             default:

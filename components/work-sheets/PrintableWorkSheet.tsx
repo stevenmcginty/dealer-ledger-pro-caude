@@ -1,5 +1,4 @@
 import React from 'react';
-import jsPDF from 'jspdf';
 import { WorkSheet, BusinessDetails, workSheetRecordType } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
@@ -39,6 +38,7 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
         // Build the PDF from the worksheet values instead of rasterising the
         // DOM. This keeps the PDF's text selectable/searchable and gives the
         // same A4 result in desktop browsers, PWAs, and Android WebViews.
+        const { default: jsPDF } = await import('jspdf');
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();

@@ -1,9 +1,8 @@
 import React from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { JobInvoice, BusinessDetails } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
+import { downloadElementAsPdf } from '../../utils/pdf';
 import { useData } from '../../hooks/useData';
 
 interface PrintableJobInvoiceProps {
@@ -22,27 +21,7 @@ const PrintableJobInvoice = ({ invoice, businessDetails, onClose, isPreview, onC
     const handleDownloadPdf = async () => {
         const input = document.getElementById('printable-job-invoice');
         if (!input) return;
-        
-        const canvas = await html2canvas(input, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-        
-        const imgData = canvas.toDataURL('image/jpeg', 0.8);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfPageHeight = pdf.internal.pageSize.getHeight();
-        const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        
-        let heightLeft = imgHeight;
-        let position = 0;
-        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
-        heightLeft -= pdfPageHeight;
-        while (heightLeft > 0) {
-            position -= pdfPageHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
-            heightLeft -= pdfPageHeight;
-        }
-        pdf.save(`${invoice.status}-${invoice.invoiceNumber}.pdf`);
+        await downloadElementAsPdf(input, `${invoice.status}-${invoice.invoiceNumber}.pdf`);
     };
     
     return (

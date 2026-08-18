@@ -5,6 +5,7 @@ import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon, DocumentTextIcon } from '../icons';
 import { SalesDocument, Vehicle } from '../../types';
 import UkDateInput from '../common/UkDateInput';
+import { useToast } from '../ui';
 
 interface MarginData {
     doc: SalesDocument;
@@ -16,6 +17,7 @@ interface MarginData {
 
 const VehicleMarginReport = () => {
     const { salesDocs, vehicles, isVatRegistered } = useData();
+    const toast = useToast();
     
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -115,7 +117,7 @@ const VehicleMarginReport = () => {
         csvData.push(totalsRow);
 
         if (csvData.length === 1) { // Only totals row
-            alert("No data to download for the selected period.");
+            toast.info("No data to download for the selected period.");
             return;
         }
         const csv = Papa.unparse(csvData);

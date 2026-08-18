@@ -66,5 +66,15 @@ export const companyIdForUser = async (uid: string): Promise<string> => {
     if (!companyId) {
         throw new functions.https.HttpsError('failed-precondition', 'No company is linked to this account');
     }
+
+    // The pointer alone used to say whose data to touch. The database rules
+    // only grant a client write on companies/{id} when it is a member, so the
+    // functions must not act on a pointer the client could have repointed at
+    // somebody else's company.
+    const member = await admin.database().ref(`companies/${companyId}/users/${uid}`).once('value');
+    if (!member.exists()) {
+        throw new functions.https.HttpsError('permission-denied', 'You do not have access to this company');
+    }
+
     return companyId;
 };

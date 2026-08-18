@@ -8,6 +8,7 @@ import { formatCurrency } from '../../utils/helpers';
 import PrintableJobInvoice from './PrintableJobInvoice';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
+import { useToast } from '../ui';
 
 interface JobInvoiceEditorProps {
     editingInvoice?: JobInvoice | null;
@@ -27,6 +28,7 @@ interface LineItem {
 
 const JobInvoiceEditor = ({ editingInvoice, onSubmit, onCancel, businessDetails }: JobInvoiceEditorProps) => {
     const { customers, isVatRegistered } = useData();
+    const toast = useToast();
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     const [customerDetails, setCustomerDetails] = useState<Omit<Customer, 'id' | 'createdAt'>>({ name: '', address: '', isBusiness: false });
     const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -96,7 +98,7 @@ const JobInvoiceEditor = ({ editingInvoice, onSubmit, onCancel, businessDetails 
             .filter(item => item.description.trim() !== '');
 
         if (finalItems.length === 0) {
-            alert('Please add at least one line item.');
+            toast.error('Please add at least one line item.');
             return;
         }
 
@@ -127,6 +129,7 @@ const JobInvoiceEditor = ({ editingInvoice, onSubmit, onCancel, businessDetails 
             await onSubmit(submissionData, isEditing ? editingInvoice.id : undefined);
         } catch (e) {
             console.error(e);
+            toast.error("Could not save the invoice. Please try again.");
             setPreviewData(null);
         } finally {
             setIsSubmitting(false);

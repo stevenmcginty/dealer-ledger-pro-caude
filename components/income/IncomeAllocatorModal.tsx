@@ -5,6 +5,7 @@ import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../ut
 import CurrencyInput from '../common/CurrencyInput';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
+import { useToast } from '../ui';
 import Spinner from '../common/Spinner';
 
 interface IncomeAllocatorModalProps {
@@ -25,6 +26,7 @@ type Receivable = {
 const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocatorModalProps) => {
     const { salesDocs, miscInvoices, jobInvoices, reconcileSalePayment, reconcileMiscInvoicePayment, reconcileJobInvoicePayment } = useData();
     const { openModal, closeModal } = useUI();
+    const toast = useToast();
     // Default straight to the categorize view (where the Transfer toggle lives) when the
     // line clearly looks like an own-account transfer, or when editing a saved transfer.
     const looksLikeTransfer = transaction.reconciliationType === 'transfer' ||
@@ -115,7 +117,7 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
 
         const finalCategory = isOther ? otherCategory.trim() : category;
         if (!finalCategory) {
-            alert("Please select or enter a category.");
+            toast.error("Please select or enter a category.");
             return;
         }
 
@@ -151,7 +153,7 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
             closeModal();
         } catch (error) {
             console.error("Reconciliation failed:", error);
-            alert("An error occurred during reconciliation. Please try again.");
+            toast.error("An error occurred during reconciliation. Please try again.");
         } finally {
             setIsSubmitting(false);
         }

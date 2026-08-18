@@ -14,9 +14,9 @@ import {
     CanvasItemUpdate, MiscInvoiceUpdate, FinancialAccount, NewFinancialAccount, UploadBatch,
     JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate,
     InternalJob, NewInternalJob, InternalJobUpdate,
-    Lead, NewLead, LeadUpdate, LeadStage, Activity, InboxEmail, NewInboxEmail, InboxEmailUpdate,
-    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate,
-    ScheduledAutoResponse, NewScheduledAutoResponse, ScheduledAutoResponseUpdate, AutoRepliedEmail
+    PDI, NewPDI, PDIUpdate,
+    Lead, NewLead, LeadUpdate, LeadStage, Activity,
+    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate
 } from '../types';
 import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
 import { applyColumnMapping } from '../utils/csvMapping';
@@ -35,6 +35,7 @@ export const FOLDER_ROOTS = (companyId: string) => ({
     businessDetails: `${companyRoot(companyId)}/businessDetails`,
     todos: `${companyRoot(companyId)}/todos`,
     workSheets: `${companyRoot(companyId)}/workSheets`,
+    pdis: `${companyRoot(companyId)}/pdis`,
     customers: `${companyRoot(companyId)}/customers`,
     miscInvoices: `${companyRoot(companyId)}/miscInvoices`,
     jobInvoices: `${companyRoot(companyId)}/jobInvoices`,
@@ -47,11 +48,7 @@ export const FOLDER_ROOTS = (companyId: string) => ({
     uploadBatches: `${companyRoot(companyId)}/uploadBatches`,
     // CRM Collections
     leads: `${companyRoot(companyId)}/leads`,
-    inboxEmails: `${companyRoot(companyId)}/inboxEmails`,
     emailTemplates: `${companyRoot(companyId)}/emailTemplates`,
-    // Auto-Response Collections
-    scheduledResponses: `${companyRoot(companyId)}/scheduledResponses`,
-    autoRepliedEmails: `${companyRoot(companyId)}/autoRepliedEmails`,
     crmSettings: `${companyRoot(companyId)}/crmSettings`,
 });
 
@@ -226,6 +223,7 @@ export const subscribeToBusinessDetails = (companyId: string, cb: (data: Busines
 }
 export const subscribeToToDos = (companyId: string, cb: (data: ToDoItem[]) => void) => createSubscription<ToDoItem>(FOLDER_ROOTS(companyId).todos, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToWorkSheets = (companyId: string, cb: (data: WorkSheet[]) => void) => createSubscription<WorkSheet>(FOLDER_ROOTS(companyId).workSheets, cb, (a, b) => b.createdAt - a.createdAt);
+export const subscribeToPdis = (companyId: string, cb: (data: PDI[]) => void) => createSubscription<PDI>(FOLDER_ROOTS(companyId).pdis, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToInternalJobs = (companyId: string, cb: (data: InternalJob[]) => void) => createSubscription<InternalJob>(FOLDER_ROOTS(companyId).internalJobs, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToCustomers = (companyId: string, cb: (data: Customer[]) => void) => createSubscription<Customer>(FOLDER_ROOTS(companyId).customers, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToMiscInvoices = (companyId: string, cb: (data: MiscInvoice[]) => void) => createSubscription<MiscInvoice>(FOLDER_ROOTS(companyId).miscInvoices, cb, (a, b) => b.createdAt - a.createdAt);
@@ -245,7 +243,6 @@ export const subscribeToUploadBatches = (companyId: string, cb: (data: UploadBat
 
 // CRM Subscriptions
 export const subscribeToLeads = (companyId: string, cb: (data: Lead[]) => void) => createSubscription<Lead>(FOLDER_ROOTS(companyId).leads, cb, (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-export const subscribeToInboxEmails = (companyId: string, cb: (data: InboxEmail[]) => void) => createSubscription<InboxEmail>(FOLDER_ROOTS(companyId).inboxEmails, cb, (a, b) => b.createdAt - a.createdAt);
 export const subscribeToEmailTemplates = (companyId: string, cb: (data: EmailTemplate[]) => void) => createSubscription<EmailTemplate>(FOLDER_ROOTS(companyId).emailTemplates, cb, (a, b) => a.name.localeCompare(b.name));
 
 
@@ -593,6 +590,14 @@ export const reclassifyToDo = async (companyId: string, todoId: string, targetCa
 export const addWorkSheet = async (companyId: string, data: NewWorkSheet) => { const newKey = db.ref(FOLDER_ROOTS(companyId).workSheets).push().key; if (!newKey) throw new Error("Failed to create key for new work sheet."); return db.ref(`${FOLDER_ROOTS(companyId).workSheets}/${newKey}`).set({ ...data, createdAt: firebase.database.ServerValue.TIMESTAMP }); };
 export const updateWorkSheet = async (companyId: string, id: string, data: WorkSheetUpdate) => db.ref(`${FOLDER_ROOTS(companyId).workSheets}/${id}`).update(data);
 export const deleteWorkSheet = async (companyId: string, id: string) => db.ref(`${FOLDER_ROOTS(companyId).workSheets}/${id}`).remove();
+
+export const addPdi = async (companyId: string, data: NewPDI) => {
+    const newKey = db.ref(FOLDER_ROOTS(companyId).pdis).push().key;
+    if (!newKey) throw new Error("Failed to create key for new PDI.");
+    return db.ref(`${FOLDER_ROOTS(companyId).pdis}/${newKey}`).set({ ...data, createdAt: firebase.database.ServerValue.TIMESTAMP });
+};
+export const updatePdi = async (companyId: string, id: string, data: PDIUpdate) => db.ref(`${FOLDER_ROOTS(companyId).pdis}/${id}`).update(data);
+export const deletePdi = async (companyId: string, id: string) => db.ref(`${FOLDER_ROOTS(companyId).pdis}/${id}`).remove();
 
 export const addInternalJob = async (companyId: string, data: NewInternalJob) => { const newKey = db.ref(FOLDER_ROOTS(companyId).internalJobs).push().key; if (!newKey) throw new Error("Failed to create key for new internal job."); return db.ref(`${FOLDER_ROOTS(companyId).internalJobs}/${newKey}`).set({ ...data, createdAt: firebase.database.ServerValue.TIMESTAMP }); };
 export const updateInternalJob = async (companyId: string, id: string, data: InternalJobUpdate) => db.ref(`${FOLDER_ROOTS(companyId).internalJobs}/${id}`).update(data);
@@ -1589,7 +1594,6 @@ export const addLead = async (companyId: string, data: NewLead): Promise<string>
     const leadData: Omit<Lead, 'id'> = {
         ...data,
         history: data.history || [],
-        hasReceivedAutoReply: data.hasReceivedAutoReply || false,
         createdAt: now,
         updatedAt: now,
     };
@@ -1634,27 +1638,6 @@ export const addLeadActivity = async (companyId: string, leadId: string, activit
     });
 };
 
-// Inbox Email Operations
-export const addInboxEmail = async (companyId: string, data: NewInboxEmail): Promise<string> => {
-    const roots = FOLDER_ROOTS(companyId);
-    const newKey = db.ref(roots.inboxEmails).push().key;
-    if (!newKey) throw new Error("Failed to create key for new inbox email.");
-
-    await db.ref(`${roots.inboxEmails}/${newKey}`).set({
-        ...data,
-        createdAt: firebase.database.ServerValue.TIMESTAMP,
-    });
-    return newKey;
-};
-
-export const updateInboxEmail = async (companyId: string, id: string, data: InboxEmailUpdate): Promise<void> => {
-    await db.ref(`${FOLDER_ROOTS(companyId).inboxEmails}/${id}`).update(data);
-};
-
-export const deleteInboxEmail = async (companyId: string, id: string): Promise<void> => {
-    await db.ref(`${FOLDER_ROOTS(companyId).inboxEmails}/${id}`).remove();
-};
-
 // Email Template Operations
 export const addEmailTemplate = async (companyId: string, data: NewEmailTemplate): Promise<string> => {
     const roots = FOLDER_ROOTS(companyId);
@@ -1674,114 +1657,6 @@ export const updateEmailTemplate = async (companyId: string, id: string, data: E
 
 export const deleteEmailTemplate = async (companyId: string, id: string): Promise<void> => {
     await db.ref(`${FOLDER_ROOTS(companyId).emailTemplates}/${id}`).remove();
-};
-
-// --- Scheduled Auto-Responses ---
-
-export const subscribeToScheduledResponses = (companyId: string, cb: (data: ScheduledAutoResponse[]) => void) =>
-    createSubscription<ScheduledAutoResponse>(
-        FOLDER_ROOTS(companyId).scheduledResponses,
-        cb,
-        (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
-    );
-
-export const addScheduledResponse = async (companyId: string, data: NewScheduledAutoResponse): Promise<string> => {
-    const roots = FOLDER_ROOTS(companyId);
-    const newKey = db.ref(roots.scheduledResponses).push().key;
-    if (!newKey) throw new Error("Failed to create key for scheduled response.");
-    await db.ref(`${roots.scheduledResponses}/${newKey}`).set({
-        ...data,
-        createdAt: firebase.database.ServerValue.TIMESTAMP,
-    });
-    return newKey;
-};
-
-export const updateScheduledResponse = async (companyId: string, id: string, data: ScheduledAutoResponseUpdate): Promise<void> => {
-    await db.ref(`${FOLDER_ROOTS(companyId).scheduledResponses}/${id}`).update(data);
-};
-
-export const deleteScheduledResponse = async (companyId: string, id: string): Promise<void> => {
-    await db.ref(`${FOLDER_ROOTS(companyId).scheduledResponses}/${id}`).remove();
-};
-
-export const getPendingScheduledResponses = async (companyId: string): Promise<ScheduledAutoResponse[]> => {
-    const snapshot = await db.ref(FOLDER_ROOTS(companyId).scheduledResponses)
-        .orderByChild('status')
-        .equalTo('pending')
-        .once('value');
-
-    if (!snapshot.exists()) return [];
-
-    const now = new Date();
-    const results: ScheduledAutoResponse[] = [];
-
-    snapshot.forEach((child) => {
-        const response = { id: child.key!, ...child.val() } as ScheduledAutoResponse;
-        // Only return responses that are due
-        if (new Date(response.scheduledFor) <= now) {
-            results.push(response);
-        }
-    });
-
-    return results;
-};
-
-// --- Auto-Replied Emails (Track who has received auto-replies) ---
-
-export const subscribeToAutoRepliedEmails = (companyId: string, cb: (data: AutoRepliedEmail[]) => void) =>
-    createSubscription<AutoRepliedEmail>(
-        FOLDER_ROOTS(companyId).autoRepliedEmails,
-        cb,
-        (a, b) => a.email.localeCompare(b.email)
-    );
-
-export const hasEmailReceivedAutoReply = async (companyId: string, email: string): Promise<boolean> => {
-    const normalizedEmail = email.toLowerCase().trim();
-    const snapshot = await db.ref(FOLDER_ROOTS(companyId).autoRepliedEmails)
-        .orderByChild('email')
-        .equalTo(normalizedEmail)
-        .once('value');
-
-    return snapshot.exists();
-};
-
-export const recordAutoReply = async (
-    companyId: string,
-    email: string,
-    inboxEmailId: string,
-    leadId?: string
-): Promise<string> => {
-    const roots = FOLDER_ROOTS(companyId);
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // Check if already exists (double-check)
-    const exists = await hasEmailReceivedAutoReply(companyId, normalizedEmail);
-    if (exists) {
-        throw new Error(`Auto-reply already sent to ${normalizedEmail}`);
-    }
-
-    const newKey = db.ref(roots.autoRepliedEmails).push().key;
-    if (!newKey) throw new Error("Failed to create key for auto-replied email record.");
-
-    await db.ref(`${roots.autoRepliedEmails}/${newKey}`).set({
-        email: normalizedEmail,
-        firstAutoReplyAt: new Date().toISOString(),
-        inboxEmailId,
-        leadId: leadId || null,
-    });
-
-    return newKey;
-};
-
-export const getAutoRepliedEmails = async (companyId: string): Promise<AutoRepliedEmail[]> => {
-    const snapshot = await db.ref(FOLDER_ROOTS(companyId).autoRepliedEmails).once('value');
-    if (!snapshot.exists()) return [];
-
-    const results: AutoRepliedEmail[] = [];
-    snapshot.forEach((child) => {
-        results.push({ id: child.key!, ...child.val() });
-    });
-    return results;
 };
 
 // Convert Lead to Sale - creates a sales document and marks lead as won

@@ -284,7 +284,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
         {
             icon: SparklesIcon,
             title: 'AI-Powered',
-            description: 'Automatic email analysis, smart response suggestions, and intelligent lead scoring.',
+            description: 'Scan invoices and receipts to auto-fill records, get smart expense categorisation, and analyse documents on the AI canvas.',
             color: 'brand',
         },
     ];
@@ -715,7 +715,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigate, currentP
                                     <span className="text-gray-400">/month</span>
                                 </div>
                                 <ul className="space-y-4 mb-8">
-                                    {['Unlimited vehicles', 'Full CRM & Pipeline', 'AI email analysis', 'Gmail integration', 'Priority support'].map((f, i) => (
+                                    {['Unlimited vehicles', 'Full CRM & Pipeline', 'Priority support'].map((f, i) => (
                                         <li key={i} className="flex items-center gap-3 text-gray-300 text-sm">
                                             <CheckCircleIcon className="w-5 h-5 text-brand-400" />
                                             {f}

@@ -10,6 +10,7 @@ import PrintableMiscInvoice from './PrintableMiscInvoice';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import Select from '../common/Select';
+import { useToast } from '../ui';
 
 
 interface MiscInvoiceEditorProps {
@@ -31,6 +32,7 @@ interface LineItem {
 const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, onSubmit, onClose, businessDetails }: MiscInvoiceEditorProps) => {
     const { openModal } = useUI();
     const { isVatRegistered } = useData();
+    const toast = useToast();
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     const [customerName, setCustomerName] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
@@ -160,6 +162,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
             }
         } catch (error) {
             console.error(error);
+            toast.error("Could not save the invoice. Please try again.");
             setPreviewData(null);
         } finally {
             setIsSubmitting(false);

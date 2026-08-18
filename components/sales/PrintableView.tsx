@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { SalesDocument, BusinessDetails, Vehicle, PartExchangeVehicle } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
+import { downloadElementAsPdf } from '../../utils/pdf';
 import { useData } from '../../hooks/useData';
+import { useToast } from '../ui';
 
 interface PrintableViewProps {
     document: SalesDocument;
@@ -34,6 +34,7 @@ const VehicleDetailGridItem: React.FC<{ label: string; value?: string | number |
 
 const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDetails, onClose, isPreview, onConfirm, onBack, isSubmitting = false }) => {
     const { isVatRegistered } = useData();
+    const toast = useToast();
     
     // Create sanitized, safe-to-render versions of details to prevent crashes from bad data.
     const safeCarDetails = useMemo(() => {
@@ -105,22 +106,18 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
         pdfRenderer.classList.remove('hidden');
 
         try {
-            const canvas = await html2canvas(clone, { 
-                scale: 3, 
-                useCORS: true, 
-                backgroundColor: '#ffffff',
-                width: a4Width,
-                height: a4Height 
-            });
-            const imgData = canvas.toDataURL('image/jpeg', 1.0);
-            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
+            await downloadElementAsPdf(
+                clone,
+                `${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`,
+                {
+                    canvas: { scale: 3, width: a4Width, height: a4Height },
+                    quality: 1.0,
+                    singlePage: true,
+                }
+            );
         } catch (error) {
             console.error("Error generating PDF:", error);
+            toast.error("Could not generate the PDF. Please try again.");
         } finally {
             pdfRenderer.innerHTML = '';
             pdfRenderer.classList.add('hidden');

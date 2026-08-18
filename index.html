@@ -11,7 +11,6 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <meta name="mobile-web-app-capable" content="yes">
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -114,54 +113,9 @@
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #4b5563; 
+        background: #4b5563;
       }
     </style>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            colors: {
-              'brand': {
-                '50': 'rgb(var(--color-brand-50) / <alpha-value>)',
-                '100': 'rgb(var(--color-brand-100) / <alpha-value>)',
-                '200': 'rgb(var(--color-brand-200) / <alpha-value>)',
-                '300': 'rgb(var(--color-brand-300) / <alpha-value>)',
-                '400': 'rgb(var(--color-brand-400) / <alpha-value>)',
-                '500': 'rgb(var(--color-brand-500) / <alpha-value>)',
-                '600': 'rgb(var(--color-brand-600) / <alpha-value>)',
-                '700': 'rgb(var(--color-brand-700) / <alpha-value>)',
-                '800': 'rgb(var(--color-brand-800) / <alpha-value>)',
-                '900': 'rgb(var(--color-brand-900) / <alpha-value>)',
-                '950': 'rgb(var(--color-brand-950) / <alpha-value>)',
-              },
-            }
-          }
-        }
-      }
-    </script>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.1.1",
-    "react-dom/client": "https://esm.sh/react-dom@^19.1.1/client",
-    "react/": "https://esm.sh/react@^19.1.1/",
-    "firebase/": "https://esm.sh/firebase@^12.1.0/",
-    "@google/genai": "https://esm.sh/@google/genai",
-    "papaparse": "https://esm.sh/papaparse@5.4.1",
-    "jspdf": "https://esm.sh/jspdf@2.5.1",
-    "html2canvas": "https://esm.sh/html2canvas@1.4.1",
-    "jszip": "https://esm.sh/jszip@3.10.1",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
-    "@heroicons/react/": "https://esm.sh/react@^2.2.0/",
-    "react-dropzone": "https://esm.sh/react-dropzone@^14.3.8",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.1.1"
-  }
-}
-</script>
 </head>
   <body class="bg-gray-950 antialiased selection:bg-brand-500 selection:text-white" style="background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #020617 75%); min-height: 100vh;">
     <div id="root"></div>

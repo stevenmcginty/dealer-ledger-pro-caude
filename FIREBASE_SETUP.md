@@ -1,12 +1,18 @@
 # Firebase Setup Guide
 
-Follow these steps to secure your Firebase backend. You will need to copy the contents of the rule files (`database.rules.json` and `storage.rules`) into your Firebase project settings. 
+Follow these steps to secure your Firebase backend. The rules live in the rule files (`database.rules.json` and `storage.rules`), which `firebase.json` wires up for deployment.
 
 For your convenience, the full rules are also laid out in the `FIREBASE_RULES.md` file.
 
+## Deploying the rules (recommended)
+
+`firebase.json` points the Firebase CLI at both rule files, so one command publishes them:
+
+    firebase deploy --only database,storage
+
 ## 1. Realtime Database Security Rules
 
-These rules ensure that users can only access the data for the company they belong to.
+These rules ensure that users can only access the data for the company they belong to, that a user's `companyId` link cannot be repointed once provisioned, and that subscription/billing metadata is admin-only.
 
 1.  Go to the [Firebase Console](https://console.firebase.google.com/).
 2.  Select your project (`motor-ledger-pro`).

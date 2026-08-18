@@ -1,18 +1,47 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
+
     "users": {
       "$uid": {
         ".read": "auth != null && (auth.uid == $uid || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')",
-        ".write": "auth != null && (auth.uid == $uid || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        ".write": "auth != null && auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42'",
+        "companyId": {
+          ".validate": "!data.exists() || newData.val() === data.val()"
+        }
       }
     },
+
     "companies": {
+      ".read": "auth != null && auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42'",
       "$companyId": {
         ".read": "auth != null && root.child('users').child(auth.uid).child('companyId').val() == $companyId",
-        ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+
+        "subscription": {
+          ".write": "auth != null && auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42'"
+        },
+        "featureOverrides": {
+          ".write": "auth != null && auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42'"
+        },
+        "meta": {
+          ".write": "auth != null && (auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || !data.exists())"
+        },
+
+        "$other": {
+          ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        }
       }
     },
-    ".read": false,
-    ".write": false
+
+    "admin": {
+      ".read": "auth != null && auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42'",
+      ".write": "auth != null && auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42'",
+      "superAdmins": {
+        "$uid": {
+          ".read": "auth != null && (auth.uid == $uid || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        }
+      }
+    }
   }
 }

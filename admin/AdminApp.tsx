@@ -9,6 +9,7 @@ import PlanManagement from './PlanManagement';
 import FeatureManagement from './FeatureManagement';
 import AdminNav from './components/AdminNav';
 import Spinner from '../components/common/Spinner';
+import { ToastProvider } from '../components/ui';
 
 const AdminContent: React.FC = () => {
     const {
@@ -79,7 +80,9 @@ const AdminContent: React.FC = () => {
 const AdminApp: React.FC = () => {
     return (
         <AdminProvider>
-            <AdminContent />
+            <ToastProvider>
+                <AdminContent />
+            </ToastProvider>
         </AdminProvider>
     );
 };

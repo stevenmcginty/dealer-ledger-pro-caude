@@ -14,7 +14,7 @@ const adminRef = (path: string) => `${ADMIN_ROOT}/${path}`;
 
 export const isSuperAdmin = async (uid: string): Promise<boolean> => {
     // Check against config first (fallback)
-    if (CONFIG.ADMIN_UIDS.includes(uid)) {
+    if (CONFIG.ADMIN_UID && CONFIG.ADMIN_UID === uid) {
         return true;
     }
     // Check database
@@ -451,7 +451,6 @@ export const seedDefaultFeatures = async (): Promise<void> => {
 
     const defaultFeatures = [
         { key: 'crm_pipeline', name: 'Sales Pipeline', description: 'Kanban-style lead pipeline', category: 'crm' as const, isActive: true },
-        { key: 'crm_inbox', name: 'Email Inbox', description: 'Unified inbox for lead emails', category: 'crm' as const, isActive: true },
         { key: 'crm_leads', name: 'Lead Management', description: 'Full lead tracking and history', category: 'crm' as const, isActive: true },
         { key: 'ai_assistant', name: 'AI Assistant', description: 'Gemini-powered AI helper', category: 'advanced' as const, isActive: true },
         { key: 'advanced_reporting', name: 'Advanced Reports', description: 'Custom report builder', category: 'reporting' as const, isActive: true },

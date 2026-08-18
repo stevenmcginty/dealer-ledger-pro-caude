@@ -16,10 +16,15 @@ const DemoVideoPage = lazy(() => import('./pages/DemoVideoPage'));
 type LandingPageType = 'home' | 'pricing' | 'demo' | 'contact';
 type Route = 'landing' | 'login' | 'app' | 'demo-video';
 
+// ?mode=screenshot lets the local screenshot script (scripts/take-screenshots.js,
+// which drives the Vite dev server on port 3000) view the app with a demo user.
+// It must never work in a deployed (production) build.
+const isScreenshotMode = (): boolean =>
+    import.meta.env.DEV && new URLSearchParams(window.location.search).get('mode') === 'screenshot';
+
 const getInitialRoute = (): Route => {
     const path = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('mode') === 'screenshot') return 'app';
+    if (isScreenshotMode()) return 'app';
 
     if (path === '/demo-video') return 'demo-video';
     if (path === '/app' || path.startsWith('/app/')) return 'app';
@@ -151,9 +156,9 @@ const App = () => {
 
     // App route - requires authentication (or screenshot mode)
     if (route === 'app') {
-        const isScreenshotMode = new URLSearchParams(window.location.search).get('mode') === 'screenshot';
+        const screenshotMode = isScreenshotMode();
 
-        if (!user && !isScreenshotMode) {
+        if (!user && !screenshotMode) {
             // Not logged in, show login
             return (
                 <div className="relative">
@@ -169,7 +174,7 @@ const App = () => {
         }
 
         // In screenshot mode, use a mock user if not logged in
-        const appUser = user || (isScreenshotMode ? { uid: 'demo', email: 'demo@example.com' } as any : null);
+        const appUser = user || (screenshotMode ? { uid: 'demo', email: 'demo@example.com' } as any : null);
 
         if (!appUser) return null;
 

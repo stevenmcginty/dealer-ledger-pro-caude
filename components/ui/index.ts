@@ -5,3 +5,4 @@ export { default as Avatar } from './Avatar';
 export { default as Input } from './Input';
 export { default as Tabs } from './Tabs';
 export { default as EmptyState } from './EmptyState';
+export { ToastProvider, useToast } from './Toast';

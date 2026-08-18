@@ -6,6 +6,7 @@ import UkDateInput from '../common/UkDateInput';
 import CurrencyInput from '../common/CurrencyInput';
 import InlineCategoryCombobox from './InlineCategoryCombobox';
 import Spinner from '../common/Spinner';
+import { useToast } from '../ui';
 import { XMarkIcon, CheckCircleIcon } from '../icons';
 
 interface AddTransactionRowProps {
@@ -20,6 +21,7 @@ interface AddTransactionRowProps {
 // Stays open after each save (cleared) so several can be entered in a row.
 const AddTransactionRow = ({ account, categories, onAddCategory, onClose }: AddTransactionRowProps) => {
     const { addTransactions } = useData();
+    const toast = useToast();
     const today = toYYYYMMDD(new Date());
 
     const [date, setDate] = useState(today);
@@ -83,7 +85,7 @@ const AddTransactionRow = ({ account, categories, onAddCategory, onClose }: AddT
             descRef.current?.focus();
         } catch (err) {
             console.error('Failed to add manual transaction:', err);
-            alert('Could not add the transaction. Please try again.');
+            toast.error('Could not add the transaction. Please try again.');
         } finally {
             setIsSaving(false);
         }

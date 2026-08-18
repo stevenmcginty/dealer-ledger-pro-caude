@@ -271,10 +271,18 @@ export const runMotSweepNow = functions
             throw new functions.https.HttpsError('failed-precondition', 'No company is linked to this account');
         }
 
+        // Same guard the connector callables use: the pointer must be backed by
+        // membership, or a repointed users/{uid}/companyId would sweep somebody
+        // else's stock.
+        const member = await db().ref(`companies/${companyId}/users/${uid}`).once('value');
+        if (!member.exists()) {
+            throw new functions.https.HttpsError('permission-denied', 'You do not have access to this company');
+        }
+
         try {
             return await sweepCompanyMots(companyId, 'manual', uid);
         } catch (error: any) {
             console.error(`Manual MOT sweep failed for company ${companyId}:`, error);
-            throw new functions.https.HttpsError('internal', error?.message || 'MOT sweep failed');
+            throw new functions.https.HttpsError('internal', 'MOT sweep failed');
         }
     });

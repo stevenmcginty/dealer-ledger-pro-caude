@@ -6,6 +6,7 @@ import Drawer from './Drawer';
 import DocumentListItem from './DocumentListItem';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
+import { useToast } from '../ui';
 import { ArchiveBoxIcon, DocumentTextIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from '../icons';
 import { SalesDocument } from '../../types';
 import UkDateInput from '../common/UkDateInput';
@@ -70,6 +71,7 @@ const SalesDocListItem: React.FC<SalesDocListItemProps> = ({ doc }) => {
 const FilingCabinet = () => {
     const { companyId, salesDocs, vehicles, allReceipts, deleteSalesDocument, deleteReceiptFileOnly } = useData();
     const { openModal } = useUI();
+    const toast = useToast();
 
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -211,7 +213,7 @@ const FilingCabinet = () => {
         const totalFiles = filteredReceipts.length + filteredPurchaseInvoicesFromVehicles.length;
         
         if (totalFiles === 0) {
-            alert("No downloadable files found in current view.");
+            toast.info("No downloadable files found in current view.");
             return;
         }
 
@@ -288,7 +290,7 @@ const FilingCabinet = () => {
         filteredSalesInvoices.forEach(s => itemsToArchive.push({ type: 'salesDoc', id: s.id, data: s })); // Sales docs don't have fileUrls stored, just data
         
         if (itemsToArchive.length === 0) {
-            alert("No items to archive in current view.");
+            toast.info("No items to archive in current view.");
             return;
         }
 

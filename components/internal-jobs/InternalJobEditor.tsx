@@ -6,6 +6,7 @@ import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
 import { formatCurrency } from '../../utils/helpers';
 import PrintableJobSheet from './PrintableJobSheet';
+import { useToast } from '../ui';
 
 interface InternalJobEditorProps {
     vehicles: Vehicle[];
@@ -32,6 +33,7 @@ const nextJobSheetNumber = (jobs: InternalJob[]): string => {
 };
 
 const InternalJobEditor = ({ vehicles, existingJobs, onSubmit, onCancel, businessDetails, editingJob }: InternalJobEditorProps) => {
+    const toast = useToast();
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
     const [jobDate, setJobDate] = useState(new Date().toISOString().split('T')[0]);
     const [mileageStr, setMileageStr] = useState('');
@@ -144,7 +146,7 @@ const InternalJobEditor = ({ vehicles, existingJobs, onSubmit, onCancel, busines
         e.preventDefault();
         const vehicle = vehicles.find(v => v.id === selectedVehicleId);
         if (!vehicle) {
-            alert('Please select a valid vehicle from the list.');
+            toast.error('Please select a valid vehicle from the list.');
             return;
         }
 
@@ -179,6 +181,7 @@ const InternalJobEditor = ({ vehicles, existingJobs, onSubmit, onCancel, busines
             onCancel();
         } catch (error) {
             console.error('Failed to save internal job sheet:', error);
+            toast.error("Could not save the job sheet. Please try again.");
             setPreviewData(null);
         } finally {
             setIsSubmitting(false);

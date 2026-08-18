@@ -116,12 +116,16 @@ export const callIngest = async (
             signal: AbortSignal.timeout(timeoutMs),
         });
     } catch (error: any) {
+        // The full error goes to the logs; the sentence that reaches the user
+        // says only what could not be reached, never the network stack's own
+        // account of why.
+        console.error(`Ingest call to ${connector.endpoint} failed`, error);
         const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
         return {
             ok: false,
             message: timedOut
                 ? `${hostOf(connector.endpoint)} did not answer in time.`
-                : `Could not reach ${hostOf(connector.endpoint)} — ${error?.message || 'no answer'}.`,
+                : `Could not reach ${hostOf(connector.endpoint)}.`,
         };
     }
 

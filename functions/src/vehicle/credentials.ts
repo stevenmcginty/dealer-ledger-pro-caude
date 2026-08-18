@@ -1,8 +1,9 @@
 /**
  * Credential loading for the government vehicle APIs.
  *
- * Follows the same pattern as the Gmail functions: prefer process.env (populated
- * from functions/.env at deploy time), fall back to the legacy functions.config().
+ * Loads DVSA/DVLA credentials from environment config: prefer process.env
+ * (populated from functions/.env at deploy time), fall back to the legacy
+ * functions.config().
  */
 
 import * as functions from 'firebase-functions';

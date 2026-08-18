@@ -10,6 +10,7 @@ import CurrencyInput from '../common/CurrencyInput';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
+import { useToast } from '../ui';
 
 interface ExpenseEditorProps {
   companyId: string;
@@ -66,6 +67,7 @@ const ScanProgressIndicator = ({ progress }: { progress: ScanProgress }) => {
 
 const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillData, imageFile, onClear, categories, allReceipts }: ExpenseEditorProps) => {
     const { deleteReceipt } = useData();
+    const toast = useToast();
     const [formData, setFormData] = useState<Partial<NewReceipt>>({});
     const [amountStr, setAmountStr] = useState('');
     const [vatStr, setVatStr] = useState('');
@@ -225,7 +227,7 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
                 onClear(); // This is closeModal
             } catch (error) {
                 console.error("Failed to delete receipt:", error);
-                alert("Could not delete the receipt. Please try again.");
+                toast.error("Could not delete the receipt. Please try again.");
             } finally {
                 setIsSubmitting(false);
             }

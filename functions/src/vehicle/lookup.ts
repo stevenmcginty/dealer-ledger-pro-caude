@@ -206,7 +206,12 @@ export const lookupVehicle = async (rawReg: string, force = false): Promise<Vehi
 
 /**
  * Callable used by the vehicle form and the invoice scanner.
- * data: { reg: string, force?: boolean }
+ * data: { reg: string }
+ *
+ * The 24h cache applies to every caller. A `force` flag from the client is
+ * ignored: letting a client opt out of the cache is letting it spend the
+ * government APIs' rate limit at will. Only server-side callers (the MOT
+ * sweep, whose period matches the cache's) may bypass it.
  */
 export const lookupVehicleByReg = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
@@ -219,9 +224,9 @@ export const lookupVehicleByReg = functions.https.onCall(async (data, context) =
     }
 
     try {
-        return await lookupVehicle(reg, !!data?.force);
+        return await lookupVehicle(reg);
     } catch (error: any) {
         console.error(`Vehicle lookup failed for ${reg}:`, error);
-        throw new functions.https.HttpsError('internal', error?.message || 'Vehicle lookup failed');
+        throw new functions.https.HttpsError('internal', 'Vehicle lookup failed');
     }
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button } from '../ui';
+import { Button, useToast } from '../ui';
 import { XMarkIcon, DocumentTextIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import { Lead } from '../../types';
@@ -11,6 +11,7 @@ interface AddNoteModalProps {
 
 const AddNoteModal: React.FC<AddNoteModalProps> = ({ lead, onClose }) => {
     const { addLeadActivity } = useData();
+    const toast = useToast();
     const [note, setNote] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -29,6 +30,7 @@ const AddNoteModal: React.FC<AddNoteModalProps> = ({ lead, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error adding note:', error);
+            toast.error("Could not add the note. Please try again.");
         } finally {
             setIsSubmitting(false);
         }

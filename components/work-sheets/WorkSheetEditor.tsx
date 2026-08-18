@@ -7,6 +7,7 @@ import UkDateInput from '../common/UkDateInput';
 import CurrencyInput from '../common/CurrencyInput';
 import { formatCurrency } from '../../utils/helpers';
 import Select from '../common/Select';
+import { useToast } from '../ui';
 
 interface WorkSheetEditorProps {
     vehicles: Vehicle[];
@@ -23,6 +24,7 @@ interface WorkItem {
 }
 
 const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editingSheet }: WorkSheetEditorProps) => {
+    const toast = useToast();
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
     const [workDate, setWorkDate] = useState(new Date().toISOString().split('T')[0]);
     const [recordType, setRecordType] = useState<'customer' | 'internal'>('customer');
@@ -126,7 +128,7 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
         e.preventDefault();
         const vehicle = vehicles.find(v => v.id === selectedVehicleId);
         if (!vehicle) {
-            alert('Please select a valid vehicle from the list.');
+            toast.error('Please select a valid vehicle from the list.');
             return;
         }
 
@@ -176,7 +178,8 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
             onCancel(); // this is closeModal from parent
         } catch (error) {
             console.error("Failed to save work sheet:", error);
-            setPreviewData(null); 
+            toast.error("Could not save the work sheet. Please try again.");
+            setPreviewData(null);
         } finally {
             setIsSubmitting(false);
         }

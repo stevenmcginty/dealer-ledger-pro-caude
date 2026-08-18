@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Badge, Avatar } from '../ui';
+import { Card, Avatar } from '../ui';
 import { Lead, LeadStage } from '../../types';
 import { PhoneIcon, EnvelopeIcon } from '../icons';
 
@@ -79,7 +79,7 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, isDragging }) => {
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    window.location.href = `mailto:${lead.email}`;
+                                    window.location.href = `mailto:${encodeURIComponent(lead.email)}`;
                                 }}
                                 className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
                                 title={lead.email}
@@ -91,18 +91,13 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, isDragging }) => {
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    window.location.href = `tel:${lead.phone}`;
+                                    window.location.href = `tel:${encodeURIComponent(lead.phone)}`;
                                 }}
                                 className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
                                 title={lead.phone}
                             >
                                 <PhoneIcon className="w-4 h-4" />
                             </button>
-                        )}
-                        {lead.hasReceivedAutoReply && (
-                            <Badge variant="success" size="sm" className="ml-auto">
-                                Auto-replied
-                            </Badge>
                         )}
                     </div>
                 </Card.Body>

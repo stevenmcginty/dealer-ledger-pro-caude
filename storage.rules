@@ -1,1 +1,44 @@
-��^��ޮȨ
+rules_version = '2';
+
+// Uploads are written to {companyId}/{userId}/{folder}/{fileName} — see
+// uploadFile()/uploadBlob() in services/dataService.ts. The {companyId} segment
+// is trustworthy because database.rules.json pins users/{uid}/companyId
+// (immutable once set), so a signed-in user cannot point their companyId at
+// another company to read or write its files.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // The path structure is: {companyId}/{userId}/{folder}/{fileName}
+    // e.g. -OD...xyz/HH...1b3/receipts/scan_123.jpg
+    match /{companyId}/{userId}/{path=**} {
+
+      // Function to verify that the user requesting access belongs to the company
+      // specified in the file path. It does this by checking the Realtime Database.
+      function isUserInCompany() {
+        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
+      }
+
+      // READ access is granted if the user is authenticated and is a member of the company.
+      // This allows any user within a company to view files, which is suitable for a single-user-per-company model.
+      allow read: if request.auth != null && isUserInCompany();
+
+      // WRITE access (create, update) is more restrictive.
+      // It's only granted if the user is authenticated, belongs to the company,
+      // AND is writing to their own designated user folder. This prevents cross-user writing.
+      // Limits: under 25MB, and images or PDFs only. application/octet-stream (and an
+      // empty type) are also allowed because the filing-cabinet restore flow
+      // (RestoreModal.tsx) re-uploads blobs unpacked from a zip, whose MIME type
+      // the SDK cannot recover.
+      allow create, update: if request.auth != null && request.auth.uid == userId && isUserInCompany()
+        && request.resource.size < 25 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType.matches('application/pdf')
+            || request.resource.contentType == 'application/octet-stream'
+            || request.resource.contentType == '');
+
+      // DELETE keeps the same ownership scoping; size and type limits do not apply
+      // to deletes (request.resource is not available for them).
+      allow delete: if request.auth != null && request.auth.uid == userId && isUserInCompany();
+    }
+  }
+}

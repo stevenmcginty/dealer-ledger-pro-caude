@@ -1,7 +1,7 @@
 
 
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
-import { DataContextState, ToDoItem, BusinessDetails, Lead, InboxEmail, EmailTemplate, LeadStage } from '../types';
+import { DataContextState, ToDoItem, BusinessDetails, Lead, EmailTemplate, LeadStage } from '../types';
 import * as dataService from '../services/dataService';
 import { User, onAuthStateChanged } from '../services/firebase';
 import * as syncManager from '../services/syncManager';
@@ -21,6 +21,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
     const [businessDetails, setBusinessDetails] = useState<BusinessDetails | null>(null);
     const [todos, setTodos] = useState<ToDoItem[]>([]);
     const [workSheets, setWorkSheets] = useState<any[]>([]);
+    const [pdis, setPdis] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [miscInvoices, setMiscInvoices] = useState<any[]>([]);
     const [jobInvoices, setJobInvoices] = useState<any[]>([]);
@@ -34,7 +35,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
 
     // CRM States
     const [leads, setLeads] = useState<Lead[]>([]);
-    const [inboxEmails, setInboxEmails] = useState<InboxEmail[]>([]);
     const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
     const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
@@ -111,6 +111,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
             dataService.subscribeToBusinessDetails(companyId, setBusinessDetails),
             dataService.subscribeToToDos(companyId, setTodos),
             dataService.subscribeToWorkSheets(companyId, setWorkSheets),
+            dataService.subscribeToPdis(companyId, setPdis),
             dataService.subscribeToCustomers(companyId, setCustomers),
             dataService.subscribeToMiscInvoices(companyId, setMiscInvoices),
             dataService.subscribeToJobInvoices(companyId, setJobInvoices),
@@ -123,7 +124,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
             dataService.subscribeToUploadBatches(companyId, setUploadBatches),
             // CRM Subscriptions
             dataService.subscribeToLeads(companyId, setLeads),
-            dataService.subscribeToInboxEmails(companyId, setInboxEmails),
             dataService.subscribeToEmailTemplates(companyId, setEmailTemplates),
         ];
 
@@ -209,6 +209,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         theme,
         todos: mergedTodos,
         workSheets,
+        pdis,
         customers,
         miscInvoices,
         salesDocs,
@@ -223,7 +224,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
 
         // CRM State
         leads,
-        inboxEmails,
         emailTemplates,
         selectedLeadId,
 
@@ -259,6 +259,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         markToDosAsComplete: (ids) => dataService.markToDosAsComplete(companyId!, ids),
         archivePrepTasks: (ids) => dataService.archiveToDos(companyId!, ids),
         unarchivePrepTasks: (ids) => dataService.unarchiveToDos(companyId!, ids),
+        addPdi: (data) => dataService.addPdi(companyId!, data),
+        updatePdi: (id, data) => dataService.updatePdi(companyId!, id, data),
+        deletePdi: (id) => dataService.deletePdi(companyId!, id),
         addWorkSheet: (data) => dataService.addWorkSheet(companyId!, data),
         updateWorkSheet: (id, data) => dataService.updateWorkSheet(companyId!, id, data),
         deleteWorkSheet: (id) => dataService.deleteWorkSheet(companyId!, id),
@@ -296,9 +299,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteLead: (id) => dataService.deleteLead(companyId!, id),
         updateLeadStage: (id, stage) => dataService.updateLeadStage(companyId!, id, stage),
         addLeadActivity: (leadId, activity) => dataService.addLeadActivity(companyId!, leadId, activity),
-        addInboxEmail: (data) => dataService.addInboxEmail(companyId!, data),
-        updateInboxEmail: (id, data) => dataService.updateInboxEmail(companyId!, id, data),
-        deleteInboxEmail: (id) => dataService.deleteInboxEmail(companyId!, id),
         addEmailTemplate: (data) => dataService.addEmailTemplate(companyId!, data),
         updateEmailTemplate: (id, data) => dataService.updateEmailTemplate(companyId!, id, data),
         deleteEmailTemplate: (id) => dataService.deleteEmailTemplate(companyId!, id),
@@ -327,7 +327,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteDataAndFilesByCategories: (categories) => dataService.deleteDataAndFilesByCategories(companyId!, user.uid, categories),
         batchArchiveDelete: (items) => dataService.batchArchiveDelete(companyId!, items),
         batchRestore: (manifest) => dataService.batchRestore(companyId!, manifest),
-    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, theme, mergedTodos, workSheets, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, inboxEmails, emailTemplates, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
+    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, theme, mergedTodos, workSheets, pdis, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, emailTemplates, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
 
     return (
         <DataContext.Provider value={value}>

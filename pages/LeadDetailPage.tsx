@@ -119,7 +119,7 @@ const LeadDetailPage: React.FC = () => {
                                     <dt className="text-gray-500 mb-1">Email</dt>
                                     <dd className="text-white">
                                         <a
-                                            href={`mailto:${lead.email}`}
+                                            href={`mailto:${encodeURIComponent(lead.email)}`}
                                             className="hover:text-brand-400 transition-colors"
                                         >
                                             {lead.email}
@@ -131,7 +131,7 @@ const LeadDetailPage: React.FC = () => {
                                         <dt className="text-gray-500 mb-1">Phone</dt>
                                         <dd className="text-white">
                                             <a
-                                                href={`tel:${lead.phone}`}
+                                                href={`tel:${encodeURIComponent(lead.phone)}`}
                                                 className="hover:text-brand-400 transition-colors"
                                             >
                                                 {lead.phone}
@@ -200,7 +200,7 @@ const LeadDetailPage: React.FC = () => {
                                 Log Call
                             </button>
                             <button
-                                onClick={() => window.location.href = `mailto:${lead.email}`}
+                                onClick={() => window.location.href = `mailto:${encodeURIComponent(lead.email)}`}
                                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
                             >
                                 <div className="p-1.5 rounded-lg bg-blue-500/20">

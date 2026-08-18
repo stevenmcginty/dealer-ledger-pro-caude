@@ -5,6 +5,7 @@ import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon, DocumentTextIcon } from '../icons';
 import { JobInvoice } from '../../types';
 import UkDateInput from '../common/UkDateInput';
+import { useToast } from '../ui';
 
 interface ReportData {
     invoice: JobInvoice;
@@ -12,6 +13,7 @@ interface ReportData {
 
 const JobsReport = () => {
     const { jobInvoices } = useData();
+    const toast = useToast();
     
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -90,7 +92,7 @@ const JobsReport = () => {
         csvData.push(totalsRow);
 
         if (reportData.length === 0) {
-            alert("No data to download for the selected period.");
+            toast.info("No data to download for the selected period.");
             return;
         }
         const csv = Papa.unparse(csvData);

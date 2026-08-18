@@ -7,6 +7,7 @@ import { ArrowDownTrayIcon, BanknotesIcon, CreditCardIcon, CalculatorIcon, Excla
 import UkDateInput from '../common/UkDateInput';
 import { StatementTransaction } from '../../types';
 import Select from '../common/Select';
+import { useToast } from '../ui';
 
 interface ReportRow {
     key: string;
@@ -23,6 +24,7 @@ interface ReportRow {
 
 const VatTransactionsReport = () => {
     const { transactions, financialAccounts } = useData();
+    const toast = useToast();
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
@@ -104,7 +106,7 @@ const VatTransactionsReport = () => {
         csvData.push({ 'Date': 'NET VAT DUE / (RECLAIMABLE)', 'Gross Total': netVatDue.toFixed(2) } as any);
 
         if (reportRows.length === 0) {
-            alert("No transactions to download for the selected period.");
+            toast.info("No transactions to download for the selected period.");
             return;
         }
 

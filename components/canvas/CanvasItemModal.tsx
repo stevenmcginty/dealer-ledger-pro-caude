@@ -32,6 +32,9 @@ const CanvasItemModal = ({ item }: { item: CanvasItem }) => {
 
     const itemType = item.itemType || 'file';
     const isImage = itemType === 'file' && item.fileType?.startsWith('image/');
+    // Only treat fileUrl as a clickable link when it is a proper web URL, so a
+    // crafted value like "javascript:..." can't turn the link into a script URL.
+    const isSafeFileUrl = !!item.fileUrl && /^https?:\/\//i.test(item.fileUrl);
 
     const handleSave = async (updates: CanvasItemUpdate) => {
         setSaveStatus('saving');
@@ -83,7 +86,7 @@ const CanvasItemModal = ({ item }: { item: CanvasItem }) => {
                     placeholder="Untitled Note"
                 />
                 <div className="flex items-center gap-2 pl-4">
-                    {itemType === 'file' && item.fileUrl && (
+                    {itemType === 'file' && isSafeFileUrl && (
                         <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Open in new tab"><ArrowTopRightOnSquareIcon className="h-5 w-5"/></a>
                     )}
                     <button onClick={handleDelete} className={`p-2 rounded-full ${itemType === 'note' ? 'text-gray-600 hover:bg-black/10' : 'text-gray-400 hover:bg-gray-700'}`} title="Delete Item">{isDeleting ? <Spinner className="h-5 w-5"/> : <TrashIcon className="h-5 w-5"/>}</button>
@@ -98,7 +101,11 @@ const CanvasItemModal = ({ item }: { item: CanvasItem }) => {
                         ) : (
                             <div className="text-center text-gray-400">
                                 <p>Cannot preview this file type.</p>
-                                {item.fileUrl && <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">Open file</a>}
+                                {isSafeFileUrl ? (
+                                    <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">Open file</a>
+                                ) : item.fileUrl ? (
+                                    <span className="break-all">{item.fileUrl}</span>
+                                ) : null}
                             </div>
                         )}
                     </div>

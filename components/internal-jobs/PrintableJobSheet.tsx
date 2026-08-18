@@ -1,9 +1,8 @@
 import React from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { InternalJob, BusinessDetails } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
+import { downloadElementAsPdf } from '../../utils/pdf';
 import { SheetPage, SheetBand, SheetBody, SheetSection, SheetRow, SheetFooter, SheetToolbar } from '../common/SpecSheet';
 
 interface PrintableJobSheetProps {
@@ -29,16 +28,11 @@ const PrintableJobSheet = ({ job, businessDetails, onClose, isPreview, onConfirm
     const handleDownloadPdf = async () => {
         const input = document.getElementById('printable-job-sheet');
         if (!input) return;
-
-        const canvas = await html2canvas(input, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.8);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`Internal-Job-Sheet-${job?.jobSheetNumber}-${car.reg || 'vehicle'}.pdf`);
+        await downloadElementAsPdf(
+            input,
+            `Internal-Job-Sheet-${job?.jobSheetNumber}-${car.reg || 'vehicle'}.pdf`,
+            { singlePage: true }
+        );
     };
 
     return (

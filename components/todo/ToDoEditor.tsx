@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NewToDoItem, ToDoItem, Vehicle, ToDoItemUpdate } from '../../types';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
+import { useToast } from '../ui';
 import { XMarkIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import UkDateInput from '../common/UkDateInput';
@@ -15,6 +16,7 @@ interface ToDoEditorProps {
 const ToDoEditor = ({ type, editingTodo, prefillData }: ToDoEditorProps) => {
     const { closeModal } = useUI();
     const { vehicles, addToDo, updateToDo } = useData();
+    const toast = useToast();
     
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<'normal' | 'high'>('normal');
@@ -115,12 +117,12 @@ const ToDoEditor = ({ type, editingTodo, prefillData }: ToDoEditorProps) => {
         if (isSubmitting) return;
 
         if (!description.trim()) {
-            alert('Please enter a description.');
+            toast.error('Please enter a description.');
             return;
         }
-        
+
         if (isPrep && !vehicleId) {
-            alert('Please select a vehicle from the list for this prep task.');
+            toast.error('Please select a vehicle from the list for this prep task.');
             return;
         }
 
@@ -175,7 +177,7 @@ const ToDoEditor = ({ type, editingTodo, prefillData }: ToDoEditorProps) => {
             closeModal();
         } catch (error) {
             console.error("Failed to save ToDo item:", error);
-            alert(`An error occurred while saving: ${error instanceof Error ? error.message : String(error)}`);
+            toast.error(`An error occurred while saving: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
             setIsSubmitting(false);
         }

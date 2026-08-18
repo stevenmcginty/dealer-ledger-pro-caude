@@ -1,8 +1,12 @@
 
 
-export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'internalJobs' | 'jobInvoices' | 'pipeline' | 'inbox' | 'leadDetail';
+export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'internalJobs' | 'jobInvoices' | 'pipeline' | 'leadDetail' | 'pdi';
 
-export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'internalJob' | 'deleteInternalJobConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'invoicePicker' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'emailComposer' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'createLeadFromEmail' | 'analyzeEmail' | 'addTestEmail' | 'statementMapping';
+// Runtime mirror of the View union, for URL routing (/app/<view>). If you add a
+// view above, add it here too so it becomes deep-linkable.
+export const APP_VIEWS: View[] = ['dashboard', 'stock', 'sales', 'expenses', 'income', 'ledger', 'vat', 'filingCabinet', 'settings', 'accountant', 'garage', 'canvas', 'workSheets', 'workPrep', 'internalJobs', 'jobInvoices', 'pipeline', 'leadDetail', 'pdi'];
+
+export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'internalJob' | 'deleteInternalJobConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'invoicePicker' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'statementMapping' | 'pdi' | 'deletePdiConfirm';
 
 export type ModalState = { type: ModalType; data?: any } | null;
 
@@ -433,6 +437,67 @@ export const workSheetRecordType = (sheet: Pick<WorkSheet, 'recordType' | 'custo
 export type NewWorkSheet = Omit<WorkSheet, 'id' | 'createdAt'>;
 export type WorkSheetUpdate = Partial<NewWorkSheet>;
 
+/**
+ * Pre-Delivery Inspection.
+ *
+ * The checklist is stored as a snapshot of sections and items rather than as a
+ * set of answers keyed against a template. The template in utils/pdi.ts will
+ * grow and change; a PDI signed off two years ago has to keep printing exactly
+ * as it was signed off, so the wording travels with the record.
+ */
+export type PdiCheckStatus = 'pass' | 'advisory' | 'fail' | 'na';
+
+export interface PdiCheckItem {
+    /** Stable within a PDI only — used as a React key and for update targeting. */
+    id: string;
+    label: string;
+    status: PdiCheckStatus;
+    /** Short free text shown against the item on the certificate. */
+    note?: string | null;
+}
+
+export interface PdiSection {
+    id: string;
+    title: string;
+    items: PdiCheckItem[];
+}
+
+export type PdiTyrePosition = 'NSF' | 'OSF' | 'NSR' | 'OSR' | 'Spare';
+
+export interface PdiTyre {
+    position: PdiTyrePosition;
+    make?: string | null;
+    size?: string | null;
+    /** Tread depth in millimetres. UK legal minimum is 1.6mm across the centre 3/4. */
+    treadDepth?: number | null;
+    status: PdiCheckStatus;
+    /** Left off the certificate entirely when the car carries no spare. */
+    fitted?: boolean;
+}
+
+export interface PDI {
+    id: string;
+    pdiNumber: string;
+    vehicleId: string;
+    carDetails: Omit<Vehicle, 'id' | 'createdAt' | 'status'>; // Snapshot
+    /** Adjustable by the inspector — not necessarily the day the record was saved. */
+    inspectionDate: string;
+    /** Odometer at inspection. Seeded from the vehicle but editable. */
+    mileage?: number | null;
+    inspectedBy?: string | null;
+    /** Where the locking wheel nut key is stowed, so the buyer can actually find it. */
+    lockingWheelNutLocation?: string | null;
+    sections: PdiSection[];
+    tyres: PdiTyre[];
+    /** Headline declaration printed at the foot of the certificate. */
+    roadworthy: boolean;
+    advisoryNotes?: string | null;
+    createdAt: number;
+}
+
+export type NewPDI = Omit<PDI, 'id' | 'createdAt'>;
+export type PDIUpdate = Partial<NewPDI>;
+
 export interface Customer {
     id: string;
     name: string;
@@ -682,44 +747,13 @@ export interface Lead {
     stage: LeadStage;
     history: Activity[];
     value?: number;
-    hasReceivedAutoReply: boolean;
     createdAt: string;
     updatedAt: string;
 }
-export type NewLead = Omit<Lead, 'id' | 'history' | 'hasReceivedAutoReply'> & {
+export type NewLead = Omit<Lead, 'id' | 'history'> & {
     history?: Activity[];
-    hasReceivedAutoReply?: boolean;
 };
 export type LeadUpdate = Partial<NewLead>;
-
-export type EmailStatus =
-    | 'UNREAD'
-    | 'ANALYZING'
-    | 'NEEDS_REVIEW'
-    | 'SCHEDULED'
-    | 'SENT'
-    | 'ARCHIVED';
-
-export interface InboxEmail {
-    id: string;
-    leadId?: string;
-    source: string;
-    senderName: string;
-    senderEmail: string;
-    subject: string;
-    body: string;
-    receivedAt: string;
-    status: EmailStatus;
-    analysis?: {
-        vehicleExtracted?: string;
-        suggestedVehicleId?: string;
-        suggestedOwner?: string;
-        intent?: string;
-    };
-    createdAt: number;
-}
-export type NewInboxEmail = Omit<InboxEmail, 'id' | 'createdAt'>;
-export type InboxEmailUpdate = Partial<NewInboxEmail>;
 
 export interface EmailTemplate {
     id: string;
@@ -735,17 +769,6 @@ export type EmailTemplateUpdate = Partial<NewEmailTemplate>;
 // CRM Settings
 export interface CRMSettings {
     id: string;
-    // Gmail Integration
-    gmailConnected: boolean;
-    gmailEmail?: string;
-    gmailAccessToken?: string;
-    gmailRefreshToken?: string;
-    gmailTokenExpiry?: number;
-
-    // Auto-response Settings
-    autoResponseEnabled: boolean;
-    autoResponseDelay: number; // minutes
-    autoResponseTemplate?: string;
 
     // AI Settings
     aiEnabled: boolean;
@@ -776,6 +799,117 @@ export interface CRMSettings {
 }
 export type CRMSettingsUpdate = Partial<Omit<CRMSettings, 'id' | 'createdAt'>>;
 
+// --- Admin console types (admin/, contexts/AdminContext.tsx, services/adminService.ts) ---
+// The SaaS back office that manages businesses, plans and features. It lives
+// under /companies and /admin in the database, separate from the dealer data
+// routed by businessId above.
+
+export type AdminPermission =
+    | 'manage_businesses'
+    | 'manage_subscriptions'
+    | 'manage_features'
+    | 'manage_plans'
+    | 'manage_admins'
+    | 'view_analytics'
+    | 'impersonate_user';
+
+export interface SuperAdmin {
+    uid: string;
+    email: string;
+    /** e.g. 'super_admin'; rendered with underscores turned into spaces. */
+    role: string;
+    permissions: AdminPermission[];
+    createdAt: number;
+    lastLoginAt: number;
+}
+
+export interface SubscriptionPlan {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    /** Price in pence. */
+    priceMonthly: number;
+    priceYearly: number;
+    stripePriceIdMonthly: string;
+    stripePriceIdYearly: string;
+    featureIds: string[];
+    /** -1 means unlimited users. */
+    maxUsers: number;
+    storageLimitMB: number;
+    isActive: boolean;
+    displayOrder: number;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export type FeatureCategory = 'core' | 'crm' | 'reporting' | 'integrations' | 'advanced';
+
+export interface Feature {
+    id: string;
+    /** Stable identifier plans reference, e.g. 'crm_pipeline'. */
+    key: string;
+    name: string;
+    description: string;
+    category: FeatureCategory;
+    isActive: boolean;
+    createdAt: number;
+}
+
+export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled';
+
+export interface BusinessSubscription {
+    id: string;
+    businessId: string;
+    planId: string;
+    status: SubscriptionStatus;
+    billingCycle: 'monthly' | 'yearly';
+    /** ISO dates (YYYY-MM-DD). */
+    currentPeriodStart: string;
+    currentPeriodEnd: string;
+    cancelAtPeriodEnd: boolean;
+    stripeCustomerId: string;
+    stripeSubscriptionId: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+/** Per-business switch that beats whatever the assigned plan grants. */
+export interface BusinessFeatureOverride {
+    featureId: string;
+    enabled: boolean;
+    /** ISO date the override lapses; null or absent = no expiry. */
+    expiresAt?: string | null;
+}
+
+/** One company's record as the admin console sees it (admin/plans, features and subscription flattened in). */
+export interface AdminBusinessRecord {
+    id: string;
+    ownerUid: string;
+    ownerEmail: string;
+    businessName: string;
+    createdAt: number;
+    provisionedBy: string;
+    subscription?: BusinessSubscription;
+    featureOverrides: BusinessFeatureOverride[];
+    lastActivityAt?: number;
+    userCount: number;
+}
+
+export type AdminActivityTarget = 'business' | 'subscription' | 'plan' | 'feature';
+
+export interface AdminActivityLog {
+    id: string;
+    adminUid: string;
+    action: string;
+    targetType: AdminActivityTarget;
+    targetId: string;
+    details?: any;
+    timestamp: number;
+}
+
+export type AdminView = 'dashboard' | 'businesses' | 'plans' | 'features' | 'business-detail';
+
 export interface DataContextState {
     user: any;
     googleUser: any;
@@ -791,6 +925,7 @@ export interface DataContextState {
     theme: string;
     todos: ToDoItem[];
     workSheets: WorkSheet[];
+    pdis: PDI[];
     customers: Customer[];
     miscInvoices: MiscInvoice[];
     salesDocs: SalesDocument[];
@@ -805,7 +940,6 @@ export interface DataContextState {
 
     // CRM State
     leads: Lead[];
-    inboxEmails: InboxEmail[];
     emailTemplates: EmailTemplate[];
     crmSettings: CRMSettings | null;
     selectedLeadId: string | null;
@@ -845,6 +979,9 @@ export interface DataContextState {
     addWorkSheet: (data: NewWorkSheet) => Promise<any>;
     updateWorkSheet: (id: string, data: WorkSheetUpdate) => Promise<void>;
     deleteWorkSheet: (id: string) => Promise<void>;
+    addPdi: (data: NewPDI) => Promise<any>;
+    updatePdi: (id: string, data: PDIUpdate) => Promise<void>;
+    deletePdi: (id: string) => Promise<void>;
     addInternalJob: (data: NewInternalJob) => Promise<any>;
     updateInternalJob: (id: string, data: InternalJobUpdate) => Promise<void>;
     deleteInternalJob: (id: string) => Promise<void>;
@@ -879,18 +1016,12 @@ export interface DataContextState {
     deleteLead: (id: string) => Promise<void>;
     updateLeadStage: (id: string, stage: LeadStage) => Promise<void>;
     addLeadActivity: (leadId: string, activity: Omit<Activity, 'id'>) => Promise<void>;
-    addInboxEmail: (data: NewInboxEmail) => Promise<string>;
-    updateInboxEmail: (id: string, data: InboxEmailUpdate) => Promise<void>;
-    deleteInboxEmail: (id: string) => Promise<void>;
     addEmailTemplate: (data: NewEmailTemplate) => Promise<string>;
     updateEmailTemplate: (id: string, data: EmailTemplateUpdate) => Promise<void>;
     deleteEmailTemplate: (id: string) => Promise<void>;
     setSelectedLeadId: (id: string | null) => void;
     convertLeadToSale: (leadId: string, saleData: NewSalesDocument) => Promise<void>;
     updateCRMSettings: (data: CRMSettingsUpdate) => Promise<void>;
-    connectGmail: () => Promise<void>;
-    disconnectGmail: () => Promise<void>;
-    sendEmail: (to: string, subject: string, body: string, leadId?: string) => Promise<void>;
 
     handleGoogleSignIn: () => void;
     handleGoogleSignOut: () => void;

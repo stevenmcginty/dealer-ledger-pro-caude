@@ -9,6 +9,7 @@ import { compressImage } from '../../utils/helpers';
 import { XMarkIcon, ExclamationTriangleIcon, ArrowUpTrayIcon, CheckCircleIcon } from '../icons';
 import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../utils/helpers';
 import Spinner from '../common/Spinner';
+import { useToast } from '../ui';
 
 interface ItemDisplayProps {
     item: any;
@@ -20,6 +21,7 @@ interface ItemDisplayProps {
 const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTransaction }) => {
     const { closeModal, openModal } = useUI();
     const { allReceipts, vehicles, reconcileTransactionFromSuggestion, updateTransaction, companyId, userId, expenseCategories, addReceipt } = useData();
+    const toast = useToast();
     const [selectedType, setSelectedType] = useState<'receipt' | 'vehicle'>('receipt');
     // Changed from single selectedId to array of selectedIds
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -44,6 +46,8 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
             });
             closeModal();
         } catch (e) {
+            console.error("Failed to mark transaction as a transfer:", e);
+            toast.error("Could not mark this as a transfer. Please try again.");
             setIsSubmitting(false);
         }
     };

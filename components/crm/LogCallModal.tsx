@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button } from '../ui';
+import { Button, useToast } from '../ui';
 import { XMarkIcon, PhoneIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import { Lead } from '../../types';
@@ -21,6 +21,7 @@ const CALL_OUTCOMES: { value: CallOutcome; label: string }[] = [
 
 const LogCallModal: React.FC<LogCallModalProps> = ({ lead, onClose }) => {
     const { addLeadActivity } = useData();
+    const toast = useToast();
     const [outcome, setOutcome] = useState<CallOutcome>('connected');
     const [notes, setNotes] = useState('');
     const [duration, setDuration] = useState('');
@@ -48,6 +49,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ lead, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error logging call:', error);
+            toast.error("Could not log the call. Please try again.");
         } finally {
             setIsSubmitting(false);
         }

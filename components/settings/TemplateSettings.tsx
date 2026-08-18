@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Badge, Input, EmptyState } from '../ui';
+import { Card, Button, Badge, Input, EmptyState, useToast } from '../ui';
 import { DocumentTextIcon, PlusIcon, PencilIcon, TrashIcon, SparklesIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import { EmailTemplate, NewEmailTemplate } from '../../types';
@@ -84,6 +84,7 @@ Best regards,
 
 const TemplateSettings: React.FC = () => {
     const { emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate } = useData();
+    const toast = useToast();
     const [isEditing, setIsEditing] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -101,7 +102,7 @@ const TemplateSettings: React.FC = () => {
 
     const handleCreateTemplate = async () => {
         if (!formData.name || !formData.subject || !formData.body) {
-            alert('Please fill in all fields');
+            toast.error('Please fill in all fields');
             return;
         }
         await addEmailTemplate(formData as NewEmailTemplate);

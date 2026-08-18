@@ -5,6 +5,7 @@ import { CalculatorIcon, ArrowDownTrayIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
+import { useToast } from '../ui';
 
 interface LedgerEntry {
     date: string;
@@ -22,6 +23,7 @@ interface LedgerEntry {
 
 const GeneralLedger = () => {
     const { transactions, salesDocs, vehicles } = useData();
+    const toast = useToast();
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
@@ -155,7 +157,7 @@ const GeneralLedger = () => {
             VAT: e.vat.toFixed(2),
         }));
         if (csvData.length === 0) {
-            alert("No data to download for the selected period.");
+            toast.info("No data to download for the selected period.");
             return;
         }
         const csv = Papa.unparse(csvData);

@@ -333,7 +333,7 @@ const IntegrationsPage = () => {
                 <Card.Body>
                     <div className="text-center py-4">
                         <p className="text-gray-400">
-                            Direct AutoTrader integration is coming soon. For now, leads from AutoTrader are synced via Gmail.
+                            Direct AutoTrader integration is coming soon. For now, AutoTrader leads arrive as forwarded emails and can be added to the pipeline manually.
                         </p>
                     </div>
                 </Card.Body>

@@ -1,9 +1,10 @@
 
 
 import React from 'react';
-import { Vehicle, SalesDocument, DocumentType } from '../../types';
+import { Vehicle, SalesDocument, DocumentType, PDI } from '../../types';
 import { useUI } from '../../hooks/useUI';
-import { XMarkIcon, EditIcon, UndoIcon, DocumentTextIcon } from '../icons';
+import { useData } from '../../hooks/useData';
+import { XMarkIcon, EditIcon, UndoIcon, DocumentTextIcon, ShieldCheckIcon } from '../icons';
 
 interface VehicleActionsModalProps {
     data: {
@@ -31,7 +32,14 @@ const ActionButton: React.FC<ActionButtonProps> = ({ onClick, children, classNam
 
 const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
     const { openModal, closeModal } = useUI();
+    const { pdis } = useData();
     const { vehicle, depositDoc, salesDoc, proformaDoc } = data;
+
+    // The most recent inspection for this car, if there is one. Looked up here
+    // rather than passed in, so every caller of this modal gets it for free.
+    const latestPdi: PDI | undefined = (pdis as PDI[])
+        .filter(pdi => pdi.vehicleId === vehicle.id)
+        .sort((a, b) => (b.inspectionDate || '').localeCompare(a.inspectionDate || '') || (b.createdAt || 0) - (a.createdAt || 0))[0];
 
     const handleAction = (action: () => void) => {
         closeModal(); // Close this modal first
@@ -45,6 +53,8 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
     const onUndoClick = (doc: SalesDocument) => handleAction(() => openModal('undoSaleConfirm', doc));
     const onUndoDepositClick = (doc: SalesDocument) => handleAction(() => openModal('undoDepositConfirm', doc));
     const onForceUndoClick = (veh: Vehicle) => handleAction(() => openModal('forceUndoSaleConfirm', veh));
+    const onNewPdiClick = () => handleAction(() => openModal('pdi', { vehicle }));
+    const onViewPdiClick = (pdi: PDI) => handleAction(() => openModal('pdi', { viewOnly: true, pdi }));
 
     return (
         <div className="w-full">
@@ -62,6 +72,24 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                     <EditIcon className="h-5 w-5" />
                     <span>Edit Vehicle Details</span>
                 </ActionButton>
+
+                {latestPdi ? (
+                    <>
+                        <ActionButton onClick={() => onViewPdiClick(latestPdi)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                            <ShieldCheckIcon className="h-5 w-5 text-emerald-400" />
+                            <span>View PDI #{latestPdi.pdiNumber}</span>
+                        </ActionButton>
+                        <ActionButton onClick={onNewPdiClick} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                            <ShieldCheckIcon className="h-5 w-5 text-emerald-400" />
+                            <span>New PDI</span>
+                        </ActionButton>
+                    </>
+                ) : (
+                    <ActionButton onClick={onNewPdiClick} className="bg-gray-700/50 hover:bg-gray-700 text-white">
+                        <ShieldCheckIcon className="h-5 w-5 text-emerald-400" />
+                        <span>Create PDI</span>
+                    </ActionButton>
+                )}
 
                 {vehicle.status === 'Available' && (
                     <>

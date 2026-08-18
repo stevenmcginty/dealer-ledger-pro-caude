@@ -3,8 +3,7 @@ import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { DocumentTextIcon, CreditCardIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { useToast } from '../ui';
 import { exportMtdVatSheet } from '../../utils/mtdVatExport';
 
 const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Date; end: Date } => {
@@ -53,6 +52,7 @@ const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Dat
 const VatSummary = () => {
   // FIX: Replaced `isPaintShop` with `isServiceBusiness` which is available in the data context.
   const { transactions, salesDocs, vehicles, miscInvoices, businessDetails, isServiceBusiness, jobInvoices } = useData();
+  const toast = useToast();
   
   const [startDate, setStartDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).start));
   const [endDate, setEndDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).end));
@@ -63,6 +63,12 @@ const VatSummary = () => {
     if (!summaryRef.current) return;
     setExportingPdf(true);
     try {
+      // Kept local (not utils/pdf.ts) because this export interleaves a title
+      // page band between canvas capture and addImage; only the libraries load dynamically.
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
       const canvas = await html2canvas(summaryRef.current, {
         backgroundColor: '#1f2937',
         scale: 2,
@@ -83,6 +89,7 @@ const VatSummary = () => {
       pdf.save(`VAT-Summary-${startDate}-to-${endDate}.pdf`);
     } catch (err) {
       console.error('PDF export failed:', err);
+      toast.error("Could not export the PDF. Please try again.");
     } finally {
       setExportingPdf(false);
     }
@@ -180,6 +187,7 @@ const VatSummary = () => {
       });
     } catch (err) {
       console.error('MTD sheet export failed:', err);
+      toast.error("Could not export the MTD VAT sheet. Please try again.");
     }
   };
 
