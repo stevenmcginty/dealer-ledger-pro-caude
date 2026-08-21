@@ -3,6 +3,7 @@ import { View } from '../../types';
 import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ViewColumnsIcon, UserGroupIcon, ShieldCheckIcon } from '../icons';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
+import AppUpdateButton from '../common/AppUpdateButton';
 
 interface DesktopNavProps {
     onLogout: () => void;
@@ -96,6 +97,9 @@ const DesktopNav = ({ onLogout }: DesktopNavProps) => {
                 <div className="pt-4 mt-4 border-t border-gray-700">
                     <ul className="space-y-2">
                          <NavItem label={settingsItem.label} view={settingsItem.view} icon={settingsItem.icon} isActive={activeView === settingsItem.view} onClick={setActiveView} />
+                         <li>
+                             <AppUpdateButton variant="nav" />
+                         </li>
                          <li>
                              <button onClick={onLogout} className="flex items-center w-full p-2 text-base font-normal rounded-lg text-gray-300 hover:bg-gray-700 hover:text-white group">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>

@@ -1,7 +1,7 @@
 // Network-first service worker. Replaces the old cache-first-forever v1 worker:
 // pages are always fetched fresh (so deploys reach the browser immediately),
 // hashed static assets are cached, and all old caches are purged on activation.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v2';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -15,9 +15,23 @@ self.addEventListener('activate', event => {
   })());
 });
 
+self.addEventListener('message', event => {
+  if (event.data === 'SKIP_WAITING' || event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  // Never cache the version probe or the worker itself — the in-app Update
+  // button polls /version.json to know a deploy landed.
+  if (url.origin === self.location.origin && (url.pathname === '/version.json' || url.pathname === '/sw.js')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
 
   if (req.mode === 'navigate') {
     event.respondWith((async () => {

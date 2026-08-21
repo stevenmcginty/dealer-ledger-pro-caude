@@ -12,6 +12,8 @@ import DesktopNav from './components/nav/DesktopNav';
 import MobileNav from './components/nav/MobileNav';
 import NotificationBell from './components/nav/NotificationBell';
 import Spinner from './components/common/Spinner';
+import UpdateBanner from './components/common/UpdateBanner';
+import AppUpdateButton from './components/common/AppUpdateButton';
 import ModalManager from './components/common/ModalManager';
 import PermissionDeniedHandler from './components/auth/PermissionDeniedHandler';
 import { useToast } from './components/ui';
@@ -271,6 +273,7 @@ const LedgerCore = () => {
           width, and the overflow-hidden wrapper above clips the excess with no way to
           scroll to it (the "screen is cut off on mobile" bug). */}
       <main className="flex-1 flex flex-col min-h-0 min-w-0">
+         <UpdateBanner />
          <header className="md:hidden p-4 flex items-center justify-between border-b border-gray-700/50">
              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <CarIcon className={`h-8 w-8 text-brand-400 flex-shrink-0`} />
@@ -313,6 +316,7 @@ const LedgerCore = () => {
                       )}
                   </div>
                 )}
+                <AppUpdateButton />
                 <NotificationBell notifications={notifications} />
              </div>
         </header>
@@ -382,6 +386,7 @@ const LedgerCore = () => {
                     )}
                 </div>
                 
+                <AppUpdateButton />
                 <NotificationBell notifications={notifications} />
             </div>
         </header>

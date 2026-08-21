@@ -6,6 +6,7 @@ import { db, auth } from '../../services/firebase';
 import * as dataService from '../../services/dataService';
 import UkDateInput from '../common/UkDateInput';
 import SessionInfoCard from './SessionInfoCard';
+import AppUpdateCard from './AppUpdateCard';
 import FirebaseHealthCheckCard from './FirebaseHealthCheckCard';
 import MotSweepCard from './MotSweepCard';
 import Spinner from '../common/Spinner';
@@ -245,6 +246,8 @@ const BusinessDetailsPage = () => {
             {isAdmin && <AdminProvisioning />}
 
             <MotSweepCard />
+
+            <AppUpdateCard />
 
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
                 <h2 className="text-lg font-semibold text-white">Firebase Diagnostics</h2>

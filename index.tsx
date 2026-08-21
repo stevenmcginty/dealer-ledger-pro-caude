@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { ToastProvider } from './components/ui/Toast';
+import { AppUpdateProvider } from './contexts/AppUpdateContext';
 import { captureQuickActionFromUrl } from './utils/quickAction';
 import './styles.css';
 
@@ -21,7 +22,9 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <ToastProvider>
-        <App />
+        <AppUpdateProvider>
+          <App />
+        </AppUpdateProvider>
       </ToastProvider>
     </ErrorBoundary>
   </React.StrictMode>
