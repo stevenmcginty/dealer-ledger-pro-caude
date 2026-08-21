@@ -66,7 +66,7 @@ const readableError = (error: any, fallback: string): Error => {
 };
 
 const call = async <TReq, TRes>(name: string, payload: TReq, timeout: number, fallback: string): Promise<TRes> => {
-    const callable = httpsCallable<TReq, TRes>(getFunctions(), name, { timeout });
+    const callable = httpsCallable<TReq, TRes>(getFunctions(firebase.app()), name, { timeout });
     try {
         const { data } = await callable(payload);
         return data;

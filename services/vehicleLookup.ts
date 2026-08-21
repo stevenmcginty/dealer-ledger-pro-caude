@@ -6,8 +6,10 @@
  * server — nothing sensitive is bundled into the client.
  */
 
+import firebase from 'firebase/compat/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Vehicle, VehicleLookupResult } from '../types';
+import './firebase';
 
 /** Registrations are compared and sent without spaces, upper case. */
 export const normaliseReg = (input: string): string =>
@@ -28,6 +30,36 @@ export const isPlausibleUkReg = (input: string): boolean => {
 // round trip.
 const sessionCache = new Map<string, VehicleLookupResult>();
 
+/**
+ * Turn a Firebase callable failure into a sentence the form can show.
+ *
+ * `functions/not-found` means the Cloud Function itself is missing (wrong name
+ * or region), not that DVLA has no record for the plate. A blocked or dropped
+ * request (CSP, offline) surfaces as `unavailable` / "Failed to fetch".
+ */
+export const describeLookupError = (error: any, reg?: string): string => {
+    const code: string = error?.code || '';
+    const message: string = error?.message || 'Vehicle lookup failed.';
+
+    if (code === 'functions/unauthenticated') {
+        return 'You need to be signed in to look up a registration.';
+    }
+    if (code === 'functions/not-found') {
+        return 'The vehicle lookup service is not available. Try again later.';
+    }
+    if (
+        code === 'functions/unavailable' ||
+        (code === 'functions/internal' && /^internal$/i.test(message)) ||
+        /failed to fetch|network error|load failed/i.test(message)
+    ) {
+        return 'Could not reach the vehicle lookup service. Check your connection and try again.';
+    }
+    if (reg && /not found/i.test(message)) {
+        return `No DVLA or MOT record found for ${normaliseReg(reg)}.`;
+    }
+    return message;
+};
+
 export const lookupVehicle = async (reg: string, force = false): Promise<VehicleLookupResult> => {
     const normalised = normaliseReg(reg);
 
@@ -39,8 +71,11 @@ export const lookupVehicle = async (reg: string, force = false): Promise<Vehicle
         return sessionCache.get(normalised)!;
     }
 
+    // Use the already-initialised compat app so the callable sends the signed-in
+    // user's ID token. A bare getFunctions() can miss that app when compat and
+    // modular SDKs are both in the bundle.
     const callable = httpsCallable<{ reg: string; force?: boolean }, VehicleLookupResult>(
-        getFunctions(),
+        getFunctions(firebase.app()),
         'lookupVehicleByReg'
     );
 
@@ -49,16 +84,7 @@ export const lookupVehicle = async (reg: string, force = false): Promise<Vehicle
         sessionCache.set(normalised, data);
         return data;
     } catch (error: any) {
-        // Callable errors surface as { code, message }; the message is already
-        // human-readable because the function sets it deliberately.
-        const message: string = error?.message || 'Vehicle lookup failed.';
-        if (error?.code === 'functions/unauthenticated') {
-            throw new Error('You need to be signed in to look up a registration.');
-        }
-        if (error?.code === 'functions/not-found' || /not found/i.test(message)) {
-            throw new Error(`No DVLA or MOT record found for ${normalised}.`);
-        }
-        throw new Error(message);
+        throw new Error(describeLookupError(error, normalised));
     }
 };
 

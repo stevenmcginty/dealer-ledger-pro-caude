@@ -97,7 +97,13 @@ const ScanProgressIndicator = ({ progress, onRetry, onClose }: { progress: ScanP
 const isRoutineWarning = (warning: string) => warning.startsWith('DVLA Vehicle Enquiry Service key not configured');
 
 const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
-    if (lookup.status === 'idle' || lookup.status === 'loading') return null;
+    if (lookup.status === 'idle') return null;
+
+    if (lookup.status === 'loading') {
+        return (
+            <p className="text-sm text-gray-400">Checking MOT and DVLA records…</p>
+        );
+    }
 
     if (lookup.status === 'error') {
         return (
@@ -346,9 +352,11 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
         const result = await lookupVehicle(reg);
 
         if (!result.found) {
+            const warning = (result.warnings || []).find(w => !isRoutineWarning(w));
             setLookup({
                 status: 'error',
-                message: `No record found for ${reg}. Cars under three years old have no MOT history yet.`,
+                message: warning
+                    || `No record found for ${reg}. Cars under three years old have no MOT history yet.`,
             });
             return null;
         }
@@ -438,6 +446,10 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                 successMessage = totalDeliveryCost > 0
                     ? 'Invoice + DVLA data combined. Delivery extracted separately.'
                     : 'Invoice and DVLA data combined.';
+            } else {
+                successMessage = totalDeliveryCost > 0
+                    ? 'Invoice scanned. Delivery extracted. MOT lookup failed — tap Look up.'
+                    : 'Invoice scanned. MOT lookup failed — tap Look up next to the registration.';
             }
         }
 
@@ -565,6 +577,11 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                         </button>
                     </div>
                 </div>
+                {lookup.status !== 'idle' && (
+                    <div className="md:col-span-2">
+                        <LookupResultPanel lookup={lookup} />
+                    </div>
+                )}
                 <div><label htmlFor="make" className="block text-sm font-medium text-gray-300">Make</label><input type="text" name="make" value={formData.make || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
                 <div><label htmlFor="model" className="block text-sm font-medium text-gray-300">Model</label><input type="text" name="model" value={formData.model || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
                 <div><label htmlFor="color" className="block text-sm font-medium text-gray-300">Colour</label><input type="text" name="color" value={formData.color || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
@@ -590,8 +607,6 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                 </div>
                 <div className="md:col-span-2"><label htmlFor="purchaseDate" className="block text-sm font-medium text-gray-300">{isSor ? 'Agreement Date' : 'Purchase Date'}</label><UkDateInput id="purchaseDate" name="purchaseDate" value={formData.purchaseDate || ''} onChange={handleChange} className="mt-1" /></div>
             </div>
-
-            <LookupResultPanel lookup={lookup} />
 
             {isSor && (
                 <fieldset className="p-4 border border-gray-700 rounded-lg animate-in fade-in-0 duration-300">

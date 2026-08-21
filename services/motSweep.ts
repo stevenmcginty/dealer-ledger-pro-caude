@@ -5,8 +5,8 @@
  * only reads the summary it leaves behind and exposes the manual "check now" button.
  */
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import firebase from 'firebase/compat/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './firebase';
 import { MotSweepSummary } from '../types';
 
@@ -43,7 +43,7 @@ export const subscribeToMotSweep = (
 export const runMotSweepNow = async (): Promise<MotSweepSummary> => {
     // The callable client gives up after 70s by default, well short of a sweep over a
     // full forecourt. Match the function's own timeout instead.
-    const callable = httpsCallable<void, MotSweepSummary>(getFunctions(), 'runMotSweepNow', {
+    const callable = httpsCallable<void, MotSweepSummary>(getFunctions(firebase.app()), 'runMotSweepNow', {
         timeout: 540_000,
     });
 
