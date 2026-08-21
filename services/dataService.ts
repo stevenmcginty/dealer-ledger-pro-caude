@@ -119,9 +119,19 @@ export const provisionAccountForNewUser = async (adminUser: User, newUserUid: st
 };
 
 
+const COMPANY_LOOKUP_TIMEOUT_MS = 15000;
+
 export const getCompanyForUser = async (user: User): Promise<string> => {
     const userRef = db.ref(`users/${user.uid}`);
-    const userSnap = await userRef.get();
+    // RTDB get() never rejects on its own if the realtime socket stalls (common after a
+    // PWA resumes from the background). Race it against a timeout so the UI can show
+    // an error/retry screen instead of spinning forever.
+    const userSnap = await Promise.race([
+        userRef.get(),
+        new Promise<never>((_, reject) => setTimeout(() =>
+            reject(new Error('Connection timed out while loading your account. Please check your connection and try again.')),
+            COMPANY_LOOKUP_TIMEOUT_MS)),
+    ]);
 
     if (userSnap.exists() && userSnap.val().companyId) {
         return userSnap.val().companyId;

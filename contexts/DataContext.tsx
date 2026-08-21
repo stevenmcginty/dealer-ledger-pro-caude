@@ -89,7 +89,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
                 if (mounted) setCompanyId(cid);
             } catch (err: any) {
                 console.error("Failed to get company:", err);
-                if (mounted) setError(err.message || "Failed to load company data.");
+                if (mounted) {
+                    setError(err.message || "Failed to load company data.");
+                    setIsLoading(false);
+                }
             }
         };
         init();
