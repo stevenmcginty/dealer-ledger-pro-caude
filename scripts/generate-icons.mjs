@@ -1,61 +1,164 @@
 // Build-time PWA icon generator. Composes an SVG per icon and rasterizes it
 // with sharp into public/icons/. Run via `npm run icons`.
 //
-// Design: dark navy radial-gradient plate (#1e293b centre-top -> #0f172a edges)
-// with a single heroicons-style glyph stroked in sky blue (#38bdf8). The glyph
-// paths are copied verbatim from components/icons.tsx (viewBox 0 0 24 24,
-// stroke-based, stroke-width 1.5). Rounded corners are applied ONLY to the two
-// purpose:any app icons; every other icon is square-edged because Android/iOS
-// launchers apply their own mask.
+// Design: vivid cyan → sky → deep-blue plate with a custom FILLED saloon
+// mark (window and wheel hubs punched so the gradient reads as glass/tyres).
+// High contrast so it pops on both light and dark home screens. The old
+// heroicons stroke-car on navy disappeared into a dark blob.
 //
-// Launcher-shortcut icons invert that scheme (accent: true): vivid sky-blue
-// plate, white glyph, heavier stroke. Android renders them inside a ~28dp
-// masked circle in the long-press popup, where the navy plate + thin blue
-// stroke read as a washed-out dark blob.
+// Rounded corners ONLY on purpose:any app icons (favicon / install prompt).
+// Maskable + apple-touch stay square — Android/iOS apply their own mask.
+// Shortcut icons keep a filled white glyph on a saturated plate so they
+// survive Android's ~28dp circle in the long-press menu.
 
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 
-// Glyph `d` strings, copied verbatim from components/icons.tsx.
+// Custom filled marks, viewBox 0 0 24 24. Each path is evenodd: the first
+// subpath is the body, later subpaths punch holes (window, stripe, fold).
+// Car wheels are separate circles so they merge with the body instead of
+// punching through it (evenodd holes were leaving two floating balls).
 const GLYPHS = {
-  car: [
-    'M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125V14.25m-17.25 4.5v-1.875a3.375 3.375 0 013.375-3.375h9.75a3.375 3.375 0 013.375 3.375v1.875m-17.25 4.5h16.5M5.625 13.5h12.75',
-  ],
-  card: [
-    'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 21.75z',
-  ],
-  document: [
-    'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
-  ],
+  car: {
+    paths: [
+      // Modern saloon: rounded nose, sloped glasshouse, short boot.
+      // One continuous body — no square bumper slabs.
+      `M3.2 14.5
+       C2.45 14.5 2.2 14.05 2.2 13.45
+       C2.2 12.55 2.7 11.85 3.7 11.5
+       C5.1 11.0 6.15 10.7 6.85 9.55
+       C7.4 8.6 7.85 7.15 8.55 6.55
+       C9.2 6.0 10.05 5.75 11.0 5.75
+       L14.55 5.75
+       C15.6 5.75 16.45 6.1 16.95 6.8
+       C17.55 7.6 17.9 8.85 18.4 9.75
+       C18.85 10.6 19.4 11.05 20.2 11.35
+       C21.25 11.75 21.85 12.35 21.85 13.25
+       C21.85 14.05 21.45 14.5 20.75 14.5
+       Z
+       M10.85 6.95
+       L14.7 6.95
+       C15.15 6.95 15.5 7.2 15.7 7.6
+       C16.0 8.2 16.25 9.05 16.55 9.7
+       C16.7 10.05 16.45 10.35 16.1 10.35
+       L8.85 10.35
+       C8.5 10.35 8.3 10.0 8.45 9.7
+       C8.8 8.9 9.15 7.9 9.5 7.45
+       C9.8 7.1 10.3 6.95 10.85 6.95
+       Z`,
+    ],
+    wheels: [
+      { cx: 6.7, cy: 14.5, r: 2.18, hub: 0.7 },
+      { cx: 17.35, cy: 14.5, r: 2.18, hub: 0.7 },
+    ],
+  },
+  card: {
+    paths: [
+      `M3.5 6.25
+       h17
+       a2.25 2.25 0 0 1 2.25 2.25
+       v8
+       a2.25 2.25 0 0 1 -2.25 2.25
+       h-17
+       a2.25 2.25 0 0 1 -2.25 -2.25
+       v-8
+       a2.25 2.25 0 0 1 2.25 -2.25
+       Z
+       M2.25 9.15 h19.5 v2.35 H2.25 Z
+       M4.4 13.85
+       h3.6
+       a0.6 0.6 0 0 1 0.6 0.6
+       v0.7
+       a0.6 0.6 0 0 1 -0.6 0.6
+       h-3.6
+       a0.6 0.6 0 0 1 -0.6 -0.6
+       v-0.7
+       a0.6 0.6 0 0 1 0.6 -0.6
+       Z`,
+    ],
+  },
+  document: {
+    paths: [
+      `M6.2 2.4
+       h6.4
+       L18.6 8.4
+       V20.4
+       C18.6 21.05 18.05 21.6 17.4 21.6
+       H6.2
+       C5.55 21.6 5 21.05 5 20.4
+       V3.6
+       C5 2.95 5.55 2.4 6.2 2.4
+       Z
+       M12.35 2.7
+       V7.7
+       C12.35 8.2 12.75 8.6 13.25 8.6
+       H18.2
+       Z`,
+    ],
+  },
 };
 
-// One entry per output PNG.
+const PALETTES = {
+  app: {
+    stops: [
+      { offset: '0%', color: '#7dd3fc' },
+      { offset: '42%', color: '#0ea5e9' },
+      { offset: '100%', color: '#075985' },
+    ],
+  },
+  expense: {
+    stops: [
+      { offset: '0%', color: '#6ee7b7' },
+      { offset: '45%', color: '#10b981' },
+      { offset: '100%', color: '#065f46' },
+    ],
+  },
+  invoice: {
+    stops: [
+      { offset: '0%', color: '#a5b4fc' },
+      { offset: '45%', color: '#6366f1' },
+      { offset: '100%', color: '#312e81' },
+    ],
+  },
+};
+
 const ICONS = [
-  { file: 'icon-192.png', size: 192, glyph: 'car', rounded: true, scale: 0.62 },
-  { file: 'icon-512.png', size: 512, glyph: 'car', rounded: true, scale: 0.62 },
-  { file: 'maskable-192.png', size: 192, glyph: 'car', rounded: false, scale: 0.48 },
-  { file: 'maskable-512.png', size: 512, glyph: 'car', rounded: false, scale: 0.48 },
-  { file: 'apple-touch-icon.png', size: 180, glyph: 'car', rounded: false, scale: 0.62 },
-  { file: 'shortcut-expense.png', size: 192, glyph: 'card', rounded: false, scale: 0.56, accent: true },
-  { file: 'shortcut-car.png', size: 192, glyph: 'car', rounded: false, scale: 0.56, accent: true },
-  { file: 'shortcut-invoice.png', size: 192, glyph: 'document', rounded: false, scale: 0.56, accent: true },
+  { file: 'icon-192.png', size: 192, glyph: 'car', rounded: true, scale: 0.70, palette: 'app' },
+  { file: 'icon-512.png', size: 512, glyph: 'car', rounded: true, scale: 0.70, palette: 'app' },
+  { file: 'maskable-192.png', size: 192, glyph: 'car', rounded: false, scale: 0.50, palette: 'app' },
+  { file: 'maskable-512.png', size: 512, glyph: 'car', rounded: false, scale: 0.50, palette: 'app' },
+  { file: 'apple-touch-icon.png', size: 180, glyph: 'car', rounded: false, scale: 0.66, palette: 'app' },
+  { file: 'favicon-32.png', size: 32, glyph: 'car', rounded: true, scale: 0.78, palette: 'app' },
+  { file: 'shortcut-expense.png', size: 192, glyph: 'card', rounded: false, scale: 0.58, palette: 'expense' },
+  { file: 'shortcut-car.png', size: 192, glyph: 'car', rounded: false, scale: 0.62, palette: 'app' },
+  { file: 'shortcut-invoice.png', size: 192, glyph: 'document', rounded: false, scale: 0.58, palette: 'invoice' },
 ];
 
-// Probe render used only to measure a glyph's visual bounds. The 24-unit box is
-// padded so round stroke caps never clip against the canvas edge.
 const PROBE = 512;
 const PAD = 4;
 const PROBE_VB = 24 + 2 * PAD;
 
-// Optically centre a glyph: heroicons paths are not visually centred in their
-// 24x24 viewBox (the car body + ground line sit in the lower half), so we
-// rasterize the stroked path alone, scan the alpha channel for its visual
-// bounding box, and return that box's centre in viewBox units.
+function glyphMarkup(glyph) {
+  const spec = GLYPHS[glyph];
+  const paths = spec.paths
+    .map((d) => `<path fill-rule="evenodd" d="${d}" />`)
+    .join('');
+  const wheels = (spec.wheels || [])
+    .map((w) => {
+      const tyre = `M ${w.cx} ${w.cy - w.r} a ${w.r} ${w.r} 0 1 1 0 ${2 * w.r} a ${w.r} ${w.r} 0 1 1 0 ${-2 * w.r} Z`;
+      const hub = w.hub
+        ? `M ${w.cx} ${w.cy - w.hub} a ${w.hub} ${w.hub} 0 1 1 0 ${2 * w.hub} a ${w.hub} ${w.hub} 0 1 1 0 ${-2 * w.hub} Z`
+        : '';
+      return `<path fill-rule="evenodd" d="${tyre} ${hub}" />`;
+    })
+    .join('');
+  return paths + wheels;
+}
+
 async function measureGlyphCentre(glyph) {
-  const paths = GLYPHS[glyph].map((d) => `<path d="${d}" />`).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${PROBE}" height="${PROBE}" viewBox="${-PAD} ${-PAD} ${PROBE_VB} ${PROBE_VB}">
-  <g fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths}</g>
+  <g fill="#000">${glyphMarkup(glyph)}</g>
 </svg>`;
 
   const { data, info } = await sharp(Buffer.from(svg))
@@ -84,31 +187,30 @@ async function measureGlyphCentre(glyph) {
   return { cx, cy };
 }
 
-function buildSvg({ size, glyph, rounded, scale, accent }, centre) {
-  const rx = rounded ? Math.round(size * 0.18) : 0;
-  // Centre the glyph on the plate by its VISUAL midpoint and scale it to `scale`
-  // of the icon: shift origin to centre, scale, then recentre the measured
-  // glyph centre (not the 24-unit box centre).
+function buildSvg({ size, glyph, rounded, scale, palette }, centre) {
+  const rx = rounded ? Math.round(size * 0.22) : 0;
   const k = (size * scale) / 24;
   const transform = `translate(${size / 2} ${size / 2}) scale(${k}) translate(${-centre.cx} ${-centre.cy})`;
-  const paths = GLYPHS[glyph]
-    .map((d) => `<path d="${d}" />`)
-    .join('');
+  const paths = glyphMarkup(glyph);
 
-  const plateStops = accent
-    ? '<stop offset="0%" stop-color="#38bdf8" /><stop offset="100%" stop-color="#0369a1" />'
-    : '<stop offset="0%" stop-color="#1e293b" /><stop offset="100%" stop-color="#0f172a" />';
-  const stroke = accent ? '#ffffff' : '#38bdf8';
-  const strokeWidth = accent ? 1.9 : 1.5;
+  const stops = PALETTES[palette].stops
+    .map((s) => `<stop offset="${s.offset}" stop-color="${s.color}" />`)
+    .join('');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <defs>
-    <radialGradient id="plate" cx="50%" cy="0%" r="100%">
-      ${plateStops}
+    <linearGradient id="plate" x1="12%" y1="0%" x2="88%" y2="100%">
+      ${stops}
+    </linearGradient>
+    <radialGradient id="sheen" cx="30%" cy="16%" r="72%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="42%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <rect width="${size}" height="${size}" rx="${rx}" fill="url(#plate)" />
-  <g transform="${transform}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="${size}" height="${size}" rx="${rx}" fill="url(#sheen)" />
+  <g transform="${transform}" fill="#ffffff">
     ${paths}
   </g>
 </svg>`;
@@ -118,7 +220,6 @@ async function main() {
   const outDir = path.join(process.cwd(), 'public', 'icons');
   fs.mkdirSync(outDir, { recursive: true });
 
-  // Measure each distinct glyph's visual centre once.
   const centres = {};
   for (const glyph of Object.keys(GLYPHS)) {
     centres[glyph] = await measureGlyphCentre(glyph);

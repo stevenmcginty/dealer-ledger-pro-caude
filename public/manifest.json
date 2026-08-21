@@ -10,18 +10,18 @@
   "background_color": "#030712",
   "launch_handler": { "client_mode": "navigate-existing" },
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icons/icon-192.png?v=4", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png?v=4", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png?v=4", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png?v=4", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
     { "name": "Add expense", "short_name": "Expense", "url": "/app?action=add-expense",
-      "icons": [{ "src": "/icons/shortcut-expense.png", "sizes": "192x192", "type": "image/png" }] },
+      "icons": [{ "src": "/icons/shortcut-expense.png?v=4", "sizes": "192x192", "type": "image/png" }] },
     { "name": "Add new car", "short_name": "Add car", "url": "/app?action=add-vehicle",
-      "icons": [{ "src": "/icons/shortcut-car.png", "sizes": "192x192", "type": "image/png" }] },
+      "icons": [{ "src": "/icons/shortcut-car.png?v=4", "sizes": "192x192", "type": "image/png" }] },
     { "name": "New sale", "short_name": "New sale", "url": "/app?action=new-invoice",
-      "icons": [{ "src": "/icons/shortcut-invoice.png", "sizes": "192x192", "type": "image/png" }] }
+      "icons": [{ "src": "/icons/shortcut-invoice.png?v=4", "sizes": "192x192", "type": "image/png" }] }
   ],
   "screenshots": [
     { "src": "/screenshots/dashboard.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "Dashboard" },
