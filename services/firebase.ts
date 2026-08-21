@@ -40,9 +40,44 @@ function initDatabase() {
     try {
         dbInstance = firebase.database();
         console.log('[Firebase] RTDB connected (user authenticated)');
+        watchResumeReconnect();
     } catch (error) {
         console.warn('[Firebase] RTDB init failed:', error);
         createMocks();
+    }
+}
+
+/**
+ * iOS installed PWAs drop the Realtime Database websocket when backgrounded.
+ * Firebase still thinks it's connected, so the next get() hangs until we
+ * bounce the socket. Only do this after a real backgrounding, not a 1s app switch.
+ */
+let resumeWatchStarted = false;
+let hiddenAt = 0;
+
+function watchResumeReconnect() {
+    if (resumeWatchStarted || typeof document === 'undefined') return;
+    resumeWatchStarted = true;
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            hiddenAt = Date.now();
+            return;
+        }
+        if (hiddenAt && Date.now() - hiddenAt > 5000) reconnectDatabase();
+    });
+    window.addEventListener('online', () => reconnectDatabase());
+}
+
+/** Drop and reopen the RTDB socket. Safe to call when db isn't up yet. */
+export function reconnectDatabase() {
+    try {
+        if (!dbInitialized) initDatabase();
+        if (!dbInstance || typeof dbInstance.goOffline !== 'function') return;
+        dbInstance.goOffline();
+        dbInstance.goOnline();
+        console.log('[Firebase] RTDB socket bounced');
+    } catch (error) {
+        console.warn('[Firebase] RTDB reconnect failed:', error);
     }
 }
 
@@ -61,10 +96,12 @@ function createMocks() {
     };
 
     // Mock DB
-    const mockRef = {
+    const mockSnap = { val: () => null, exists: () => false };
+    const mockRef: any = {
         on: () => {},
         off: () => {},
-        once: () => Promise.resolve({ val: () => null, exists: () => false }),
+        once: () => Promise.resolve(mockSnap),
+        get: () => Promise.resolve(mockSnap),
         set: () => Promise.resolve(),
         push: () => ({ key: 'mock-id', set: () => Promise.resolve() }),
         update: () => Promise.resolve(),
@@ -108,10 +145,12 @@ export const db: any = new Proxy({} as any, {
         }
         if (!dbInstance) {
             // Still no DB (no auth yet) — use mock
+            const mockSnap = { val: () => null, exists: () => false };
             const mockRef: any = {
                 on: () => {},
                 off: () => {},
-                once: () => Promise.resolve({ val: () => null, exists: () => false }),
+                once: () => Promise.resolve(mockSnap),
+                get: () => Promise.resolve(mockSnap),
                 set: () => Promise.resolve(),
                 push: () => ({ key: 'mock-id', set: () => Promise.resolve() }),
                 update: () => Promise.resolve(),

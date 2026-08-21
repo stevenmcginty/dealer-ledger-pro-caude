@@ -4,6 +4,7 @@ import React, { createContext, useState, useEffect, useMemo, useCallback } from 
 import { DataContextState, ToDoItem, BusinessDetails, Lead, EmailTemplate, LeadStage } from '../types';
 import * as dataService from '../services/dataService';
 import { User, onAuthStateChanged } from '../services/firebase';
+import { readCachedCompanyId } from '../utils/companyCache';
 import * as syncManager from '../services/syncManager';
 import * as google from '../services/google';
 
@@ -84,12 +85,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
             }
 
             try {
-                setIsLoading(true);
+                const cached = readCachedCompanyId(user.uid);
+                if (cached && mounted) {
+                    // Open on last known company immediately so a stalled
+                    // websocket never blocks the PWA on a timeout screen.
+                    setCompanyId(cached);
+                } else if (mounted) {
+                    setIsLoading(true);
+                }
                 const cid = await dataService.getCompanyForUser(user);
                 if (mounted) setCompanyId(cid);
             } catch (err: any) {
                 console.error("Failed to get company:", err);
-                if (mounted) {
+                if (!mounted) return;
+                if (err?.message === 'ACCOUNT_NOT_LINKED') {
+                    setCompanyId(null);
+                    setError(err.message);
+                    setIsLoading(false);
+                    return;
+                }
+                if (!readCachedCompanyId(user.uid)) {
                     setError(err.message || "Failed to load company data.");
                     setIsLoading(false);
                 }

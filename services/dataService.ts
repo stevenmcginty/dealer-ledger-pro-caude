@@ -1,6 +1,7 @@
 
 // ... existing imports
-import { db, storage, auth } from './firebase';
+import { db, storage, auth, reconnectDatabase } from './firebase';
+import { readCachedCompanyId, writeCachedCompanyId, clearCachedCompanyId } from '../utils/companyCache';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/database';
 import 'firebase/compat/storage';
@@ -119,27 +120,54 @@ export const provisionAccountForNewUser = async (adminUser: User, newUserUid: st
 };
 
 
-const COMPANY_LOOKUP_TIMEOUT_MS = 15000;
+const COMPANY_LOOKUP_TIMEOUT_MS = 12000;
+const LOOKUP_TIMEOUT_MESSAGE =
+    'Connection timed out while loading your account. Please check your connection and try again.';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 export const getCompanyForUser = async (user: User): Promise<string> => {
+    const cached = readCachedCompanyId(user.uid);
     const userRef = db.ref(`users/${user.uid}`);
-    // RTDB get() never rejects on its own if the realtime socket stalls (common after a
-    // PWA resumes from the background). Race it against a timeout so the UI can show
-    // an error/retry screen instead of spinning forever.
-    const userSnap = await Promise.race([
-        userRef.get(),
-        new Promise<never>((_, reject) => setTimeout(() =>
-            reject(new Error('Connection timed out while loading your account. Please check your connection and try again.')),
-            COMPANY_LOOKUP_TIMEOUT_MS)),
-    ]);
 
-    if (userSnap.exists() && userSnap.val().companyId) {
-        return userSnap.val().companyId;
-    } else {
-        // Instead of auto-provisioning, we throw a specific error
-        // that the UI can catch to show the "Account Not Linked" screen.
-        throw new Error('ACCOUNT_NOT_LINKED');
+    const readOnce = (): Promise<firebase.database.DataSnapshot> => {
+        const read: Promise<firebase.database.DataSnapshot> = typeof userRef.once === 'function'
+            ? userRef.once('value')
+            : userRef.get();
+        return withTimeout(read, COMPANY_LOOKUP_TIMEOUT_MS, LOOKUP_TIMEOUT_MESSAGE);
+    };
+
+    let userSnap: firebase.database.DataSnapshot | null = null;
+    try {
+        userSnap = await readOnce();
+    } catch (first) {
+        // Stale PWA socket: bounce it and try once more before giving up.
+        reconnectDatabase();
+        try {
+            userSnap = await readOnce();
+        } catch (second) {
+            if (cached) {
+                console.warn('[company] lookup timed out, using cached company id');
+                return cached;
+            }
+            throw second instanceof Error ? second : first;
+        }
     }
+
+    if (userSnap && userSnap.exists() && userSnap.val()?.companyId) {
+        const companyId = userSnap.val().companyId as string;
+        writeCachedCompanyId(user.uid, companyId);
+        return companyId;
+    }
+
+    clearCachedCompanyId(user.uid);
+    throw new Error('ACCOUNT_NOT_LINKED');
 };
 
 

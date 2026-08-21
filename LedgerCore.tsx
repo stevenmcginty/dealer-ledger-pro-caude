@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'rea
 import { useWindowSize } from './hooks/useWindowSize';
 import { useUI } from './hooks/useUI';
 import { useData } from './hooks/useData';
-import { signOut } from './services/firebase';
+import { signOut, reconnectDatabase } from './services/firebase';
+import { reloadOntoLatestBuild } from './contexts/AppUpdateContext';
 import { formatDate } from './utils/helpers';
 import { consumeQuickAction } from './utils/quickAction';
 import { View, NewCanvasItem, CanvasItem } from './types';
@@ -17,7 +18,7 @@ import AppUpdateButton from './components/common/AppUpdateButton';
 import ModalManager from './components/common/ModalManager';
 import PermissionDeniedHandler from './components/auth/PermissionDeniedHandler';
 import { useToast } from './components/ui';
-import { CarIcon, PlusIcon, ExclamationTriangleIcon, WrenchScrewdriverIcon, ClipboardDocumentListIcon, ArrowUpTrayIcon, ClipboardIcon, CalendarIcon } from './components/icons';
+import { CarIcon, PlusIcon, ExclamationTriangleIcon, WrenchScrewdriverIcon, ClipboardDocumentListIcon, ArrowUpTrayIcon, ClipboardIcon, CalendarIcon, ArrowPathIcon } from './components/icons';
 
 // Import Page Components (lazy: each page ships as its own chunk so the
 // initial entry only carries the shell)
@@ -245,19 +246,37 @@ const LedgerCore = () => {
         return <PermissionDeniedHandler />;
     }
     // This is for all other critical errors (e.g., Firebase down, rules misconfigured)
+    const isTimeout = /timed out/i.test(error);
+    const handleRetry = () => {
+        reconnectDatabase();
+        window.location.reload();
+    };
     return (
         <div className="bg-gray-950 flex items-center justify-center h-screen p-4">
             <div className="bg-gray-800 p-8 rounded-lg text-center max-w-md shadow-2xl border border-red-500/30">
                 <ExclamationTriangleIcon className="h-12 w-12 text-red-400 mx-auto" />
-                <h2 className="mt-4 text-xl font-bold text-white">Application Error</h2>
-                <p className="mt-2 text-gray-300">Could not load application data. This is often due to a configuration issue with your Firebase settings or a network problem.</p>
+                <h2 className="mt-4 text-xl font-bold text-white">
+                    {isTimeout ? 'Connection stalled' : 'Application Error'}
+                </h2>
+                <p className="mt-2 text-gray-300">
+                    {isTimeout
+                        ? 'The app could not reach your account after a refresh. Update to pick up the latest version, or retry — you should not need to delete cookies.'
+                        : 'Could not load application data. This is often a network problem. Try Update, then Retry.'}
+                </p>
                 <p className="mt-4 text-xs text-gray-500 bg-gray-900 p-3 rounded-md font-mono">{error}</p>
-                <div className="mt-6 flex items-center justify-center gap-x-4">
+                <div className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
+                    <button
+                        onClick={() => reloadOntoLatestBuild()}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-md"
+                    >
+                        <ArrowPathIcon className="h-5 w-5" />
+                        Update
+                    </button>
+                    <button onClick={handleRetry} className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-md">
+                        Retry
+                    </button>
                     <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
                         Sign Out
-                    </button>
-                    <button onClick={() => window.location.reload()} className="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">
-                        Retry
                     </button>
                 </div>
             </div>
