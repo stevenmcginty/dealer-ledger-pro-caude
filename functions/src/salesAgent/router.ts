@@ -41,6 +41,16 @@ import { registerWhatsAppRouting, templateFallbackFor, withinCustomerServiceWind
 import { registerTwilioRouting } from './channels/twilio';
 import { ParsedLead, crmLeadSource, messageOrDefault } from './channels/leadParsers';
 import {
+    bindInboxChannelsFromPrivate,
+    claimSharedProviderId,
+    inboxForMember,
+    isWhatsAppLiveFor,
+    mirrorConversationContacts,
+    ownerCompanyForWhatsApp,
+    resolveConversationHome,
+    saveSharedInbox,
+} from './inboxRouting';
+import {
     Contact,
     Conversation,
     InboundMessage,
@@ -135,6 +145,7 @@ const attachVehicle = async (companyId: string, conversation: Conversation, lead
             stockId: item.id,
             title: item.title,
             ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+            ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
         }
         : lead.vehicle?.title
             ? { title: lead.vehicle.title }
@@ -173,6 +184,7 @@ const handlePhoneLead = async (
     const autoFollowUp = settings.followUpPhoneLeads === true || clearlyUnanswered;
 
     if (!autoFollowUp || !settings.channels.whatsapp || !lead.phone) return;
+    if (!(await isWhatsAppLiveFor(companyId))) return;
 
     await enqueue({
         companyId,
@@ -187,33 +199,53 @@ const handlePhoneLead = async (
 };
 
 export const handleInbound = async (msg: InboundMessage, options: InboundOptions = {}): Promise<void> => {
-    const { companyId } = msg;
-    const settings = await readSettings(companyId);
+    const credentialCompanyId = msg.companyId;
+    const inbox = await inboxForMember(credentialCompanyId);
 
-    if (!(await claimProviderId(companyId, msg.providerId))) return;
-
-    // Steve's own number is a control channel, not a customer. Checked before the
-    // enabled flag so PAUSE ALL is reversible.
-    const isOwner =
-        msg.channel === 'whatsapp' &&
-        !!settings.ownerAlertNumber &&
-        toE164(msg.address) === toE164(settings.ownerAlertNumber);
-
-    if (isOwner) {
-        await recordOwnerInbound(companyId);
-        await handleOwnerCommand(companyId, settings, msg.text || '');
+    // Shared inbox: one Gmail/WhatsApp retry must not be claimed once per member.
+    if (inbox) {
+        if (!(await claimSharedProviderId(inbox.id, msg.providerId))) return;
+    } else if (!(await claimProviderId(credentialCompanyId, msg.providerId))) {
         return;
     }
 
     const lead = options.lead;
     const contact = contactFromLead(msg, lead);
 
+    // Owner commands come from a personal mobile. Each member's alert number is
+    // tried so Chris's TAKE OVER hits Chris's short ids, not Steve's.
+    if (msg.channel === 'whatsapp') {
+        const ownerCompanyId = await ownerCompanyForWhatsApp(inbox, msg.address, credentialCompanyId);
+        if (ownerCompanyId) {
+            await recordOwnerInbound(ownerCompanyId);
+            const ownerSettings = await readSettings(ownerCompanyId);
+            await handleOwnerCommand(ownerCompanyId, ownerSettings, msg.text || '');
+            return;
+        }
+    }
+
+    const home = await resolveConversationHome({
+        inbox,
+        credentialCompanyId,
+        channel: msg.channel,
+        address: msg.address,
+        contact,
+        lead,
+        text: lead ? messageOrDefault(lead, lead.vehicle?.title) : msg.text,
+    });
+
+    const companyId = home.companyId;
+    msg.companyId = companyId;
+    const settings = await readSettings(companyId);
+
     const { conversation, isNew } = await findOrCreateConversation(companyId, msg.channel, msg.address, contact, {
         source: lead ? crmLeadSource(lead.source) : undefined,
-        vehicleOfInterest: lead?.vehicle?.title,
+        vehicleOfInterest: lead?.vehicle?.title || home.stockItem?.title,
         emailThreadId: msg.emailThreadId,
         emailSubject: msg.subject,
     });
+
+    await mirrorConversationContacts(companyId, conversation, msg.channel, msg.address);
 
     const text = lead ? messageOrDefault(lead, conversation.vehicleInterest?.title) : msg.text;
 
@@ -238,23 +270,46 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     if (msg.emailThreadId) patch.emailThreadId = msg.emailThreadId;
     if (msg.subject) patch.emailSubject = msg.subject;
 
+    if (isNew && inbox && home.reason !== 'single') {
+        patch.routing = {
+            inboxId: inbox.id,
+            reason: home.reason,
+            ...(home.ownerCompanyId ? { ownerCompanyId: home.ownerCompanyId } : {}),
+        };
+    }
+
     await updateConversation(companyId, conversation.id, patch);
     Object.assign(conversation, patch);
 
-    // The master switch. Everything above this line is bookkeeping that must happen
-    // whether or not the agent is allowed to speak.
-    if (!settings.enabled) return;
+    if (home.stockItem && !conversation.vehicleInterest?.stockId) {
+        const item = home.stockItem;
+        const vehicleInterest: Conversation['vehicleInterest'] = {
+            stockId: item.id,
+            title: item.title,
+            ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+            ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
+        };
+        await updateConversation(companyId, conversation.id, { vehicleInterest });
+        conversation.vehicleInterest = vehicleInterest;
+    } else if (lead) {
+        await attachVehicle(companyId, conversation, lead);
+    }
 
-    if (lead) await attachVehicle(companyId, conversation, lead);
-
+    // The master switch. Bookkeeping and the new-lead ping still happen when Dave
+    // is off, so a car routed to Chris is not silent in his inbox.
     if (isNew) {
+        const unmatched = inbox && home.reason === 'fallback'
+            ? ' (not matched to a ledger car — in the shared fallback inbox)'
+            : '';
         await sendOwnerAlert(
             companyId,
             'new_conversation',
             conversation,
-            `#${conversation.shortId} New ${msg.channel} enquiry from ${describeCustomer(conversation)}: ${text.slice(0, 200)}`
+            `#${conversation.shortId} New ${msg.channel} enquiry from ${describeCustomer(conversation)}${unmatched}: ${text.slice(0, 200)}`
         );
     }
+
+    if (!settings.enabled) return;
 
     if (lead?.kind === 'phone_lead' || lead?.kind === 'missed_call') {
         await handlePhoneLead(companyId, conversation, settings, lead);
@@ -611,37 +666,46 @@ const deliverReply = async (
         });
     }
 
-    const phone = onEmail && settings.preferWhatsAppReply && settings.channels.whatsapp
+    const phone = onEmail
         ? conversation.contact?.phone || inbound.extractedPhones?.[0]
         : undefined;
 
     if (phone) {
         const e164 = toE164(phone);
+        const contact = { ...(conversation.contact || {}), phone: e164 };
 
-        await enqueue({
-            companyId,
-            convId: conversation.id,
-            channel: 'whatsapp',
-            to: e164,
-            text: reply,
-            templateName: FOLLOW_UP_TEMPLATE,
-            templateParams: [
-                conversation.contact?.firstName || 'there',
-                conversation.vehicleInterest?.title || 'car',
-            ],
-            sendAfter,
-        });
-
+        // Index the mobile even while WhatsApp is dark, so a later inbound finds
+        // this thread instead of opening a second one.
         await indexContact(companyId, 'whatsapp', e164, conversation.id);
         await indexContact(companyId, 'sms', e164, conversation.id);
+        conversation.contact = contact;
+        await updateConversation(companyId, conversation.id, { contact });
+        await mirrorConversationContacts(companyId, conversation, 'whatsapp', e164);
 
-        const moved = {
-            channel: 'whatsapp' as const,
-            address: e164,
-            contact: { ...(conversation.contact || {}), phone: e164 },
-        };
-        await updateConversation(companyId, conversation.id, moved);
-        Object.assign(conversation, moved);
+        const whatsappLive = settings.preferWhatsAppReply
+            && settings.channels.whatsapp
+            && await isWhatsAppLiveFor(companyId);
+
+        if (whatsappLive) {
+            await enqueue({
+                companyId,
+                convId: conversation.id,
+                channel: 'whatsapp',
+                to: e164,
+                text: reply,
+                templateName: FOLLOW_UP_TEMPLATE,
+                templateParams: [
+                    conversation.contact?.firstName || 'there',
+                    conversation.vehicleInterest?.title || 'car',
+                ],
+                sendAfter,
+            });
+
+            const moved = { channel: 'whatsapp' as const, address: e164, contact };
+            await updateConversation(companyId, conversation.id, moved);
+            Object.assign(conversation, moved);
+        }
+
         return;
     }
 
@@ -900,12 +964,42 @@ export const salesAgentSavePrivate = functions.https.onCall(async (data, context
 
     if (whatsapp?.phoneNumberId) await registerWhatsAppRouting(whatsapp.phoneNumberId, companyId);
     if (twilio?.fromNumber) await registerTwilioRouting(twilio.fromNumber, companyId);
+    await bindInboxChannelsFromPrivate(companyId);
 
     return {
         ok: true,
         whatsapp: !!whatsapp?.phoneNumberId,
         twilio: !!twilio?.fromNumber,
     };
+});
+
+/**
+ * Register who shares this Gmail / WhatsApp number. Tokens stay on the calling
+ * company. Threads are placed on the member that owns the car.
+ *
+ * `whatsappLive` defaults off and stays off unless it is passed true — connecting
+ * the Cloud API is not the same as sending.
+ */
+export const salesAgentSaveSharedInbox = functions.https.onCall(async (data, context) => {
+    const companyId = await requireMember(context, data?.companyId);
+    const members = Array.isArray(data?.memberCompanyIds) ? data.memberCompanyIds.map(String) : [];
+
+    if (!members.length) {
+        throw new functions.https.HttpsError('invalid-argument', 'Name at least one other Dealer Ledger Pro company that shares this inbox.');
+    }
+
+    try {
+        const inbox = await saveSharedInbox({
+            credentialCompanyId: companyId,
+            memberCompanyIds: members,
+            fallbackCompanyId: data?.fallbackCompanyId ? String(data.fallbackCompanyId) : undefined,
+            name: data?.name ? String(data.name) : undefined,
+            whatsappLive: data?.whatsappLive === undefined ? undefined : data.whatsappLive === true,
+        });
+        return { ok: true, inbox };
+    } catch (error: any) {
+        throw new functions.https.HttpsError('internal', error?.message || 'The shared inbox could not be saved.');
+    }
 });
 
 /**

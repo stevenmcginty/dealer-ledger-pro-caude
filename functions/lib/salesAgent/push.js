@@ -50,7 +50,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentUnregisterPush = exports.salesAgentTestPush = exports.salesAgentRegisterPush = exports.sendOwnerPush = exports.alertLink = void 0;
+exports.salesAgentUnregisterPush = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentRegisterPush = exports.sendOwnerPush = exports.alertLink = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const conversations_1 = require("./conversations");
@@ -212,6 +212,30 @@ exports.salesAgentTestPush = functions.https.onCall(async (data, context) => {
     });
     const remaining = await readTokens(companyId);
     return { devices: tokens.length, delivered, thisDevice, stillRegistered: remaining.length };
+});
+/**
+ * A phone that cannot register tells us why. The browser's own console is out of
+ * reach on a handset, so the failing step is written under the company for the
+ * desk to read. Kept to the last 30 entries.
+ */
+exports.salesAgentPushDebug = functions.https.onCall(async (data, context) => {
+    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const ref = (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, 'pushDebug'));
+    await ref.push({
+        at: Date.now(),
+        uid: context.auth?.uid || '',
+        step: String(data?.step || '').slice(0, 80),
+        detail: String(data?.detail || '').slice(0, 600),
+        ua: String(data?.ua || '').slice(0, 200),
+    });
+    const snap = await ref.orderByKey().once('value');
+    const keys = Object.keys(snap.val() || {});
+    if (keys.length > 30) {
+        const updates = {};
+        keys.slice(0, keys.length - 30).forEach(key => { updates[key] = null; });
+        await ref.update(updates);
+    }
+    return { ok: true };
 });
 /** Turned off on this device, or signing out of it. */
 exports.salesAgentUnregisterPush = functions.https.onCall(async (data, context) => {

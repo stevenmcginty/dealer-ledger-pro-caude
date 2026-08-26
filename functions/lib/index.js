@@ -44,7 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.salesAgentTestPush = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
+exports.healthCheck = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -95,6 +95,7 @@ var push_1 = require("./salesAgent/push");
 Object.defineProperty(exports, "salesAgentRegisterPush", { enumerable: true, get: function () { return push_1.salesAgentRegisterPush; } });
 Object.defineProperty(exports, "salesAgentUnregisterPush", { enumerable: true, get: function () { return push_1.salesAgentUnregisterPush; } });
 Object.defineProperty(exports, "salesAgentTestPush", { enumerable: true, get: function () { return push_1.salesAgentTestPush; } });
+Object.defineProperty(exports, "salesAgentPushDebug", { enumerable: true, get: function () { return push_1.salesAgentPushDebug; } });
 // Health check function
 exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({

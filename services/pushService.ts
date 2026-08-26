@@ -21,7 +21,7 @@
 import firebase from 'firebase/compat/app';
 import { deleteToken, getMessaging, getToken, isSupported, onMessage, type MessagePayload } from 'firebase/messaging';
 import { CONFIG } from '../config';
-import { registerPushToken, unregisterPushToken } from './salesAgentService';
+import { registerPushToken, reportPushDebug, unregisterPushToken } from './salesAgentService';
 
 /**
  * - `enabled`     this device is on the list
@@ -94,6 +94,48 @@ const describePlatform = (): string => {
     return isInstalled() ? `${device} (installed)` : device;
 };
 
+/** A promise that gives up, so a hung browser API surfaces as a named step. */
+const withTimeout = <T>(promise: Promise<T>, ms: number, step: string): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${step} timed out after ${ms / 1000}s`)), ms);
+        promise.then(value => { clearTimeout(timer); resolve(value); }, err => { clearTimeout(timer); reject(err); });
+    });
+
+/** The worker URL index.html registers, rebuilt here so push can register it itself. */
+const serviceWorkerUrl = (): string => {
+    const params = new URLSearchParams({
+        fcmKey: CONFIG.FIREBASE_API_KEY,
+        fcmSender: CONFIG.FIREBASE_MESSAGING_SENDER_ID,
+        fcmApp: CONFIG.FIREBASE_APP_ID,
+    });
+    return `/sw.js?${params.toString()}`;
+};
+
+/**
+ * The registration alerts are delivered through.
+ *
+ * `navigator.serviceWorker.ready` never resolves when there is no registration
+ * at all, which is exactly the state a phone was left in by the old Update
+ * button. So: wait a little, and if nothing is active, register the worker
+ * here and wait for it to activate.
+ */
+const pushRegistration = async (): Promise<ServiceWorkerRegistration> => {
+    try {
+        return await withTimeout(navigator.serviceWorker.ready, 4000, 'service worker ready');
+    } catch {
+        const existing = await navigator.serviceWorker.getRegistration();
+        const registration = existing || await navigator.serviceWorker.register(serviceWorkerUrl(), { updateViaCache: 'none' });
+        const worker = registration.active || registration.waiting || registration.installing;
+        if (registration.active) return registration;
+        if (!worker) throw new Error('service worker did not install');
+        await withTimeout(new Promise<void>(resolve => {
+            worker.addEventListener('statechange', () => { if (worker.state === 'activated') resolve(); });
+            if (worker.state === 'activated') resolve();
+        }), 10000, 'service worker activation');
+        return registration;
+    }
+};
+
 const messaging = async () => {
     if (!isPushConfigured()) return null;
     if (!(await isSupported())) return null;
@@ -142,20 +184,33 @@ export const enablePush = async (companyId: string): Promise<PushStatus> => {
     const instance = await messaging();
     if (!instance) return 'unsupported';
 
-    // The alerts have to be shown by the worker that is already running the
-    // app's caching, not by a second registration fighting it for the scope.
-    const registration = await navigator.serviceWorker.ready;
+    let step = 'service worker';
+    try {
+        // The alerts have to be shown by the worker that is already running the
+        // app's caching, not by a second registration fighting it for the scope.
+        const registration = await pushRegistration();
 
-    const token = await getToken(instance, {
-        vapidKey: CONFIG.FIREBASE_VAPID_KEY,
-        serviceWorkerRegistration: registration,
-    });
+        step = 'google token';
+        const token = await withTimeout(getToken(instance, {
+            vapidKey: CONFIG.FIREBASE_VAPID_KEY,
+            serviceWorkerRegistration: registration,
+        }), 20000, 'google token');
 
-    if (!token) return 'available';
+        if (!token) {
+            void reportPushDebug(companyId, 'google token', 'getToken returned empty');
+            return 'available';
+        }
 
-    await registerPushToken(companyId, token, describePlatform());
-    writeStoredToken(token);
-    return 'enabled';
+        step = 'register with desk';
+        await registerPushToken(companyId, token, describePlatform());
+        writeStoredToken(token);
+        void reportPushDebug(companyId, 'registered', describePlatform());
+        return 'enabled';
+    } catch (err: any) {
+        const detail = String(err?.message || err);
+        void reportPushDebug(companyId, step, detail);
+        throw new Error(`Could not turn on alerts (${step}): ${detail}`);
+    }
 };
 
 /**
@@ -177,17 +232,18 @@ export const syncPushToken = async (companyId: string): Promise<void> => {
         const instance = await messaging();
         if (!instance) return;
 
-        const registration = await navigator.serviceWorker.ready;
-        const token = await getToken(instance, {
+        const registration = await pushRegistration();
+        const token = await withTimeout(getToken(instance, {
             vapidKey: CONFIG.FIREBASE_VAPID_KEY,
             serviceWorkerRegistration: registration,
-        });
+        }), 20000, 'google token');
         if (!token) return;
 
         await registerPushToken(companyId, token, describePlatform());
         writeStoredToken(token);
-    } catch (err) {
+    } catch (err: any) {
         console.warn('[push] could not refresh the push token for this device', err);
+        void reportPushDebug(companyId, 'sync', String(err?.message || err));
     }
 };
 

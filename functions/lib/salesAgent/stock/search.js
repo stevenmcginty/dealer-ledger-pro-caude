@@ -60,7 +60,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.describeStockItem = exports.getStockItem = exports.countStock = exports.searchStock = exports.rankStock = exports.broadenQueryText = exports.normaliseQueryText = void 0;
+exports.describeStockItem = exports.getStockItem = exports.countStock = exports.searchStock = exports.matchEnquiryStockForCompany = exports.matchEnquiryStock = exports.readStock = exports.rankStock = exports.broadenQueryText = exports.normaliseQueryText = void 0;
 const admin = __importStar(require("firebase-admin"));
 const db = () => admin.database();
 const DEFAULT_LIMIT = 5;
@@ -412,11 +412,41 @@ const readStock = async (companyId) => {
         return [];
     return Object.values(raw).filter(item => !!item);
 };
+exports.readStock = readStock;
+const matchEnquiryStock = (items, hint) => {
+    if (hint.stockId) {
+        const exact = items.find(item => item.id === hint.stockId);
+        if (exact)
+            return exact;
+    }
+    if (hint.reg) {
+        const reg = hint.reg.replace(/\s/g, '').toUpperCase();
+        if (reg) {
+            const exact = items.find(item => (item.reg || '').replace(/\s/g, '').toUpperCase() === reg);
+            if (exact)
+                return exact;
+        }
+    }
+    const text = (hint.title || hint.text || '').trim();
+    if (!text)
+        return null;
+    const hits = (0, exports.rankStock)(items, { text, includeReserved: true, includeHidden: true, limit: 5 })
+        .filter(hit => hit.matchQuality !== 'weak');
+    if (!hits.length)
+        return null;
+    const owners = new Set(hits.map(hit => hit.ownerCompanyId).filter(Boolean));
+    if (owners.size > 1)
+        return null;
+    return hits[0];
+};
+exports.matchEnquiryStock = matchEnquiryStock;
+const matchEnquiryStockForCompany = async (companyId, hint) => (0, exports.matchEnquiryStock)(await (0, exports.readStock)(companyId), hint);
+exports.matchEnquiryStockForCompany = matchEnquiryStockForCompany;
 /**
  * Best matches for what the customer asked about, surest first.
  * Returns [] rather than throwing when nothing is indexed yet.
  */
-const searchStock = async (companyId, query) => (0, exports.rankStock)(await readStock(companyId), query);
+const searchStock = async (companyId, query) => (0, exports.rankStock)(await (0, exports.readStock)(companyId), query);
 exports.searchStock = searchStock;
 /**
  * How many cars are in the index at all, hidden ones included. 0 means the daily

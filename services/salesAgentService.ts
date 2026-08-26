@@ -559,6 +559,20 @@ export const sendTestPush = (companyId: string, token: string) =>
         'Could not send a test alert.'
     );
 
+/** Report which step of push registration failed on this device. Never throws. */
+export const reportPushDebug = async (companyId: string, step: string, detail: string): Promise<void> => {
+    try {
+        await call<{ companyId: string; step: string; detail: string; ua: string }, { ok: boolean }>(
+            'salesAgentPushDebug',
+            { companyId, step, detail, ua: navigator.userAgent },
+            15000,
+            'debug'
+        );
+    } catch {
+        // Diagnostics must never get in the way.
+    }
+};
+
 /** Take this browser back off the list. */
 export const unregisterPushToken = (companyId: string, token: string) =>
     call<{ companyId: string; token: string }, { ok: boolean }>(

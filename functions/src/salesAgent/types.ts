@@ -13,6 +13,15 @@
  *   shortIds/{n}                            -> convId   (short number used in owner alerts / commands)
  *   ownerAlerts/{alertId}                   -> OwnerAlert
  *   outbox/{jobId}                          -> OutboxJob (delayed replies; drained by outboxTick every minute)
+ *
+ * Shared inbox (several ledger accounts, one Gmail / one WhatsApp number):
+ *   salesAgentRouting/sharedInboxes/{inboxId}                 -> SharedInbox
+ *   salesAgentRouting/sharedInboxes/{inboxId}/contactIndex/k  -> { companyId, convId }
+ *   salesAgentRouting/sharedInboxes/{inboxId}/seenProviderIds -> timestamp
+ *   salesAgentRouting/inboxMembers/{companyId}                -> inboxId
+ *   salesAgentRouting/channelToInbox/{whatsapp|gmail}/{key}   -> inboxId
+ * Channel credentials still live on the credential company. Threads live on the
+ * company that owns the car. WhatsApp stays dark until SharedInbox.whatsappLive.
  */
 
 export type Channel = 'whatsapp' | 'sms' | 'email';
@@ -138,7 +147,16 @@ export interface Conversation {
     contact: Contact;
     mode: ConversationMode;              // 'human' = owner took over, bot silent
     stage: ConversationStage;
-    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string };
+    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; ownerCompanyId?: string };
+    /**
+     * Set when this thread was placed by a shared inbox. `existing` means a later
+     * message found the person already; we never move a thread once it has a home.
+     */
+    routing?: {
+        inboxId: string;
+        reason: 'existing' | 'owner' | 'fallback';
+        ownerCompanyId?: string;
+    };
     partExOrFinance?: string;
     preferredTime?: string;
     booking?: { name: string; phone: string; window: string; confirmedAt: number };
@@ -208,6 +226,32 @@ export interface OwnerAlert {
     /** How many registered devices the web push reached. See salesAgent/push.ts. */
     pushedTo?: number;
     error?: string;
+}
+
+/**
+ * One Gmail address and/or WhatsApp number shared by several ledger accounts.
+ *
+ * Tokens stay on `credentialCompanyId`. New conversations land on the member that
+ * owns the car, or on `fallbackCompanyId` when we cannot tell. `whatsappLive` is
+ * the go-live switch: connecting the Cloud API does not start sending.
+ */
+export interface SharedInbox {
+    id: string;
+    name?: string;
+    credentialCompanyId: string;
+    memberCompanyIds: string[];
+    fallbackCompanyId: string;
+    gmailAddress?: string;
+    whatsappPhoneNumberId?: string;
+    /** Customer WhatsApp is queued only when this is true. Default false. */
+    whatsappLive?: boolean;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface SharedContactRef {
+    companyId: string;
+    convId: string;
 }
 
 export interface OutboxJob {

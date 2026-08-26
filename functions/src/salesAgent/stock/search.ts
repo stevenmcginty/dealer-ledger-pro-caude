@@ -450,12 +450,61 @@ export const rankStock = (items: StockItem[], query: StockQuery): StockSearchRes
         .map(entry => ({ ...entry.item, matchQuality: entry.quality }));
 };
 
-const readStock = async (companyId: string): Promise<StockItem[]> => {
+export const readStock = async (companyId: string): Promise<StockItem[]> => {
     const snap = await db().ref(`companies/${companyId}/salesAgent/stock`).once('value');
     const raw = snap.val() as Record<string, StockItem> | null;
     if (!raw) return [];
     return Object.values(raw).filter(item => !!item);
 };
+
+/**
+ * Which advert an inbound enquiry is about, for placing the thread on the ledger
+ * that owns the car. Hidden cars are in play here: we need to see Chris's stock
+ * even when Steve's Dave is not allowed to sell it.
+ *
+ * Stock id and registration are exact. Free text has to be an exact or close
+ * match, and two close hits owned by different members count as "we do not know"
+ * rather than a guess.
+ */
+export interface EnquiryVehicleHint {
+    stockId?: string;
+    reg?: string;
+    title?: string;
+    text?: string;
+}
+
+export const matchEnquiryStock = (items: StockItem[], hint: EnquiryVehicleHint): StockItem | null => {
+    if (hint.stockId) {
+        const exact = items.find(item => item.id === hint.stockId);
+        if (exact) return exact;
+    }
+
+    if (hint.reg) {
+        const reg = hint.reg.replace(/\s/g, '').toUpperCase();
+        if (reg) {
+            const exact = items.find(item => (item.reg || '').replace(/\s/g, '').toUpperCase() === reg);
+            if (exact) return exact;
+        }
+    }
+
+    const text = (hint.title || hint.text || '').trim();
+    if (!text) return null;
+
+    const hits = rankStock(items, { text, includeReserved: true, includeHidden: true, limit: 5 })
+        .filter(hit => hit.matchQuality !== 'weak');
+
+    if (!hits.length) return null;
+
+    const owners = new Set(hits.map(hit => hit.ownerCompanyId).filter(Boolean));
+    if (owners.size > 1) return null;
+
+    return hits[0];
+};
+
+export const matchEnquiryStockForCompany = async (
+    companyId: string,
+    hint: EnquiryVehicleHint
+): Promise<StockItem | null> => matchEnquiryStock(await readStock(companyId), hint);
 
 /**
  * Best matches for what the customer asked about, surest first.

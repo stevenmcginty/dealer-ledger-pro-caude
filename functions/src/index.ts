@@ -35,7 +35,7 @@ export { salesAgentGmailPush, salesAgentBackfillLeads } from './salesAgent/chann
 export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRenewWatch } from './salesAgent/gmailAuth';
 export { salesAgentOutboxTick } from './salesAgent/outbox';
 export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSimulate } from './salesAgent/router';
-export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush } from './salesAgent/push';
+export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush, salesAgentPushDebug } from './salesAgent/push';
 
 // Health check function
 export const healthCheck = functions.https.onRequest((req, res) => {

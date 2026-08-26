@@ -14,6 +14,15 @@
  *   shortIds/{n}                            -> convId   (short number used in owner alerts / commands)
  *   ownerAlerts/{alertId}                   -> OwnerAlert
  *   outbox/{jobId}                          -> OutboxJob (delayed replies; drained by outboxTick every minute)
+ *
+ * Shared inbox (several ledger accounts, one Gmail / one WhatsApp number):
+ *   salesAgentRouting/sharedInboxes/{inboxId}                 -> SharedInbox
+ *   salesAgentRouting/sharedInboxes/{inboxId}/contactIndex/k  -> { companyId, convId }
+ *   salesAgentRouting/sharedInboxes/{inboxId}/seenProviderIds -> timestamp
+ *   salesAgentRouting/inboxMembers/{companyId}                -> inboxId
+ *   salesAgentRouting/channelToInbox/{whatsapp|gmail}/{key}   -> inboxId
+ * Channel credentials still live on the credential company. Threads live on the
+ * company that owns the car. WhatsApp stays dark until SharedInbox.whatsappLive.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.stripUndefined = exports.rtdbKey = exports.extractUkMobiles = exports.toE164 = exports.normaliseAddress = void 0;

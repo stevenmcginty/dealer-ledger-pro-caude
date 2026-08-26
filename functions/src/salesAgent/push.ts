@@ -217,6 +217,31 @@ export const salesAgentTestPush = functions.https.onCall(async (data, context) =
     return { devices: tokens.length, delivered, thisDevice, stillRegistered: remaining.length };
 });
 
+/**
+ * A phone that cannot register tells us why. The browser's own console is out of
+ * reach on a handset, so the failing step is written under the company for the
+ * desk to read. Kept to the last 30 entries.
+ */
+export const salesAgentPushDebug = functions.https.onCall(async (data, context) => {
+    const companyId = await requireMember(context, data?.companyId);
+    const ref = db().ref(agentPath(companyId, 'pushDebug'));
+    await ref.push({
+        at: Date.now(),
+        uid: context.auth?.uid || '',
+        step: String(data?.step || '').slice(0, 80),
+        detail: String(data?.detail || '').slice(0, 600),
+        ua: String(data?.ua || '').slice(0, 200),
+    });
+    const snap = await ref.orderByKey().once('value');
+    const keys = Object.keys(snap.val() || {});
+    if (keys.length > 30) {
+        const updates: Record<string, null> = {};
+        keys.slice(0, keys.length - 30).forEach(key => { updates[key] = null; });
+        await ref.update(updates);
+    }
+    return { ok: true };
+});
+
 /** Turned off on this device, or signing out of it. */
 export const salesAgentUnregisterPush = functions.https.onCall(async (data, context) => {
     const companyId = await requireMember(context, data?.companyId);
