@@ -44,8 +44,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
-const functions = __importStar(require("firebase-functions"));
+exports.healthCheck = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
+const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -65,6 +65,33 @@ Object.defineProperty(exports, "linkWebsite", { enumerable: true, get: function 
 Object.defineProperty(exports, "unlinkWebsite", { enumerable: true, get: function () { return link_1.unlinkWebsite; } });
 Object.defineProperty(exports, "previewWebsiteSync", { enumerable: true, get: function () { return link_1.previewWebsiteSync; } });
 Object.defineProperty(exports, "pushAllStockNow", { enumerable: true, get: function () { return link_1.pushAllStockNow; } });
+// AI Sales Agent (see docs/sales-agent/SPEC.md) — deploy by name only
+var stock_1 = require("./salesAgent/stock");
+Object.defineProperty(exports, "refreshSalesAgentStock", { enumerable: true, get: function () { return stock_1.refreshSalesAgentStock; } });
+Object.defineProperty(exports, "runSalesAgentStockIndexNow", { enumerable: true, get: function () { return stock_1.runSalesAgentStockIndexNow; } });
+var whatsapp_1 = require("./salesAgent/channels/whatsapp");
+Object.defineProperty(exports, "salesAgentWhatsAppWebhook", { enumerable: true, get: function () { return whatsapp_1.salesAgentWhatsAppWebhook; } });
+var twilio_1 = require("./salesAgent/channels/twilio");
+Object.defineProperty(exports, "salesAgentSmsWebhook", { enumerable: true, get: function () { return twilio_1.salesAgentSmsWebhook; } });
+var gmail_1 = require("./salesAgent/channels/gmail");
+Object.defineProperty(exports, "salesAgentGmailPush", { enumerable: true, get: function () { return gmail_1.salesAgentGmailPush; } });
+Object.defineProperty(exports, "salesAgentBackfillLeads", { enumerable: true, get: function () { return gmail_1.salesAgentBackfillLeads; } });
+var gmailAuth_1 = require("./salesAgent/gmailAuth");
+Object.defineProperty(exports, "salesAgentGmailAuthUrl", { enumerable: true, get: function () { return gmailAuth_1.salesAgentGmailAuthUrl; } });
+Object.defineProperty(exports, "salesAgentGmailOAuthCallback", { enumerable: true, get: function () { return gmailAuth_1.salesAgentGmailOAuthCallback; } });
+Object.defineProperty(exports, "salesAgentGmailRenewWatch", { enumerable: true, get: function () { return gmailAuth_1.salesAgentGmailRenewWatch; } });
+var outbox_1 = require("./salesAgent/outbox");
+Object.defineProperty(exports, "salesAgentOutboxTick", { enumerable: true, get: function () { return outbox_1.salesAgentOutboxTick; } });
+var router_1 = require("./salesAgent/router");
+Object.defineProperty(exports, "salesAgentSetMode", { enumerable: true, get: function () { return router_1.salesAgentSetMode; } });
+Object.defineProperty(exports, "salesAgentSendReply", { enumerable: true, get: function () { return router_1.salesAgentSendReply; } });
+Object.defineProperty(exports, "salesAgentAnswerQuestion", { enumerable: true, get: function () { return router_1.salesAgentAnswerQuestion; } });
+Object.defineProperty(exports, "salesAgentInstruct", { enumerable: true, get: function () { return router_1.salesAgentInstruct; } });
+Object.defineProperty(exports, "salesAgentSavePrivate", { enumerable: true, get: function () { return router_1.salesAgentSavePrivate; } });
+Object.defineProperty(exports, "salesAgentSimulate", { enumerable: true, get: function () { return router_1.salesAgentSimulate; } });
+var push_1 = require("./salesAgent/push");
+Object.defineProperty(exports, "salesAgentRegisterPush", { enumerable: true, get: function () { return push_1.salesAgentRegisterPush; } });
+Object.defineProperty(exports, "salesAgentUnregisterPush", { enumerable: true, get: function () { return push_1.salesAgentUnregisterPush; } });
 // Health check function
 exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({

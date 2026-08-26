@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from '../../types';
-import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ViewColumnsIcon, UserGroupIcon, ShieldCheckIcon } from '../icons';
+import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ViewColumnsIcon, UserGroupIcon, ShieldCheckIcon, InboxIcon } from '../icons';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import AppUpdateButton from '../common/AppUpdateButton';
@@ -59,6 +59,7 @@ const DesktopNav = ({ onLogout }: DesktopNavProps) => {
     
     const crmItems = [
         { label: "Pipeline", view: "pipeline" as View, icon: ViewColumnsIcon },
+        { label: "Agent Inbox", view: "agentInbox" as View, icon: InboxIcon },
     ];
 
     const reportingItems = [

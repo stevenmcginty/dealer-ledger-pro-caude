@@ -1,7 +1,12 @@
 
 
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
-import { DataContextState, ToDoItem, BusinessDetails, Lead, EmailTemplate, LeadStage } from '../types';
+import {
+    DataContextState, Vehicle, Receipt, SalesDocument, StatementTransaction, FinanceCompany,
+    ExpenseCategory, WorkSheet, Customer, MiscInvoice, JobInvoice, InternalJob, InformalVehicle,
+    GarageCost, Supplier, CanvasItem, FinancialAccount, UploadBatch, PDI,
+    ToDoItem, BusinessDetails, Lead, EmailTemplate, LeadStage, CRMSettings
+} from '../types';
 import * as dataService from '../services/dataService';
 import { User, onAuthStateChanged } from '../services/firebase';
 import { readCachedCompanyId } from '../utils/companyCache';
@@ -13,30 +18,31 @@ export const DataContext = createContext<DataContextState | undefined>(undefined
 export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> = ({ children, user }) => {
     // Data States
     const [companyId, setCompanyId] = useState<string | null>(null);
-    const [vehicles, setVehicles] = useState<any[]>([]);
-    const [receipts, setReceipts] = useState<any[]>([]);
-    const [salesDocs, setSalesDocs] = useState<any[]>([]);
-    const [transactions, setTransactions] = useState<any[]>([]);
-    const [financeCompanies, setFinanceCompanies] = useState<any[]>([]);
-    const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [receipts, setReceipts] = useState<Receipt[]>([]);
+    const [salesDocs, setSalesDocs] = useState<SalesDocument[]>([]);
+    const [transactions, setTransactions] = useState<StatementTransaction[]>([]);
+    const [financeCompanies, setFinanceCompanies] = useState<FinanceCompany[]>([]);
+    const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
     const [businessDetails, setBusinessDetails] = useState<BusinessDetails | null>(null);
     const [todos, setTodos] = useState<ToDoItem[]>([]);
-    const [workSheets, setWorkSheets] = useState<any[]>([]);
-    const [pdis, setPdis] = useState<any[]>([]);
-    const [customers, setCustomers] = useState<any[]>([]);
-    const [miscInvoices, setMiscInvoices] = useState<any[]>([]);
-    const [jobInvoices, setJobInvoices] = useState<any[]>([]);
-    const [internalJobs, setInternalJobs] = useState<any[]>([]);
-    const [informalVehicles, setInformalVehicles] = useState<any[]>([]);
-    const [garageCosts, setGarageCosts] = useState<any[]>([]);
-    const [suppliers, setSuppliers] = useState<any[]>([]);
-    const [canvasItems, setCanvasItems] = useState<any[]>([]);
-    const [financialAccounts, setFinancialAccounts] = useState<any[]>([]);
-    const [uploadBatches, setUploadBatches] = useState<any[]>([]);
+    const [workSheets, setWorkSheets] = useState<WorkSheet[]>([]);
+    const [pdis, setPdis] = useState<PDI[]>([]);
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [miscInvoices, setMiscInvoices] = useState<MiscInvoice[]>([]);
+    const [jobInvoices, setJobInvoices] = useState<JobInvoice[]>([]);
+    const [internalJobs, setInternalJobs] = useState<InternalJob[]>([]);
+    const [informalVehicles, setInformalVehicles] = useState<InformalVehicle[]>([]);
+    const [garageCosts, setGarageCosts] = useState<GarageCost[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [canvasItems, setCanvasItems] = useState<CanvasItem[]>([]);
+    const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
+    const [uploadBatches, setUploadBatches] = useState<UploadBatch[]>([]);
 
     // CRM States
     const [leads, setLeads] = useState<Lead[]>([]);
     const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+    const [crmSettings, setCrmSettings] = useState<CRMSettings | null>(null);
     const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
     // Loading & Error States
@@ -60,26 +66,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
                     setIsLoading(false);
                     // Load Mock Data
                     setVehicles([
-                        { id: '1', reg: 'AB12 CDE', make: 'Audi', model: 'A4', price: 15000, status: 'In Stock', purchaseDate: '2025-01-15' },
-                        { id: '2', reg: 'XY55 ZZZ', make: 'BMW', model: '3 Series', price: 18500, status: 'Sold', purchaseDate: '2025-02-01' },
-                        { id: '3', reg: 'GH88 JKL', make: 'Mercedes', model: 'C-Class', price: 22000, status: 'Prep', purchaseDate: '2025-02-10' },
+                        { id: '1', reg: 'AB12 CDE', make: 'Audi', model: 'A4', year: 2019, mileage: 45000, stockNumber: 'S001', purchasePrice: 12500, purchaseDate: '2025-01-15', vatScheme: 'Margin', status: 'Available', ownershipType: 'Owned Stock', createdAt: Date.now() },
+                        { id: '2', reg: 'XY55 ZZZ', make: 'BMW', model: '3 Series', year: 2020, mileage: 32000, stockNumber: 'S002', purchasePrice: 15000, purchaseDate: '2025-02-01', vatScheme: 'Margin', status: 'Sold', ownershipType: 'Owned Stock', createdAt: Date.now() },
+                        { id: '3', reg: 'GH88 JKL', make: 'Mercedes', model: 'C-Class', year: 2018, mileage: 68000, stockNumber: 'S003', purchasePrice: 18000, purchaseDate: '2025-02-10', vatScheme: 'Margin', status: 'Deposit Paid', ownershipType: 'Owned Stock', createdAt: Date.now() },
                     ]);
                     setExpenseCategories([
-                        { id: '1', name: 'Parts', color: 'bg-blue-500', icon: 'WrenchIcon' },
-                        { id: '2', name: 'Fuel', color: 'bg-green-500', icon: 'TruckIcon' },
-                        { id: '3', name: 'Transport', color: 'bg-yellow-500', icon: 'MapIcon' },
+                        { id: '1', name: 'Parts', color: 'bg-blue-500', icon: 'WrenchIcon', order: 1 },
+                        { id: '2', name: 'Fuel', color: 'bg-green-500', icon: 'TruckIcon', order: 2 },
+                        { id: '3', name: 'Transport', color: 'bg-yellow-500', icon: 'MapIcon', order: 3 },
                     ]);
                     setReceipts([
-                        { id: '1', date: '2025-02-15', amount: 150.00, supplier: 'Euro Car Parts', categoryId: '1', description: 'Brake Pads' },
-                        { id: '2', date: '2025-02-16', amount: 65.00, supplier: 'Shell', categoryId: '2', description: 'Diesel' },
+                        { id: '1', vendor: 'Euro Car Parts', amount: 150.00, vat: 25.00, date: '2025-02-15', category: 'Parts', paymentType: 'Direct', status: 'Paid', createdAt: Date.now() },
+                        { id: '2', vendor: 'Shell', amount: 65.00, vat: 10.83, date: '2025-02-16', category: 'Fuel', paymentType: 'Direct', status: 'Unpaid', createdAt: Date.now() },
                     ]);
                     setBusinessDetails({
-                        companyName: 'Prestige Motors Ltd',
+                        name: 'Prestige Motors Ltd',
+                        address: '12 Forecourt Road',
+                        phone: '01234 567890',
+                        email: 'sales@prestigemotors.example',
                         vatNumber: 'GB123456789',
+                        companyNumber: '12345678',
+                        bankDetails: '',
+                        invoiceTerms: 'Payment on collection',
+                        theme: 'blue',
+                        vatStartDate: '',
                         operatingMode: 'dealership',
-                        isVatRegistered: true,
-                        theme: 'blue'
-                    } as any);
+                        isVatRegistered: true
+                    });
                 }
                 return;
             }
@@ -143,6 +156,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
             // CRM Subscriptions
             dataService.subscribeToLeads(companyId, setLeads),
             dataService.subscribeToEmailTemplates(companyId, setEmailTemplates),
+            dataService.subscribeToCRMSettings(companyId, setCrmSettings),
         ];
 
         setIsLoading(false);
@@ -243,6 +257,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         // CRM State
         leads,
         emailTemplates,
+        crmSettings,
         selectedLeadId,
 
         isLoading,
@@ -266,7 +281,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteTransactions: (ids) => dataService.deleteTransactions(companyId!, ids),
         addFinanceCompany: (data) => dataService.addFinanceCompany(companyId!, data),
         addExpenseCategory: (name) => dataService.addExpenseCategory(companyId!, { name, icon: 'TagIcon', color: 'bg-gray-500', order: expenseCategories.length }),
-        renameCategory: (id, newName) => dataService.renameCategoryAndUpdateReferences(companyId!, id, newName, receipts, transactions),
+        renameCategory: (id, newName) => dataService.renameCategoryAndUpdateReferences(companyId!, id, newName, receipts, transactions).then(() => true).catch(() => false),
         deleteExpenseCategory: (id) => dataService.deleteExpenseCategory(companyId!, id).then(() => true).catch(() => false),
         updateExpenseCategories: (cats) => dataService.updateExpenseCategories(companyId!, cats),
         updateBusinessDetails: (data) => dataService.updateBusinessDetails(companyId!, data),
@@ -322,6 +337,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteEmailTemplate: (id) => dataService.deleteEmailTemplate(companyId!, id),
         setSelectedLeadId,
         convertLeadToSale: (leadId, saleData) => dataService.convertLeadToSale(companyId!, leadId, saleData),
+        updateCRMSettings: (data) => dataService.updateCRMSettings(companyId!, data),
 
         handleGoogleSignIn,
         handleGoogleSignOut,
@@ -345,7 +361,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteDataAndFilesByCategories: (categories) => dataService.deleteDataAndFilesByCategories(companyId!, user.uid, categories),
         batchArchiveDelete: (items) => dataService.batchArchiveDelete(companyId!, items),
         batchRestore: (manifest) => dataService.batchRestore(companyId!, manifest),
-    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, theme, mergedTodos, workSheets, pdis, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, emailTemplates, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
+    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, theme, mergedTodos, workSheets, pdis, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, emailTemplates, crmSettings, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
 
     return (
         <DataContext.Provider value={value}>

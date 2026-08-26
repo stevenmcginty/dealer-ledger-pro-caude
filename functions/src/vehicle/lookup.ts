@@ -7,7 +7,7 @@
  * an error, so a lookup still returns whatever could be gathered.
  */
 
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
 import { fetchMotHistory, summariseMotTests, toIsoDate, RawMotVehicle } from './motHistory';

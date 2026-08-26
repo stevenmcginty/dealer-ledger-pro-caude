@@ -320,10 +320,12 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
     
     if (name.startsWith('sorOwner.')) {
         const field = name.split('.')[1];
-        setFormData(prev => ({
-            ...prev,
-            sorOwner: { ...prev.sorOwner, [field]: value }
-        }));
+        if (field === 'name' || field === 'address') {
+            setFormData(prev => ({
+                ...prev,
+                sorOwner: { name: '', address: '', ...prev.sorOwner, [field]: value }
+            }));
+        }
         return;
     }
 

@@ -228,7 +228,7 @@ const ModalManager = () => {
                     
                     return <PrintableView document={docForView} businessDetails={data.businessDetails} onClose={closeModal} />;
                 }
-                const priorDeposit = (modal.data.docType === 'Sales Invoice' || modal.data.docType === 'Proforma Invoice') ? data.salesDocs.find(d => d.vehicleId === modal.data.vehicle.id && d.documentType === 'Deposit Slip') : null;
+                const priorDeposit = (modal.data.docType === 'Sales Invoice' || modal.data.docType === 'Proforma Invoice') ? data.salesDocs.find(d => d.vehicleId === modal.data.vehicle.id && d.documentType === 'Deposit Slip') ?? null : null;
                 return <DocumentCreator companyId={companyId} onSubmit={handleSalesDocSubmit} onCancel={closeModal} vehicle={modal.data.vehicle} documentType={modal.data.docType} priorDeposit={priorDeposit} financeCompanies={data.financeCompanies} businessDetails={data.businessDetails} prefillData={modal.data.prefillData} />;
             }
             case 'editInvoice': {

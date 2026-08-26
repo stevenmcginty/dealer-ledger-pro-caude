@@ -42,7 +42,7 @@ const AccountantReport = () => {
         // --- P&L Calculations ---
         const salesRevenue = isServiceBusiness 
             ? periodJobInvoices.reduce((sum, doc) => sum + doc.subtotal, 0)
-            : periodSales.reduce((sum, doc) => isVatRegistered ? (doc.price - doc.vat) : doc.price, 0);
+            : periodSales.reduce((sum, doc) => isVatRegistered ? (doc.price - (doc.vat || 0)) : doc.price, 0);
         
         const otherIncome = periodMiscInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
         

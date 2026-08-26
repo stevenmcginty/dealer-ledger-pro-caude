@@ -10,7 +10,7 @@
  * - Inert until a site is paired; see connectors/sync.ts
  */
 
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin
@@ -26,6 +26,16 @@ export { syncVehicleToWebsite } from './connectors/sync';
 export { lookupVehicleByReg } from './vehicle/lookup';
 export { runMotSweepNow } from './vehicle/motSweep';
 export { linkWebsite, unlinkWebsite, previewWebsiteSync, pushAllStockNow } from './connectors/link';
+
+// AI Sales Agent (see docs/sales-agent/SPEC.md) — deploy by name only
+export { refreshSalesAgentStock, runSalesAgentStockIndexNow } from './salesAgent/stock';
+export { salesAgentWhatsAppWebhook } from './salesAgent/channels/whatsapp';
+export { salesAgentSmsWebhook } from './salesAgent/channels/twilio';
+export { salesAgentGmailPush, salesAgentBackfillLeads } from './salesAgent/channels/gmail';
+export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRenewWatch } from './salesAgent/gmailAuth';
+export { salesAgentOutboxTick } from './salesAgent/outbox';
+export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentSavePrivate, salesAgentSimulate } from './salesAgent/router';
+export { salesAgentRegisterPush, salesAgentUnregisterPush } from './salesAgent/push';
 
 // Health check function
 export const healthCheck = functions.https.onRequest((req, res) => {

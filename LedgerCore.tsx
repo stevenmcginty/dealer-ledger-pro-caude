@@ -2,11 +2,12 @@ import React, { useMemo, useState, useEffect, useRef, lazy, Suspense } from 'rea
 import { useWindowSize } from './hooks/useWindowSize';
 import { useUI } from './hooks/useUI';
 import { useData } from './hooks/useData';
+import { useAgentPushMessages } from './hooks/useAgentPushMessages';
 import { signOut, reconnectDatabase } from './services/firebase';
 import { reloadOntoLatestBuild } from './contexts/AppUpdateContext';
 import { formatDate } from './utils/helpers';
 import { consumeQuickAction } from './utils/quickAction';
-import { View, NewCanvasItem, CanvasItem } from './types';
+import { View, NewCanvasItem, CanvasItem, Notification } from './types';
 
 // Import Layout Components
 import DesktopNav from './components/nav/DesktopNav';
@@ -41,6 +42,7 @@ const InternalJobsPage = lazy(() => import('./pages/InternalJobsPage'));
 const PdiPage = lazy(() => import('./pages/PdiPage'));
 const PipelinePage = lazy(() => import('./pages/PipelinePage'));
 const LeadDetailPage = lazy(() => import('./pages/LeadDetailPage'));
+const AgentInboxPage = lazy(() => import('./components/salesAgent/AgentInboxPage'));
 
 
 const LedgerCore = () => {
@@ -53,6 +55,10 @@ const LedgerCore = () => {
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [isCanvasMenuOpen, setIsCanvasMenuOpen] = useState(false);
   const canvasMenuRef = useRef<HTMLDivElement>(null);
+
+  // Sales agent alerts pushed to this device while the app is open show as a
+  // toast; the service worker handles them when it is not.
+  useAgentPushMessages();
 
   useEffect(() => {
     if (width !== undefined) {
@@ -106,7 +112,7 @@ const LedgerCore = () => {
 
   const notifications = useMemo(() => {
     if (isServiceBusiness) return [];
-    const alerts = [];
+    const alerts: Notification[] = [];
     const sixMonthsFromNow = new Date();
     sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
 
@@ -156,7 +162,8 @@ const LedgerCore = () => {
         canvas: 'AI Canvas',
         jobInvoices: 'Jobs & Invoices',
         pipeline: 'Pipeline',
-        leadDetail: 'Lead Details'
+        leadDetail: 'Lead Details',
+        agentInbox: 'Agent Inbox'
       };
       return titles[view];
   }
@@ -232,6 +239,7 @@ const LedgerCore = () => {
       case 'canvas': return <CanvasPage />;
       case 'pipeline': return <PipelinePage />;
       case 'leadDetail': return <LeadDetailPage />;
+      case 'agentInbox': return <AgentInboxPage />;
       default: return <div>Not implemented</div>;
     }
   };

@@ -1,7 +1,7 @@
 import React from 'react';
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
-type BadgeSize = 'sm' | 'md';
+type BadgeSize = 'sm' | 'md' | 'lg';
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -39,6 +39,7 @@ const Badge: React.FC<BadgeProps> = ({
   const sizeStyles: Record<BadgeSize, string> = {
     sm: 'px-2 py-0.5 text-xs',
     md: 'px-2.5 py-1 text-xs',
+    lg: 'px-3 py-1.5 text-sm',
   };
 
   return (

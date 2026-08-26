@@ -299,7 +299,7 @@ const QuickStats = () => {
     const { vehicles, todos, leads } = useData();
 
     const stats = useMemo(() => {
-        const inStock = vehicles.filter(v => v.status === 'Available' || v.status === 'In Stock').length;
+        const inStock = vehicles.filter(v => v.status === 'Available').length;
         const depositPaid = vehicles.filter(v => v.status === 'Deposit Paid').length;
         const prepTasks = todos.filter(t => t.type === 'prep' && !t.isComplete).length;
         const dueTasks = todos.filter(t => t.type === 'general' && !t.isComplete && t.dueDate).length;

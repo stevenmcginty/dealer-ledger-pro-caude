@@ -165,7 +165,7 @@ export const listRecentGoogleTasks = async (): Promise<any[]> => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     do {
-        const response = await gapi.client.tasks.tasks.list({
+        const response: { result: { items?: any[]; nextPageToken?: string } } = await gapi.client.tasks.tasks.list({
             tasklist: '@default',
             showCompleted: true,
             showHidden: false,

@@ -190,7 +190,7 @@ const PipelinePage: React.FC = () => {
     if (leads.length === 0) {
         return (
             <EmptyState
-                icon={ViewColumnsIcon}
+                icon={<ViewColumnsIcon className="w-12 h-12" />}
                 title="No leads yet"
                 description="Start building your pipeline by adding your first lead."
                 actionLabel="Add Lead"

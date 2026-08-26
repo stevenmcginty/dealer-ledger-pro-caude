@@ -205,7 +205,7 @@ const TemplateSettings: React.FC = () => {
             {/* Template Editor */}
             {(isCreating || isEditing) && (
                 <Card className="border-brand-500/50">
-                    <Card.Header title={isCreating ? 'Create Template' : 'Edit Template'} />
+                    <Card.Header>{isCreating ? 'Create Template' : 'Edit Template'}</Card.Header>
                     <Card.Body className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
@@ -298,7 +298,7 @@ const TemplateSettings: React.FC = () => {
             {/* Template List */}
             {filteredTemplates.length === 0 && !isCreating ? (
                 <EmptyState
-                    icon={DocumentTextIcon}
+                    icon={<DocumentTextIcon className="w-12 h-12" />}
                     title="No templates yet"
                     description="Create email templates to speed up your responses"
                     actionLabel="Create Template"

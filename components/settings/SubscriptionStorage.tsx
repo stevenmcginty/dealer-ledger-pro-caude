@@ -75,14 +75,14 @@ const SubscriptionStorage: React.FC = () => {
                     const fileList = await storageRef.listAll();
 
                     // Get metadata for each file to sum up sizes
-                    const metadataPromises = fileList.items.map(item => item.getMetadata());
+                    const metadataPromises = fileList.items.map((item: any) => item.getMetadata());
                     const metadataResults = await Promise.all(metadataPromises);
                     storageBytes = metadataResults.reduce((sum, meta) => sum + (meta.size || 0), 0);
 
                     // Also check prefixes (subdirectories)
                     for (const prefix of fileList.prefixes) {
                         const subList = await prefix.listAll();
-                        const subMetaPromises = subList.items.map(item => item.getMetadata());
+                        const subMetaPromises = subList.items.map((item: any) => item.getMetadata());
                         const subMetaResults = await Promise.all(subMetaPromises);
                         storageBytes += subMetaResults.reduce((sum, meta) => sum + (meta.size || 0), 0);
                     }

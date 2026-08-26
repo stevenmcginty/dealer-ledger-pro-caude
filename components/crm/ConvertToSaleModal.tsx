@@ -198,7 +198,7 @@ const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }
                                             Cost: {formatCurrency(selectedVehicle.purchasePrice)}
                                         </Badge>
                                     )}
-                                    <Badge variant={selectedVehicle.status === 'In Stock' ? 'success' : 'warning'} size="sm">
+                                    <Badge variant={selectedVehicle.status === 'Available' ? 'success' : 'warning'} size="sm">
                                         {selectedVehicle.status}
                                     </Badge>
                                 </div>

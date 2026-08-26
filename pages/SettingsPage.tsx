@@ -5,11 +5,17 @@ import SupplierManagement from '../components/settings/SupplierManagement';
 import AccountManagement from '../components/settings/AccountManagement';
 import IntegrationsPage from '../components/settings/IntegrationsPage';
 import ConnectorsPage from '../components/settings/ConnectorsPage';
+import SalesAgentSettingsPage from '../components/salesAgent/SalesAgentSettingsPage';
 
-type SettingsTab = 'details' | 'suppliers' | 'accounts' | 'integrations' | 'connectors' | 'data';
+type SettingsTab = 'details' | 'suppliers' | 'accounts' | 'integrations' | 'connectors' | 'salesAgent' | 'data';
 
 const SettingsPage = () => {
-    const [activeTab, setActiveTab] = useState<SettingsTab>('details');
+    // Google sends the browser back to /app/settings?gmail=connected, and the
+    // tab that has to notice is the sales agent's — landing on Business Details
+    // would drop the return leg on the floor.
+    const [activeTab, setActiveTab] = useState<SettingsTab>(() =>
+        new URLSearchParams(window.location.search).get('gmail') ? 'salesAgent' : 'details'
+    );
 
     const getTabClassName = (tab: SettingsTab) => {
         return activeTab === tab
@@ -52,6 +58,12 @@ const SettingsPage = () => {
                         <span>Connectors</span>
                     </button>
                     <button
+                        onClick={() => setActiveTab('salesAgent')}
+                        className={`group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium whitespace-nowrap ${getTabClassName('salesAgent')}`}
+                    >
+                        <span>AI Sales Agent</span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab('data')}
                         className={`group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium ${getTabClassName('data')}`}
                     >
@@ -65,6 +77,9 @@ const SettingsPage = () => {
                 <div className={activeTab === 'accounts' ? '' : 'hidden'}><AccountManagement /></div>
                 <div className={activeTab === 'integrations' ? '' : 'hidden'}><IntegrationsPage /></div>
                 <div className={activeTab === 'connectors' ? '' : 'hidden'}><ConnectorsPage /></div>
+                {/* Mounted only while open: it holds live listeners on the agent's
+                    settings, its stock index and, once opened, the simulator. */}
+                {activeTab === 'salesAgent' && <SalesAgentSettingsPage />}
                 <div className={activeTab === 'data' ? '' : 'hidden'}><DataManagement /></div>
             </div>
         </div>

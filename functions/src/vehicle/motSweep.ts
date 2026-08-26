@@ -9,7 +9,7 @@
  * — hence the small concurrency and the pause between batches.
  */
 
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 
 import { lookupVehicle, normaliseReg } from './lookup';

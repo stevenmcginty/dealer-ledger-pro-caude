@@ -5,10 +5,8 @@ interface EmptyStateProps {
   icon?: React.ReactNode;
   title: string;
   description?: string;
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
+  actionLabel?: string;
+  onAction?: () => void;
   className?: string;
 }
 
@@ -16,7 +14,8 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   icon,
   title,
   description,
-  action,
+  actionLabel,
+  onAction,
   className = '',
 }) => {
   const defaultIcon = (
@@ -39,9 +38,9 @@ const EmptyState: React.FC<EmptyStateProps> = ({
       {description && (
         <p className="text-sm text-gray-500 max-w-sm mb-6">{description}</p>
       )}
-      {action && (
-        <Button variant="primary" onClick={action.onClick}>
-          {action.label}
+      {actionLabel && onAction && (
+        <Button variant="primary" onClick={onAction}>
+          {actionLabel}
         </Button>
       )}
     </div>

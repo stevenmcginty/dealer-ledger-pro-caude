@@ -44,7 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runMotSweepNow = exports.refreshStockMotStatus = exports.sweepCompanyMots = void 0;
-const functions = __importStar(require("firebase-functions"));
+const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const lookup_1 = require("./lookup");
 const companyIds_1 = require("../utils/companyIds");

@@ -3,16 +3,23 @@ import { CheckCircleIcon, ExclamationTriangleIcon, InformationCircleIcon, XMarkI
 
 type ToastVariant = 'success' | 'error' | 'info';
 
+/** An optional second thing a toast can do besides being read and dismissed. */
+export interface ToastAction {
+    label: string;
+    onClick: () => void;
+}
+
 interface ToastItem {
     id: number;
     variant: ToastVariant;
     message: string;
+    action?: ToastAction;
 }
 
 interface ToastContextState {
     success: (message: string) => void;
     error: (message: string) => void;
-    info: (message: string) => void;
+    info: (message: string, action?: ToastAction) => void;
 }
 
 export const ToastContext = createContext<ToastContextState | undefined>(undefined);
@@ -48,11 +55,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
-    const show = useCallback((variant: ToastVariant, message: string) => {
+    const show = useCallback((variant: ToastVariant, message: string, action?: ToastAction) => {
         const id = ++nextId.current;
         // Newest first: the container is a column-reverse stack, so the newest
         // toast renders closest to the bottom edge.
-        setToasts(prev => [{ id, variant, message }, ...prev].slice(0, MAX_VISIBLE));
+        setToasts(prev => [{ id, variant, message, action }, ...prev].slice(0, MAX_VISIBLE));
         timers.current.push(setTimeout(() => dismiss(id), DISMISS_AFTER_MS[variant]));
     }, [dismiss]);
 
@@ -63,7 +70,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const value: ToastContextState = {
         success: useCallback((message: string) => show('success', message), [show]),
         error: useCallback((message: string) => show('error', message), [show]),
-        info: useCallback((message: string) => show('info', message), [show]),
+        info: useCallback((message: string, action?: ToastAction) => show('info', message, action), [show]),
     };
 
     return (
@@ -71,7 +78,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             {children}
             {/* Stacked bottom-right; on mobile it clears the floating bottom nav bar. */}
             <div className="fixed z-[70] bottom-28 right-4 md:bottom-6 flex flex-col-reverse gap-2 w-[calc(100%-2rem)] max-w-sm pointer-events-none print:hidden">
-                {toasts.map(({ id, variant, message }) => {
+                {toasts.map(({ id, variant, message, action }) => {
                     const { icon: Icon, iconClass, borderClass, role } = VARIANT_STYLES[variant];
                     return (
                         <div
@@ -80,7 +87,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                             className={`animate-toast-in pointer-events-auto flex items-start gap-3 bg-gray-800/95 backdrop-blur-sm border border-gray-700/60 border-l-4 ${borderClass} rounded-xl shadow-2xl shadow-black/40 px-4 py-3`}
                         >
                             <Icon className={`h-5 w-5 flex-shrink-0 mt-0.5 ${iconClass}`} />
-                            <p className="flex-1 text-sm text-gray-200 break-words">{message}</p>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm text-gray-200 break-words">{message}</p>
+                                {action && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { action.onClick(); dismiss(id); }}
+                                        className="mt-1.5 text-sm font-semibold text-brand-400 hover:text-brand-300 transition-colors"
+                                    >
+                                        {action.label}
+                                    </button>
+                                )}
+                            </div>
                             <button
                                 type="button"
                                 onClick={() => dismiss(id)}

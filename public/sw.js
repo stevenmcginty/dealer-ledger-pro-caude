@@ -4,6 +4,45 @@
 // respondWith() is what made a PWA refresh hang until site data was cleared.
 const CACHE_NAME = 'dealer-ledger-pro-cache-v4';
 
+// --- Cloud Messaging ------------------------------------------------------
+// Owner alerts from the sales agent arrive here as web push. There is no second
+// firebase-messaging-sw.js: a page may only have one worker on this scope, and a
+// second one would fight the caching worker above. The Firebase config comes in
+// on this script's own URL because index.html registers it that way — see the
+// comment there. Everything below the try/catch must still run if the CDN is
+// blocked or the browser has no push support, or the app loses its cache too.
+const fcmParams = new URL(self.location.href).searchParams;
+const fcmApiKey = fcmParams.get('fcmKey');
+const fcmSenderId = fcmParams.get('fcmSender');
+const fcmAppId = fcmParams.get('fcmApp');
+
+if (fcmApiKey && fcmSenderId && fcmAppId) {
+  try {
+    // Kept in step with the `firebase` version in package.json. The hosting CSP
+    // has to allow https://www.gstatic.com in script-src or these are blocked;
+    // tests/csp.test.ts checks that it still does.
+    importScripts(
+      'https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/12.7.0/firebase-messaging-compat.js'
+    );
+    firebase.initializeApp({
+      apiKey: fcmApiKey,
+      projectId: 'motor-ledger-pro',
+      messagingSenderId: fcmSenderId,
+      appId: fcmAppId,
+    });
+    // Constructing it is the whole job. The SDK installs its own push and
+    // notificationclick listeners: a background alert is shown from the
+    // notification block of the payload, a tap focuses an already-open tab at
+    // webpush.fcmOptions.link (or opens one), and an alert arriving while a tab
+    // is visible is forwarded to that tab instead — which is what onMessage in
+    // services/pushService.ts turns into a toast.
+    firebase.messaging();
+  } catch (err) {
+    console.warn('[SW] Cloud Messaging is not available in this worker', err);
+  }
+}
+
 self.addEventListener('install', () => {
   self.skipWaiting();
 });

@@ -153,7 +153,7 @@ const VatSummary = () => {
     // --- Net Sales & Expenses for display ---
     const totalSalesNet = isServiceBusiness 
         ? periodJobInvoices.reduce((sum, inv) => sum + inv.subtotal, 0)
-        : periodSales.reduce((sum, doc) => sum + (doc.price - doc.vat), 0) + periodMiscInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
+        : periodSales.reduce((sum, doc) => sum + (doc.price - (doc.vat || 0)), 0) + periodMiscInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
         
     const totalExpensesNet = periodTransactions
         .filter(tx => tx.amount < 0)

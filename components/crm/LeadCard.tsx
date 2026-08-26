@@ -91,7 +91,7 @@ const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, isDragging }) => {
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    window.location.href = `tel:${encodeURIComponent(lead.phone)}`;
+                                    window.location.href = `tel:${encodeURIComponent(lead.phone!)}`;
                                 }}
                                 className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
                                 title={lead.phone}

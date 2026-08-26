@@ -1,5 +1,6 @@
 
 import { db, auth } from './firebase';
+import type firebase from 'firebase/compat/app';
 import {
     SubscriptionPlan, Feature, BusinessSubscription, BusinessFeatureOverride,
     AdminBusinessRecord, SuperAdmin, AdminActivityLog, AdminPermission
@@ -252,7 +253,7 @@ export const removeBusinessFeatureOverride = async (companyId: string, featureId
 
 export const subscribeToPlans = (callback: (plans: SubscriptionPlan[]) => void): (() => void) => {
     const ref = db.ref(adminRef('plans'));
-    const listener = ref.on('value', snapshot => {
+    const listener = ref.on('value', (snapshot: firebase.database.DataSnapshot) => {
         if (!snapshot.exists()) {
             callback([]);
             return;
@@ -309,7 +310,7 @@ export const deletePlan = async (planId: string): Promise<void> => {
 
 export const subscribeToFeatures = (callback: (features: Feature[]) => void): (() => void) => {
     const ref = db.ref(adminRef('features'));
-    const listener = ref.on('value', snapshot => {
+    const listener = ref.on('value', (snapshot: firebase.database.DataSnapshot) => {
         if (!snapshot.exists()) {
             callback([]);
             return;

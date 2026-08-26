@@ -214,21 +214,21 @@ const createSubscription = <T,>(path: string, cb: (data: T[]) => void, sortFn?: 
 
     // Use ONLY child listeners — no .once('value') which double-downloads everything.
     // child_added fires once for each existing child (initial load), then for new ones.
-    const onAdd = dataRef.on('child_added', (snap) => {
+    const onAdd = dataRef.on('child_added', (snap: firebase.database.DataSnapshot) => {
         if (snap.key) {
             itemsMap.set(snap.key, { id: snap.key, ...snap.val() } as T);
             rebuildAndNotify();
         }
     });
 
-    const onChange = dataRef.on('child_changed', (snap) => {
+    const onChange = dataRef.on('child_changed', (snap: firebase.database.DataSnapshot) => {
         if (snap.key) {
             itemsMap.set(snap.key, { id: snap.key, ...snap.val() } as T);
             rebuildAndNotify();
         }
     });
 
-    const onRemove = dataRef.on('child_removed', (snap) => {
+    const onRemove = dataRef.on('child_removed', (snap: firebase.database.DataSnapshot) => {
         if (snap.key) {
             itemsMap.delete(snap.key);
             rebuildAndNotify();
@@ -827,7 +827,7 @@ export const listAllCompanyFiles = async (companyId: string): Promise<{ name: st
                 fullPath: metadata.fullPath,
                 size: metadata.size,
                 updated: metadata.updated,
-                contentType: metadata.contentType,
+                contentType: metadata.contentType ?? undefined,
                 downloadUrl,
                 userId: fileUserId
             };
@@ -850,7 +850,7 @@ export const deleteFileFromStorage = async (fullPath: string) => {
 export const deleteMultipleFiles = async (files: { fullPath: string }[]): Promise<void> => {
     const deletePromises = files.map(file => {
         const fileRef = storage.ref(file.fullPath);
-        return fileRef.delete().catch(e => console.error(`Failed to delete ${file.fullPath}`, e));
+        return fileRef.delete().catch((e: unknown) => console.error(`Failed to delete ${file.fullPath}`, e));
     });
     await Promise.allSettled(deletePromises);
 };
@@ -1567,12 +1567,12 @@ export const batchArchiveDelete = async (companyId: string, items: any[]): Promi
             // UPDATED: Only remove the file link, preserving the expense record
             updates[`${roots.receipts}/${item.id}/receiptUrl`] = null; 
             if (item.fileUrl) {
-                fileDeletePromises.push(storage.refFromURL(item.fileUrl).delete().catch(e => console.error(e)));
+                fileDeletePromises.push(storage.refFromURL(item.fileUrl).delete().catch((e: unknown) => console.error(e)));
             }
         } else if (item.type === 'purchaseInvoice') {
             // For vehicle purchase invoices, we delete the file link from the vehicle record
             if (item.data && item.data.invoiceUrl) {
-                 fileDeletePromises.push(storage.refFromURL(item.data.invoiceUrl).delete().catch(e => console.error(e)));
+                 fileDeletePromises.push(storage.refFromURL(item.data.invoiceUrl).delete().catch((e: unknown) => console.error(e)));
                  updates[`${roots.vehicles}/${item.id}/invoiceUrl`] = null;
             }
         } else if (item.type === 'salesDoc') {

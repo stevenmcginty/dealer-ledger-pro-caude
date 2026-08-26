@@ -114,7 +114,7 @@ const BusinessDetailsPage = () => {
 
     useEffect(() => {
         if (businessDetails) {
-            setFormData({ operatingMode: 'dealership', isVatRegistered: false, mtdVatExportEnabled: false, ...businessDetails });
+            setFormData({ mtdVatExportEnabled: false, ...businessDetails });
         }
     }, [businessDetails]);
 

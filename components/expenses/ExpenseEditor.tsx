@@ -177,7 +177,7 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
                             if (mostCommonCategory) suggestedCategory = mostCommonCategory;
                         }
 
-                        const paymentTypeCounts = vendorReceipts.reduce((acc, r) => { acc[r.paymentType] = (acc[r.paymentType] || 0) + 1; return acc; }, {} as Record<'Direct' | 'On Account', number>);
+                        const paymentTypeCounts = vendorReceipts.reduce((acc, r) => { acc[r.paymentType] = (acc[r.paymentType] || 0) + 1; return acc; }, {} as Record<string, number>);
                         const mostCommonPaymentType = Object.keys(paymentTypeCounts).length > 0 ? Object.keys(paymentTypeCounts).reduce((a, b) => paymentTypeCounts[a] > paymentTypeCounts[b] ? a : b) : null;
                         if (mostCommonPaymentType) suggestedPaymentType = mostCommonPaymentType as 'Direct' | 'On Account';
                     }

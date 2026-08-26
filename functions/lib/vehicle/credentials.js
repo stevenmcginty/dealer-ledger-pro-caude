@@ -41,7 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getVesEndpoint = exports.getVesApiKey = exports.getMotCredentials = void 0;
-const functions = __importStar(require("firebase-functions"));
+const functions = __importStar(require("firebase-functions/v1"));
 const runtimeConfig = () => {
     try {
         return functions.config() || {};

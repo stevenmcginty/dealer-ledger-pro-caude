@@ -14,6 +14,12 @@ export const firebaseConfig = {
   databaseURL: "https://motor-ledger-pro-default-rtdb.firebaseio.com",
   projectId: "motor-ledger-pro",
   storageBucket: "motor-ledger-pro.firebasestorage.app",
+  // Cloud Messaging refuses to start without these two (@firebase/messaging
+  // extractAppConfig requires projectId, apiKey, appId and messagingSenderId).
+  // They are public identifiers, but they are kept in env alongside the API key
+  // so a fork does not silently register against this project.
+  messagingSenderId: CONFIG.FIREBASE_MESSAGING_SENDER_ID,
+  appId: CONFIG.FIREBASE_APP_ID,
 };
 
 let authInstance: any;

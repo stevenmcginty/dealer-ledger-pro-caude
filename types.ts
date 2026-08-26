@@ -1,12 +1,12 @@
 
 
-export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'internalJobs' | 'jobInvoices' | 'pipeline' | 'leadDetail' | 'pdi';
+export type View = 'dashboard' | 'stock' | 'sales' | 'expenses' | 'income' | 'ledger' | 'vat' | 'filingCabinet' | 'settings' | 'accountant' | 'garage' | 'canvas' | 'workSheets' | 'workPrep' | 'internalJobs' | 'jobInvoices' | 'pipeline' | 'leadDetail' | 'pdi' | 'agentInbox';
 
 // Runtime mirror of the View union, for URL routing (/app/<view>). If you add a
 // view above, add it here too so it becomes deep-linkable.
-export const APP_VIEWS: View[] = ['dashboard', 'stock', 'sales', 'expenses', 'income', 'ledger', 'vat', 'filingCabinet', 'settings', 'accountant', 'garage', 'canvas', 'workSheets', 'workPrep', 'internalJobs', 'jobInvoices', 'pipeline', 'leadDetail', 'pdi'];
+export const APP_VIEWS: View[] = ['dashboard', 'stock', 'sales', 'expenses', 'income', 'ledger', 'vat', 'filingCabinet', 'settings', 'accountant', 'garage', 'canvas', 'workSheets', 'workPrep', 'internalJobs', 'jobInvoices', 'pipeline', 'leadDetail', 'pdi', 'agentInbox'];
 
-export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'internalJob' | 'deleteInternalJobConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'invoicePicker' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'convertLeadToSale' | 'addNote' | 'logCall' | 'statementMapping' | 'pdi' | 'deletePdiConfirm';
+export type ModalType = 'vehicle' | 'expense' | 'invoice' | 'editInvoice' | 'jobInvoice' | 'transactionAllocator' | 'categoryAllocator' | 'incomeAllocator' | 'multiReconciler' | 'progress' | 'categoryManager' | 'customerManager' | 'customerDetailView' | 'workSheet' | 'deleteWorkSheetConfirm' | 'internalJob' | 'deleteInternalJobConfirm' | 'miscInvoice' | 'editMiscInvoice' | 'deleteMiscInvoiceConfirm' | 'deleteJobInvoiceConfirm' | 'addInformalVehicle' | 'addGarageCost' | 'assignInvoice' | 'bulkDeleteConfirm' | 'supplier' | 'canvasItem' | 'vehicleActions' | 'invoicePicker' | 'todo' | 'confirmClearData' | 'undoSaleConfirm' | 'undoDepositConfirm' | 'forceUndoSaleConfirm' | 'deleteTodoConfirm' | 'archivePrepConfirm' | 'unarchivePrepConfirm' | 'markMonthPaidConfirm' | 'resequenceConfirm' | 'deleteUploadConfirm' | 'bulkReceiptWizard' | 'archiveDrawer' | 'restoreDrawer' | 'lead' | 'convertToSale' | 'addNote' | 'logCall' | 'statementMapping' | 'pdi' | 'deletePdiConfirm';
 
 export type ModalState = { type: ModalType; data?: any } | null;
 
@@ -1020,7 +1020,7 @@ export interface DataContextState {
     updateEmailTemplate: (id: string, data: EmailTemplateUpdate) => Promise<void>;
     deleteEmailTemplate: (id: string) => Promise<void>;
     setSelectedLeadId: (id: string | null) => void;
-    convertLeadToSale: (leadId: string, saleData: NewSalesDocument) => Promise<void>;
+    convertLeadToSale: (leadId: string, saleData: NewSalesDocument) => Promise<{ saleId: string }>;
     updateCRMSettings: (data: CRMSettingsUpdate) => Promise<void>;
 
     handleGoogleSignIn: () => void;

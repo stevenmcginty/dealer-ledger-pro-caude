@@ -125,7 +125,20 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
+          // Cloud Messaging has to be configured while the worker is being
+          // evaluated, and public/sw.js is copied verbatim rather than bundled,
+          // so it never sees import.meta.env. The config rides in on the
+          // registration URL instead. Vite substitutes these three at build
+          // time; if any is missing the %PLACEHOLDER% survives and the worker
+          // registers exactly as it did before, without push.
+          var fcm = ['%VITE_FIREBASE_API_KEY%', '%VITE_FIREBASE_MESSAGING_SENDER_ID%', '%VITE_FIREBASE_APP_ID%'];
+          var swUrl = './sw.js';
+          if (fcm.every(function (value) { return value && value.indexOf('%') === -1; })) {
+            swUrl += '?fcmKey=' + encodeURIComponent(fcm[0])
+              + '&fcmSender=' + encodeURIComponent(fcm[1])
+              + '&fcmApp=' + encodeURIComponent(fcm[2]);
+          }
+          navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' }).then(registration => {
             console.log('ServiceWorker registration successful with scope: ', registration.scope);
           }, err => {
             console.log('ServiceWorker registration failed: ', err);

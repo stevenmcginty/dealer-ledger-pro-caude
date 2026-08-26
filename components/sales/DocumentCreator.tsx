@@ -108,7 +108,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             setPayments(existingPayments.map(toDraft));
             setAdditionalNotes(editingDocument.additionalNotes || '');
             const pxExists = editingDocument.pxValue && editingDocument.pxValue > 0;
-            setHasPartExchange(pxExists);
+            setHasPartExchange(!!pxExists);
             setPxValueStr(pxExists ? String(editingDocument.pxValue) : '');
             setPartExchangeDetails(editingDocument.partExchangeDetails || { reg: '', make: '', model: '' });
             return;
@@ -268,7 +268,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         if (isEditing) {
             setPreviewData(cleanData);
         } else {
-             const invoiceNumber = editingDocument?.invoiceNumber || String(Math.floor(10000 + Math.random() * 90000));
+             const invoiceNumber = String(Math.floor(10000 + Math.random() * 90000));
              const newDocData: NewSalesDocument = {
                 ...cleanData,
                 invoiceNumber,
@@ -301,10 +301,10 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         // Layer it over the saved document so untouched fields — invoice number,
         // stock number, car details — still show, exactly as the patched save leaves them.
         const docForPreview: SalesDocument = {
-            id: editingDocument?.id || 'temp-id',
-            createdAt: editingDocument?.createdAt || Date.now(),
             ...(isEditing ? editingDocument : { invoiceNumber: '', stockNumber: '', vehicleId: '', vatScheme: 'Margin', documentType }),
-            ...previewData
+            ...previewData,
+            id: editingDocument?.id || 'temp-id',
+            createdAt: editingDocument?.createdAt || Date.now()
         } as SalesDocument;
         return (
             <div className="w-full flex flex-col h-full">

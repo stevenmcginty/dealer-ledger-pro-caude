@@ -61,7 +61,7 @@ const LeadDetailPage: React.FC = () => {
     if (!lead) {
         return (
             <EmptyState
-                icon={UserGroupIcon}
+                icon={<UserGroupIcon className="w-12 h-12" />}
                 title="No lead selected"
                 description="Select a lead from the pipeline to view their details."
                 actionLabel="Go to Pipeline"
@@ -177,7 +177,7 @@ const LeadDetailPage: React.FC = () => {
 
                     {/* Activity Timeline */}
                     <Card>
-                        <Card.Header title="Activity Timeline" />
+                        <Card.Header>Activity Timeline</Card.Header>
                         <Card.Body>
                             <ActivityTimeline activities={lead.history} />
                         </Card.Body>
@@ -188,7 +188,7 @@ const LeadDetailPage: React.FC = () => {
                 <div className="space-y-6">
                     {/* Quick Actions */}
                     <Card>
-                        <Card.Header title="Quick Actions" />
+                        <Card.Header>Quick Actions</Card.Header>
                         <Card.Body className="space-y-2">
                             <button
                                 onClick={handleLogCall}
@@ -233,7 +233,7 @@ const LeadDetailPage: React.FC = () => {
 
                     {/* Stage Management */}
                     <Card>
-                        <Card.Header title="Pipeline Stage" />
+                        <Card.Header>Pipeline Stage</Card.Header>
                         <Card.Body>
                             <div className="space-y-2">
                                 {STAGE_OPTIONS.map(stage => (
@@ -255,7 +255,7 @@ const LeadDetailPage: React.FC = () => {
 
                     {/* Vehicle Interest */}
                     <Card>
-                        <Card.Header title="Vehicle Interest" />
+                        <Card.Header>Vehicle Interest</Card.Header>
                         <Card.Body>
                             {linkedVehicle ? (
                                 <div className="space-y-2">

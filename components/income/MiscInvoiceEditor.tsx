@@ -75,7 +75,7 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
                 // Only auto-set VAT checkbox from customer when creating new invoices,
                 // not when editing — editing should preserve the stored value
                 if (!isEditing) {
-                    setIsVatInvoice(customer.isBusiness);
+                    setIsVatInvoice(!!customer.isBusiness);
                 }
                 setIsAddingCustomer(false);
             }
