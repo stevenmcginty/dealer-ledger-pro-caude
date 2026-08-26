@@ -105,5 +105,23 @@ const prompt_1 = require("./prompt");
         node_assert_1.strict.ok(prompt.includes('MESSAGING FORMAT (WhatsApp / SMS)'));
         node_assert_1.strict.ok(prompt.includes('1 to 3 short sentences max'));
     });
+    (0, node_test_1.it)('instructs Dave to maintain generic politeness and always confirm to call before leaving when agreeing a time', () => {
+        const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: baseConv, settings });
+        node_assert_1.strict.ok(prompt.includes('Natural Politeness & Courtesy'));
+        node_assert_1.strict.ok(prompt.includes("That's fine"));
+        node_assert_1.strict.ok(prompt.includes('no problem at all'));
+        node_assert_1.strict.ok(prompt.includes('ALWAYS CONFIRM TO CALL BEFORE THEY LEAVE'));
+        node_assert_1.strict.ok(prompt.includes('call before you leave') || prompt.includes('call before they leave'));
+        node_assert_1.strict.ok(prompt.includes('pulled out front and ready'));
+    });
+    (0, node_test_1.it)('bakes in website, changing stock, opening hours and viewings strictly by appointment', () => {
+        const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: baseConv, settings });
+        node_assert_1.strict.ok(prompt.includes('DEALERSHIP KNOWLEDGE'));
+        node_assert_1.strict.ok(prompt.includes('stock is always changing'));
+        node_assert_1.strict.ok(prompt.includes('https://radlettcarsales.com'));
+        node_assert_1.strict.ok(prompt.includes('Mon-Fri 9-6'));
+        node_assert_1.strict.ok(prompt.includes('STRICLY BY APPOINTMENT') || prompt.includes('STRICLY') || prompt.includes('STRICTLY BY APPOINTMENT') || prompt.includes('strictly by appointment'));
+        node_assert_1.strict.ok(prompt.includes('give us a call before coming down') || prompt.includes('give us a call'));
+    });
 });
 //# sourceMappingURL=brain.test.js.map

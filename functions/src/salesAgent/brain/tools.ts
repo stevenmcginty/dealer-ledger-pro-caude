@@ -267,13 +267,13 @@ export const toolDeclarations: FunctionDeclaration[] = [
     {
         name: 'get_business_info',
         description:
-            'Opening hours, address, phone number, website and the dealership FAQs (warranty, finance partners, test-drive licence rule, delivery, part-exchange policy). Call this before answering any question about the business itself.',
+            'Opening hours, address, phone number, website and the dealership FAQs (warranty, finance partners, test-drive licence rule, delivery, part-exchange policy). Note: all viewings are strictly by appointment (customers must call before coming down), and website stock is constantly changing.',
         parameters: { type: Type.OBJECT, properties: {} },
     },
     {
         name: 'book_viewing',
         description:
-            'Log a viewing or test drive. Only call this AFTER the owner has confirmed the slot through ask_owner. If he has not, this will refuse and ask him for you.',
+            'Log a viewing or test drive. Only call this AFTER the owner has confirmed the slot through ask_owner. If he has not, this will refuse and ask him for you. When confirming to the customer, always politely remind them: that\'s fine, but please call before you leave so we can have the car pulled out front and ready.',
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -448,6 +448,8 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
             phone: s.phone,
             website: s.websiteUrl,
             faqs: s.faqs,
+            viewingPolicy: 'All viewings strictly by appointment; customers must call before coming down.',
+            stockNote: 'All vehicle info is on the website; stock is constantly changing and updated regularly.',
         });
         // The dealership's own copy is a primary source: a reservation fee or a
         // warranty price written in the FAQs is a fact the agent may repeat, so the
@@ -480,7 +482,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
             return {
                 ok: false,
                 confirmed: false,
-                error: 'Not booked. You cannot confirm a slot yourself. The diary question has gone to the sales desk. Tell the customer you are checking the diary and will come back to them shortly. Do not name a colleague. Do not say booked or confirmed.',
+                error: 'Not booked. You cannot confirm a slot yourself. The diary question has gone to the sales desk. Tell the customer you are checking the diary and will come back to them shortly. Do not name a colleague. Do not say booked or confirmed. If they agreed a time, politely remind them: that\'s fine, but please call before you leave so we can have the car pulled out front and ready.',
             };
         }
 
@@ -489,7 +491,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
             ok: true,
             confirmed: true,
             booking: { name, phone, window },
-            note: 'Logged and the owner has been told. Confirm it to the customer in one sentence.',
+            note: 'Logged and the owner has been told. Confirm it politely to the customer (e.g. "That\'s fine, I have logged that with the sales team. Please just give us a quick call before you leave so we can have the car pulled out front and ready for you.").',
         };
     },
 

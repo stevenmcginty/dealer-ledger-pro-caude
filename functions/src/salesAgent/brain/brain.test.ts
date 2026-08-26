@@ -114,4 +114,24 @@ describe('System prompt generation', () => {
         assert.ok(prompt.includes('MESSAGING FORMAT (WhatsApp / SMS)'));
         assert.ok(prompt.includes('1 to 3 short sentences max'));
     });
+
+    it('instructs Dave to maintain generic politeness and always confirm to call before leaving when agreeing a time', () => {
+        const prompt = buildSystemPrompt({ conversation: baseConv, settings });
+        assert.ok(prompt.includes('Natural Politeness & Courtesy'));
+        assert.ok(prompt.includes("That's fine"));
+        assert.ok(prompt.includes('no problem at all'));
+        assert.ok(prompt.includes('ALWAYS CONFIRM TO CALL BEFORE THEY LEAVE'));
+        assert.ok(prompt.includes('call before you leave') || prompt.includes('call before they leave'));
+        assert.ok(prompt.includes('pulled out front and ready'));
+    });
+
+    it('bakes in website, changing stock, opening hours and viewings strictly by appointment', () => {
+        const prompt = buildSystemPrompt({ conversation: baseConv, settings });
+        assert.ok(prompt.includes('DEALERSHIP KNOWLEDGE'));
+        assert.ok(prompt.includes('stock is always changing'));
+        assert.ok(prompt.includes('https://radlettcarsales.com'));
+        assert.ok(prompt.includes('Mon-Fri 9-6'));
+        assert.ok(prompt.includes('STRICLY BY APPOINTMENT') || prompt.includes('STRICLY') || prompt.includes('STRICTLY BY APPOINTMENT') || prompt.includes('strictly by appointment'));
+        assert.ok(prompt.includes('give us a call before coming down') || prompt.includes('give us a call'));
+    });
 });
