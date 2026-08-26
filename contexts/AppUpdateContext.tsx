@@ -45,8 +45,13 @@ async function pingServiceWorker(): Promise<void> {
 }
 
 /**
- * Wipe the PWA caches and drop the service worker, then reload. Leaves cookies
- * and Firebase auth alone — that's the point of the button versus "delete site data".
+ * Wipe the PWA caches, move the service worker onto the new script, then reload.
+ * Leaves cookies and Firebase auth alone — that's the point of the button versus
+ * "delete site data".
+ *
+ * The worker is updated, never unregistered. The push subscription for Dave's
+ * alerts lives on the registration; dropping it made FCM report the phone as
+ * "Device unregistered" after every update, and the alerts silently stopped.
  */
 export async function reloadOntoLatestBuild(): Promise<void> {
     try {
@@ -56,7 +61,10 @@ export async function reloadOntoLatestBuild(): Promise<void> {
     try {
         if ('serviceWorker' in navigator) {
             const regs = await navigator.serviceWorker.getRegistrations();
-            await Promise.all(regs.map(reg => reg.unregister()));
+            await Promise.all(regs.map(async reg => {
+                await reg.update().catch(() => undefined);
+                reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+            }));
         }
     } catch { /* ignore */ }
     window.location.reload();
