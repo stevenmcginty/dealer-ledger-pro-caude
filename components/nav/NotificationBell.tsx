@@ -126,6 +126,9 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
 
                         {motCount > 0 && (
                             <ul>
+                                <li className={`px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 ${actionCount > 0 ? 'border-t border-gray-700/60' : ''}`}>
+                                    MOT reminders
+                                </li>
                                 {notifications.map(notif => (
                                     <li key={notif.id} className="px-4 py-3 text-sm text-gray-300 hover:bg-gray-700/40">
                                         <p>{notif.message}</p>

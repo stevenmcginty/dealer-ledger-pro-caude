@@ -126,7 +126,7 @@ export const sendOwnerPush = async (
                         title,
                         body,
                         icon: '/icons/icon-192.png',
-                        badge: '/icons/favicon-32.png',
+                        badge: '/icons/badge-96.png',
                         // One conversation replaces its own previous alert rather than
                         // stacking three notifications for the same customer.
                         tag: alert.convId || alert.kind,

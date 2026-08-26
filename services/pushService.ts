@@ -214,7 +214,7 @@ export const showAlertNotification = async (alert: PushAlert): Promise<void> => 
         await registration.showNotification(alert.title || 'Dave', {
             body: alert.body,
             icon: '/icons/icon-192.png',
-            badge: '/icons/favicon-32.png',
+            badge: '/icons/badge-96.png',
             tag: alert.convId || alert.kind || 'dave',
             renotify: true,
             requireInteraction: isDraft || isQuestion,

@@ -195,10 +195,17 @@ const findAlternatives = async (
     const seen = new Set(exclude.map((item) => item.id));
     const out: StockSearchResult[] = [];
 
+    // A customer who asked for a Mazda is not helped by a Peugeot. When the make
+    // is known, every alternative has to be that make; the price-band step only
+    // runs for a description that named no make at all.
+    const make = (filters.make || exclude[0]?.make || '').trim();
+    const sameMake = (item: StockSearchResult): boolean =>
+        !make || String(item.make || '').toLowerCase() === make.toLowerCase();
+
     const take = (items: StockSearchResult[]): void => {
         for (const item of items) {
             if (out.length >= 2) return;
-            if (seen.has(item.id) || item.status !== 'available') continue;
+            if (seen.has(item.id) || item.status !== 'available' || !sameMake(item)) continue;
             seen.add(item.id);
             out.push(item);
         }
@@ -207,11 +214,10 @@ const findAlternatives = async (
     const broader = broadenQueryText(filters.text);
     if (broader) take(await ctx.stock.searchStock(ctx.companyId, { text: broader, limit: 5 }));
 
-    const make = filters.make || exclude[0]?.make;
     if (out.length < 2 && make) take(await ctx.stock.searchStock(ctx.companyId, { make, limit: 5 }));
 
     const price = exclude[0]?.price;
-    if (out.length < 2 && typeof price === 'number' && price > 0) {
+    if (out.length < 2 && !make && typeof price === 'number' && price > 0) {
         const near = await ctx.stock.searchStock(ctx.companyId, { maxPrice: Math.round(price * 1.25), limit: MAX_SEARCH_RESULTS });
         take(near.filter((item) => (item.price ?? 0) >= price * 0.75));
     }
@@ -403,11 +409,24 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
             };
         }
 
+        // A named make with nothing of that make on the books: the forecourt may
+        // still have it (the index lags the yard), so it is checked, not denied.
+        const namedMake = (filters.make || hidden.find((item) => item.matchQuality !== 'weak')?.make || '').trim();
+        if (namedMake) {
+            return {
+                count: 0,
+                indexEmpty: false,
+                results: [],
+                namedMake,
+                note: `The customer named a ${namedMake} and nothing by ${namedMake} is showing as available. Do NOT offer a different make. Tell them you are just checking that one on the forecourt and will come straight back, and call ask_owner with the car they asked about.`,
+            };
+        }
+
         return {
             count: 0,
             indexEmpty: false,
             results: [],
-            note: 'Nothing matches. Do not invent a car. Search again with fewer words, dropping the year and the colour, and offer the closest one or two we do have. Only use ask_owner if that finds nothing either.',
+            note: 'Nothing matches. Do not invent a car. Search again with fewer words, dropping the year and the colour, and offer the closest one or two we do have, of the same make or body style as what they asked for. Only use ask_owner if that finds nothing either.',
         };
     },
 
