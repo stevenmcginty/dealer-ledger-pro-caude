@@ -2,7 +2,7 @@
 // hashed /assets/ files. Everything else — Firebase RTDB long-polling, Google
 // APIs, Cloud Functions — must go straight to the network. Wrapping those in
 // respondWith() is what made a PWA refresh hang until site data was cleared.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v6';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v7';
 
 // --- Cloud Messaging ------------------------------------------------------
 // Owner alerts from the sales agent arrive here as web push. There is no second
