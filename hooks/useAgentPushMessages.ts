@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useToast } from '../components/ui';
 import { useData } from './useData';
+import { useUI } from './useUI';
 import { PushAlert, onPushAlert, showAlertNotification, syncPushToken } from '../services/pushService';
 import { approveAgentDraft, formatQueuedSend } from '../services/salesAgentService';
-import { requestDraftReview, takeDraftActionFromUrl, takeDraftReviewFromUrl } from '../utils/agentInboxLink';
+import { requestAgentConversation, requestDraftReview, takeDraftActionFromUrl, takeDraftReviewFromUrl } from '../utils/agentInboxLink';
 
 /**
  * Owner alerts that arrive while the app is open.
@@ -20,6 +21,21 @@ import { requestDraftReview, takeDraftActionFromUrl, takeDraftReviewFromUrl } fr
 export const useAgentPushMessages = (): void => {
     const toast = useToast();
     const { companyId } = useData();
+    const { setView } = useUI();
+    const setViewRef = useRef(setView);
+    setViewRef.current = setView;
+
+    /**
+     * Edit, or a plain tap on the shade: go to the Agent Inbox on that thread.
+     * The bell is for approving without leaving the page; a tap from the phone
+     * is a decision to deal with it properly (Steve, 26 Aug).
+     */
+    const openInInbox = (convId: string) => {
+        if (!convId) return;
+        setViewRef.current('agentInbox');
+        requestAgentConversation(convId);
+    };
+
     const companyIdRef = useRef(companyId);
     companyIdRef.current = companyId;
     const toastRef = useRef(toast);
@@ -94,7 +110,7 @@ export const useAgentPushMessages = (): void => {
         const action = takeDraftActionFromUrl();
         if (!fromUrl) return;
         if (action === 'approve') approveFromShade.current(fromUrl);
-        else requestDraftReview(fromUrl);
+        else openInInbox(fromUrl);
     }, []);
 
     // A background notification click focuses this tab and posts the id here,
@@ -105,7 +121,7 @@ export const useAgentPushMessages = (): void => {
             const type = event.data?.type;
             const convId = String(event.data?.convId || '');
             if (type === 'dlp:dave-approve') approveFromShade.current(convId);
-            else if (type === 'dlp:dave-review') requestDraftReview(convId);
+            else if (type === 'dlp:dave-review') openInInbox(convId);
             else if (type === 'dlp:dave-alert') {
                 // The worker has already put it in the shade; just open the bell.
                 const kind = String(event.data?.kind || '');
