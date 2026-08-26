@@ -144,6 +144,9 @@ export const sendOwnerPush = async (
                     delivered += 1;
                     return;
                 }
+                console.warn(
+                    `Push to company ${companyId} device ${batch[index].key.slice(0, 12)}… failed: ${result.error?.code || 'unknown'} ${result.error?.message || ''}`
+                );
                 if (result.error?.code === 'messaging/registration-token-not-registered') {
                     dead.push(batch[index].key);
                 }
@@ -151,6 +154,7 @@ export const sendOwnerPush = async (
         }
 
         if (dead.length) {
+            console.warn(`Pruning ${dead.length} dead push token(s) for company ${companyId}`);
             const updates: Record<string, null> = {};
             dead.forEach(key => { updates[key] = null; });
             await db().ref(pushTokensPath(companyId)).update(updates);

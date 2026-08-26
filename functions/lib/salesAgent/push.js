@@ -152,12 +152,14 @@ const sendOwnerPush = async (companyId, settings, alert) => {
                     delivered += 1;
                     return;
                 }
+                console.warn(`Push to company ${companyId} device ${batch[index].key.slice(0, 12)}… failed: ${result.error?.code || 'unknown'} ${result.error?.message || ''}`);
                 if (result.error?.code === 'messaging/registration-token-not-registered') {
                     dead.push(batch[index].key);
                 }
             });
         }
         if (dead.length) {
+            console.warn(`Pruning ${dead.length} dead push token(s) for company ${companyId}`);
             const updates = {};
             dead.forEach(key => { updates[key] = null; });
             await (0, conversations_1.db)().ref(pushTokensPath(companyId)).update(updates);

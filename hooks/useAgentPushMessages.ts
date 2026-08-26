@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useToast } from '../components/ui';
 import { useData } from './useData';
-import { PushAlert, onPushAlert } from '../services/pushService';
+import { PushAlert, onPushAlert, showAlertNotification, syncPushToken } from '../services/pushService';
 import { approveAgentDraft, formatQueuedSend } from '../services/salesAgentService';
 import { requestDraftReview, takeDraftActionFromUrl, takeDraftReviewFromUrl } from '../utils/agentInboxLink';
 
@@ -53,6 +53,9 @@ export const useAgentPushMessages = (): void => {
     const show = useRef<(alert: PushAlert) => void>(() => {});
     show.current = alert => {
         requestDraftReview(alert.convId);
+        // Into the shade as well, with Approve / Edit, so it is not lost the
+        // moment the app is swiped away.
+        void showAlertNotification(alert);
 
         // A draft or a question already opened the bell with the full wording.
         // Another toast on top of that is just something to dismiss.
@@ -73,6 +76,14 @@ export const useAgentPushMessages = (): void => {
     }, [companyId]);
 
     useEffect(() => onPushAlert(alert => show.current(alert)), []);
+
+    // Put this device back on the list every time the app opens. Tokens rotate
+    // and dead ones are pruned server-side; without this a phone drops off
+    // silently and never comes back.
+    useEffect(() => {
+        if (!companyId) return;
+        void syncPushToken(companyId);
+    }, [companyId]);
 
     // A cold-start tap lands on `?dave=`. Convert it to the same event the bell
     // already listens for, after the bell has subscribed (this effect runs after

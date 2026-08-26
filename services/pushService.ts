@@ -158,6 +158,75 @@ export const enablePush = async (companyId: string): Promise<PushStatus> => {
     return 'enabled';
 };
 
+/**
+ * Keep this device on the list.
+ *
+ * A registration token is not for life: Google rotates them, and the function
+ * deletes any token FCM reports as dead. Until this existed nothing ever put a
+ * fresh token back, so a phone that had been turned on once could quietly drop
+ * off the list while its settings page still said "On for this device". Run on
+ * every app start where permission has already been granted; the register call
+ * is an idempotent set, so doing it too often costs nothing.
+ */
+export const syncPushToken = async (companyId: string): Promise<void> => {
+    try {
+        if (!isPushConfigured() || isIos()) return;
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+        if (!(await isSupported())) return;
+
+        const instance = await messaging();
+        if (!instance) return;
+
+        const registration = await navigator.serviceWorker.ready;
+        const token = await getToken(instance, {
+            vapidKey: CONFIG.FIREBASE_VAPID_KEY,
+            serviceWorkerRegistration: registration,
+        });
+        if (!token) return;
+
+        await registerPushToken(companyId, token, describePlatform());
+        writeStoredToken(token);
+    } catch (err) {
+        console.warn('[push] could not refresh the push token for this device', err);
+    }
+};
+
+/**
+ * Raise a real notification from the page.
+ *
+ * A push delivered to a visible tab is handed to onMessage and never shown by
+ * the browser, so a draft that lands while the app is open would only ever be
+ * a toast. Steve wants it in the shade with Approve / Edit regardless, and the
+ * worker's click handler treats this exactly like one it showed itself.
+ */
+export const showAlertNotification = async (alert: PushAlert): Promise<void> => {
+    try {
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+        if (!('serviceWorker' in navigator)) return;
+        const registration = await navigator.serviceWorker.ready;
+        const isDraft = alert.kind === 'draft';
+        const isQuestion = alert.kind === 'question';
+        const actions = isDraft
+            ? [{ action: 'approve', title: 'Approve' }, { action: 'review', title: 'Edit' }]
+            : isQuestion
+                ? [{ action: 'review', title: 'Answer' }]
+                : [{ action: 'review', title: 'Open' }];
+        await registration.showNotification(alert.title || 'Dave', {
+            body: alert.body,
+            icon: '/icons/icon-192.png',
+            badge: '/icons/favicon-32.png',
+            tag: alert.convId || alert.kind || 'dave',
+            renotify: true,
+            requireInteraction: isDraft || isQuestion,
+            vibrate: [80, 40, 80],
+            data: { convId: alert.convId, kind: alert.kind, url: alert.url },
+            actions,
+        } as NotificationOptions);
+    } catch (err) {
+        console.warn('[push] could not show the notification', err);
+    }
+};
+
 /** Take this device back off the list, and give the token back to Google. */
 export const disablePush = async (companyId: string): Promise<PushStatus> => {
     const token = readStoredToken();
