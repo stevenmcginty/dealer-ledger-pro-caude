@@ -50,7 +50,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.sendOwnerPush = exports.alertLink = void 0;
+exports.salesAgentUnregisterPush = exports.salesAgentTestPush = exports.salesAgentRegisterPush = exports.sendOwnerPush = exports.alertLink = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const conversations_1 = require("./conversations");
@@ -189,6 +189,29 @@ exports.salesAgentRegisterPush = functions.https.onCall(async (data, context) =>
     };
     await (0, conversations_1.db)().ref(`${pushTokensPath(companyId)}/${(0, types_1.rtdbKey)(token)}`).set(record);
     return { ok: true };
+});
+/**
+ * "Is my phone actually going to get these?" answered in one tap.
+ *
+ * Sends a real alert to every registered device and reports how many were
+ * reached, plus whether the calling device's own token is on the list — the app
+ * cannot see that, and a phone that thinks it is on can be quietly dead.
+ */
+exports.salesAgentTestPush = functions.https.onCall(async (data, context) => {
+    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const token = String(data?.token || '').trim();
+    const tokens = await readTokens(companyId);
+    const thisDevice = !!token && tokens.some(entry => entry.token === token);
+    const delivered = await (0, exports.sendOwnerPush)(companyId, null, {
+        id: 'test',
+        kind: 'error',
+        convId: '',
+        shortId: 0,
+        text: "Test alert from the sales desk. If you can read this, Dave's alerts are reaching this phone.",
+        sentAt: Date.now(),
+    });
+    const remaining = await readTokens(companyId);
+    return { devices: tokens.length, delivered, thisDevice, stillRegistered: remaining.length };
 });
 /** Turned off on this device, or signing out of it. */
 exports.salesAgentUnregisterPush = functions.https.onCall(async (data, context) => {

@@ -295,7 +295,23 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         return;
     }
 
-    await runAgentTurn(companyId, conversation, { ...msg, text }, settings);
+    try {
+        await runAgentTurn(companyId, conversation, { ...msg, text }, settings);
+    } catch (error: any) {
+        // The turn is lost (AI outage, after retries). The customer is still waiting,
+        // so this has to reach Steve as loudly as a draft would.
+        console.error(`Agent turn failed for #${conversation.shortId} in company ${companyId}`, error);
+        await updateConversation(companyId, conversation.id, {
+            escalated: true,
+            escalationReason: `agent error: ${String(error?.message || error).slice(0, 160)}`,
+        });
+        await sendOwnerAlert(
+            companyId,
+            'error',
+            conversation,
+            `#${conversation.shortId} Dave could not reply to ${describeCustomer(conversation)} (AI service error). Please reply yourself: "${text.slice(0, 200)}"`
+        );
+    }
 };
 
 // --- The agent's turn -------------------------------------------------------

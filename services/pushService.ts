@@ -227,6 +227,9 @@ export const showAlertNotification = async (alert: PushAlert): Promise<void> => 
     }
 };
 
+/** The token this device last registered, for the test-alert check. */
+export const currentPushToken = (): string => readStoredToken();
+
 /** Take this device back off the list, and give the token back to Google. */
 export const disablePush = async (companyId: string): Promise<PushStatus> => {
     const token = readStoredToken();

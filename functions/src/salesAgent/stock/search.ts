@@ -315,12 +315,18 @@ const aliasHits = (item: StockItem, alias: Alias): boolean => {
     return !!(alias.make || alias.model || alias.variant);
 };
 
+/** Letters and digits only, so "370z" lands on a model the site prints as "370 Z". */
+const squash = (value: unknown): string => lower(value).replace(/[^a-z0-9]/g, '');
+
 /** A loose token that lands on what the car actually is, rather than on its blurb. */
 const identityToken = (item: StockItem, token: string): boolean =>
     lower(item.make).includes(token) ||
     lower(item.model).includes(token) ||
     wordIn(lower(item.variant), token) ||
-    lower(item.reg).replace(/\s+/g, '').includes(token);
+    lower(item.reg).replace(/\s+/g, '').includes(token) ||
+    (token.length >= 3 && /\d/.test(token) && /[a-z]/.test(token) && (
+        squash(item.model).includes(token) || squash(item.title).includes(token)
+    ));
 
 const identityOf = (item: StockItem, q: NormalisedQuery): boolean =>
     q.aliases.some(alias => aliasHits(item, alias)) || q.tokens.some(token => identityToken(item, token));

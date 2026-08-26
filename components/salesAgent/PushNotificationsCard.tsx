@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, useToast } from '../ui';
 import { BellIcon, CheckCircleIcon, ExclamationTriangleIcon } from '../icons';
-import { PushStatus, disablePush, enablePush, readPushStatus } from '../../services/pushService';
-import { saveSalesAgentSettings } from '../../services/salesAgentService';
+import { PushStatus, currentPushToken, disablePush, enablePush, readPushStatus } from '../../services/pushService';
+import { saveSalesAgentSettings, sendTestPush } from '../../services/salesAgentService';
 
 /**
  * Getting Dave's alerts onto the phone in Steve's pocket.
@@ -140,6 +140,40 @@ const PushNotificationsCard: React.FC<PushNotificationsCardProps> = ({ companyId
         }
     };
 
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState('');
+
+    /**
+     * The only honest check. The card's badge comes from this browser's memory;
+     * the server list is what Dave actually sends to, and the two drift apart
+     * whenever Google retires a token.
+     */
+    const handleTest = async () => {
+        setTesting(true);
+        setTestResult('');
+        try {
+            let token = currentPushToken();
+            let result = await sendTestPush(companyId, token);
+            if (!result.thisDevice) {
+                // Not on the list: put it back on and try once more.
+                const next = await enablePush(companyId);
+                setStatus(next);
+                token = currentPushToken();
+                result = await sendTestPush(companyId, token);
+            }
+            const line = result.thisDevice
+                ? `Sent to ${result.delivered} of ${result.devices} device${result.devices === 1 ? '' : 's'}. This phone is registered. Check the notification shade.`
+                : `This device is not on the server's list (${result.devices} registered). Turn alerts on for this device and try again.`;
+            setTestResult(line);
+            if (result.thisDevice && result.delivered > 0) toast.success('Test alert sent.');
+            else toast.error('The test alert did not reach this device.');
+        } catch (err: any) {
+            toast.error(err?.message || 'Could not send a test alert.');
+        } finally {
+            setTesting(false);
+        }
+    };
+
     const handleDisable = async () => {
         setBusy(true);
         try {
@@ -190,9 +224,14 @@ const PushNotificationsCard: React.FC<PushNotificationsCardProps> = ({ companyId
                         </div>
 
                         {status === 'enabled' ? (
-                            <Button variant="secondary" onClick={handleDisable} loading={busy} disabled={busy}>
-                                Stop alerts here
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                                <Button onClick={handleTest} loading={testing} disabled={testing || busy}>
+                                    Send test alert
+                                </Button>
+                                <Button variant="secondary" onClick={handleDisable} loading={busy} disabled={busy || testing}>
+                                    Stop alerts here
+                                </Button>
+                            </div>
                         ) : (
                             <Button
                                 onClick={handleEnable}
@@ -203,6 +242,10 @@ const PushNotificationsCard: React.FC<PushNotificationsCardProps> = ({ companyId
                             </Button>
                         )}
                     </div>
+
+                    {testResult && (
+                        <p className="text-sm text-gray-300">{testResult}</p>
+                    )}
 
                     {pushOn === false && (
                         <p className="text-sm text-amber-400">

@@ -241,7 +241,19 @@ const handleInbound = async (msg, options = {}) => {
         await (0, alerts_1.sendOwnerAlert)(companyId, 'escalation', conversation, `#${conversation.shortId} ${(0, alerts_1.describeCustomer)(conversation)} (you have this one): ${text.slice(0, 400)}`);
         return;
     }
-    await (0, exports.runAgentTurn)(companyId, conversation, { ...msg, text }, settings);
+    try {
+        await (0, exports.runAgentTurn)(companyId, conversation, { ...msg, text }, settings);
+    }
+    catch (error) {
+        // The turn is lost (AI outage, after retries). The customer is still waiting,
+        // so this has to reach Steve as loudly as a draft would.
+        console.error(`Agent turn failed for #${conversation.shortId} in company ${companyId}`, error);
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, {
+            escalated: true,
+            escalationReason: `agent error: ${String(error?.message || error).slice(0, 160)}`,
+        });
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'error', conversation, `#${conversation.shortId} Dave could not reply to ${(0, alerts_1.describeCustomer)(conversation)} (AI service error). Please reply yourself: "${text.slice(0, 200)}"`);
+    }
 };
 exports.handleInbound = handleInbound;
 /**

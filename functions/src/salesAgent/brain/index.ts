@@ -432,7 +432,26 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
         usage.outputTokens += (meta?.candidatesTokenCount || 0) + (meta?.thoughtsTokenCount || 0);
     };
 
-    let response = await ai.models.generateContent({ model: BRAIN_MODEL, contents, config });
+    // Gemini returns 503 UNAVAILABLE / 429 under load a few times a day. One such
+    // blip must not cost a customer their reply, so the call is retried with a
+    // short back-off before the router is told the turn failed.
+    const generate = async (request: { model: string; contents: Content[]; config: GenerateContentConfig }) => {
+        const delays = [1500, 4000, 8000];
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await ai.models.generateContent(request);
+            } catch (error: any) {
+                const status = Number(error?.status || error?.code || error?.error?.code);
+                const text = String(error?.message || '');
+                const transient = [429, 500, 502, 503, 504].includes(status) || /UNAVAILABLE|overloaded|RESOURCE_EXHAUSTED/i.test(text);
+                if (!transient || attempt >= delays.length) throw error;
+                console.warn(`Brain: Gemini ${status || 'error'} on attempt ${attempt + 1}, retrying in ${delays[attempt]}ms`);
+                await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+            }
+        }
+    };
+
+    let response = await generate({ model: BRAIN_MODEL, contents, config });
     account(response);
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -451,7 +470,7 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
         // On the last permitted round the tools are taken away, so the model has to
         // answer with what it has rather than looping until it runs out of budget.
         const lastRound = round === MAX_TOOL_ROUNDS - 1;
-        response = await ai.models.generateContent({
+        response = await generate({
             model: BRAIN_MODEL,
             contents,
             config: lastRound ? configWithoutTools : config,

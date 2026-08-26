@@ -260,4 +260,16 @@ const ids = (items) => items.map(item => item.id);
         node_assert_1.strict.equal((0, search_1.describeStockItem)({ ...BOXSTER_01, status: 'reserved' }), '2001 Porsche Boxster 2.7, Black, 96,400 miles, £5,995 (reg Y421HTM), 5 previous owners, currently reserved');
     });
 });
+(0, node_test_1.describe)('model names the site prints with a space', () => {
+    (0, node_test_1.it)('finds the 370 Z when the customer writes 370Z', () => {
+        const items = [
+            { id: 'z', title: 'Nissan 370 Z 3.7 V6 Nismo', make: 'Nissan', model: '370 Z', variant: '3.7 V6 Nismo', price: 20000, status: 'available' },
+            { id: 'a', title: 'Vauxhall Astra GTC 1.4', make: 'Vauxhall', model: 'Astra GTC', variant: '1.4', price: 5000, status: 'available', description: 'Cat S repaired' },
+        ];
+        const hits = (0, search_1.rankStock)(items, { text: 'your Nissan 370Z, what does category S mean' });
+        node_assert_1.strict.equal(hits[0]?.id, 'z');
+        node_assert_1.strict.notEqual(hits[0]?.matchQuality, 'weak');
+        node_assert_1.strict.ok(!hits.some(h => h.id === 'a'));
+    });
+});
 //# sourceMappingURL=search.test.js.map

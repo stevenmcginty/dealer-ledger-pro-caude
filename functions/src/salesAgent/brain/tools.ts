@@ -74,6 +74,12 @@ export interface ToolEffects {
     businessText: string;
     /** Names of the tools that ran, in order. Useful in logs and in devRun. */
     called: string[];
+    /** Stock ids search_stock returned as exact or close this run. Only these may be
+     *  pinned to the conversation: a weak guess the model went on to open must not
+     *  become "the car they are interested in". */
+    strongIds: Set<string>;
+    /** Whether search_stock ran at all this turn. */
+    searched: boolean;
 }
 
 export const newToolEffects = (): ToolEffects => ({
@@ -81,6 +87,8 @@ export const newToolEffects = (): ToolEffects => ({
     seenMonthly: new Set(),
     businessText: '',
     called: [],
+    strongIds: new Set(),
+    searched: false,
 });
 
 export interface ToolContext {
@@ -346,7 +354,9 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
             limit,
         });
 
+        ctx.effects.searched = true;
         const available = await ctx.stock.searchStock(ctx.companyId, filters);
+        available.filter((item) => item.matchQuality !== 'weak').forEach((item) => ctx.effects.strongIds.add(item.id));
         if (available.length) {
             rememberPrices(ctx, available);
             return drop({
@@ -364,6 +374,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         // still their car, and gets said out loud with two alternatives beside it.
         const withSold = await ctx.stock.searchStock(ctx.companyId, { ...filters, includeReserved: true });
         const taken = withSold.filter((item) => item.matchQuality !== 'weak');
+        taken.forEach((item) => ctx.effects.strongIds.add(item.id));
         if (taken.length) {
             rememberPrices(ctx, taken);
             const alternatives = await findAlternatives(ctx, filters, taken);
@@ -436,7 +447,9 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         const item = await ctx.stock.getStockItem(ctx.companyId, id);
         if (!item) return { error: `No vehicle with stock id ${id}. Search again rather than answering from memory.` };
         rememberPrices(ctx, [item]);
-        ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };
+        if (!ctx.effects.searched || ctx.effects.strongIds.has(item.id)) {
+            ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };
+        }
         return { vehicle: detailView(item) };
     },
 

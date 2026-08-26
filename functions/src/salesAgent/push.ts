@@ -190,6 +190,33 @@ export const salesAgentRegisterPush = functions.https.onCall(async (data, contex
     return { ok: true };
 });
 
+/**
+ * "Is my phone actually going to get these?" answered in one tap.
+ *
+ * Sends a real alert to every registered device and reports how many were
+ * reached, plus whether the calling device's own token is on the list — the app
+ * cannot see that, and a phone that thinks it is on can be quietly dead.
+ */
+export const salesAgentTestPush = functions.https.onCall(async (data, context) => {
+    const companyId = await requireMember(context, data?.companyId);
+    const token = String(data?.token || '').trim();
+
+    const tokens = await readTokens(companyId);
+    const thisDevice = !!token && tokens.some(entry => entry.token === token);
+
+    const delivered = await sendOwnerPush(companyId, null, {
+        id: 'test',
+        kind: 'error',
+        convId: '',
+        shortId: 0,
+        text: "Test alert from the sales desk. If you can read this, Dave's alerts are reaching this phone.",
+        sentAt: Date.now(),
+    });
+
+    const remaining = await readTokens(companyId);
+    return { devices: tokens.length, delivered, thisDevice, stillRegistered: remaining.length };
+});
+
 /** Turned off on this device, or signing out of it. */
 export const salesAgentUnregisterPush = functions.https.onCall(async (data, context) => {
     const companyId = await requireMember(context, data?.companyId);

@@ -306,3 +306,16 @@ describe('describeStockItem', () => {
         );
     });
 });
+
+describe('model names the site prints with a space', () => {
+    it('finds the 370 Z when the customer writes 370Z', () => {
+        const items = [
+            { id: 'z', title: 'Nissan 370 Z 3.7 V6 Nismo', make: 'Nissan', model: '370 Z', variant: '3.7 V6 Nismo', price: 20000, status: 'available' },
+            { id: 'a', title: 'Vauxhall Astra GTC 1.4', make: 'Vauxhall', model: 'Astra GTC', variant: '1.4', price: 5000, status: 'available', description: 'Cat S repaired' },
+        ] as any[];
+        const hits = rankStock(items, { text: 'your Nissan 370Z, what does category S mean' });
+        assert.equal(hits[0]?.id, 'z');
+        assert.notEqual(hits[0]?.matchQuality, 'weak');
+        assert.ok(!hits.some(h => h.id === 'a'));
+    });
+});

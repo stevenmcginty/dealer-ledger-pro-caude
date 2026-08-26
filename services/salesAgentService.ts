@@ -550,6 +550,15 @@ export const registerPushToken = (companyId: string, token: string, platform: st
         'Could not turn on alerts for this device.'
     );
 
+/** Fire a real alert at every registered device and report what happened. */
+export const sendTestPush = (companyId: string, token: string) =>
+    call<{ companyId: string; token: string }, { devices: number; delivered: number; thisDevice: boolean; stillRegistered: number }>(
+        'salesAgentTestPush',
+        { companyId, token },
+        30000,
+        'Could not send a test alert.'
+    );
+
 /** Take this browser back off the list. */
 export const unregisterPushToken = (companyId: string, token: string) =>
     call<{ companyId: string; token: string }, { ok: boolean }>(

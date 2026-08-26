@@ -25,6 +25,8 @@ const newToolEffects = () => ({
     seenMonthly: new Set(),
     businessText: '',
     called: [],
+    strongIds: new Set(),
+    searched: false,
 });
 exports.newToolEffects = newToolEffects;
 const MAX_SEARCH_RESULTS = 5;
@@ -257,7 +259,9 @@ const handlers = {
             bodyType: str(args.bodyType),
             limit,
         });
+        ctx.effects.searched = true;
         const available = await ctx.stock.searchStock(ctx.companyId, filters);
+        available.filter((item) => item.matchQuality !== 'weak').forEach((item) => ctx.effects.strongIds.add(item.id));
         if (available.length) {
             rememberPrices(ctx, available);
             return drop({
@@ -274,6 +278,7 @@ const handlers = {
         // still their car, and gets said out loud with two alternatives beside it.
         const withSold = await ctx.stock.searchStock(ctx.companyId, { ...filters, includeReserved: true });
         const taken = withSold.filter((item) => item.matchQuality !== 'weak');
+        taken.forEach((item) => ctx.effects.strongIds.add(item.id));
         if (taken.length) {
             rememberPrices(ctx, taken);
             const alternatives = await findAlternatives(ctx, filters, taken);
@@ -343,7 +348,9 @@ const handlers = {
         if (!item)
             return { error: `No vehicle with stock id ${id}. Search again rather than answering from memory.` };
         rememberPrices(ctx, [item]);
-        ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };
+        if (!ctx.effects.searched || ctx.effects.strongIds.has(item.id)) {
+            ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };
+        }
         return { vehicle: detailView(item) };
     },
     async get_business_info(_args, ctx) {
