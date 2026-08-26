@@ -34,7 +34,7 @@ export { salesAgentSmsWebhook } from './salesAgent/channels/twilio';
 export { salesAgentGmailPush, salesAgentBackfillLeads } from './salesAgent/channels/gmail';
 export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRenewWatch } from './salesAgent/gmailAuth';
 export { salesAgentOutboxTick } from './salesAgent/outbox';
-export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentSavePrivate, salesAgentSimulate } from './salesAgent/router';
+export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSimulate } from './salesAgent/router';
 export { salesAgentRegisterPush, salesAgentUnregisterPush } from './salesAgent/push';
 
 // Health check function

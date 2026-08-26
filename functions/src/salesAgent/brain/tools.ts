@@ -371,6 +371,12 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         // model, only the fact that this thread has to go to a person.
         const hidden = await ctx.stock.searchStock(ctx.companyId, { ...filters, includeReserved: true, includeHidden: true });
         if (hidden.some((item) => item.hiddenReason && item.matchQuality !== 'weak')) {
+            // Deterministic: don't rely on the model remembering to hand off.
+            ctx.effects.handoff = true;
+            ctx.effects.escalate = ctx.effects.escalate || {
+                reason: 'car not managed by agent',
+                ownerMessage: `Customer is asking about a car the agent doesn't handle (another account's or unmatched): "${(filters.text || '').slice(0, 160)}". Please reply yourself.`,
+            };
             return {
                 count: 0,
                 notHandled: true,

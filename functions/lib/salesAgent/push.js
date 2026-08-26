@@ -59,6 +59,12 @@ const types_1 = require("./types");
 const MULTICAST_LIMIT = 500;
 /** A notification body is a glance, not a read. The whole alert is in the app. */
 const BODY_LIMIT = 200;
+/**
+ * Except for a draft. The point of that alert is that Steve reads the actual words the
+ * agent wants to send and answers SEND without opening anything, so it gets room for the
+ * 300 characters of draft the alert carries plus the line that explains how to approve it.
+ */
+const DRAFT_BODY_LIMIT = 450;
 const pushTokensPath = (companyId) => (0, conversations_1.agentPath)(companyId, 'pushTokens');
 /** The app is served from Hosting; the link has to be absolute for FCM to accept it. */
 const appBaseUrl = () => (process.env.SALES_AGENT_APP_URL || 'https://motor-ledger-pro.web.app').replace(/\/+$/, '');
@@ -100,7 +106,7 @@ const sendOwnerPush = async (companyId, settings, alert) => {
             return 0;
         const link = (0, exports.alertLink)(alert.convId);
         const title = settings?.agentName || 'Dave';
-        const body = alert.text.slice(0, BODY_LIMIT);
+        const body = alert.text.slice(0, alert.kind === 'draft' ? DRAFT_BODY_LIMIT : BODY_LIMIT);
         let delivered = 0;
         const dead = [];
         for (const batch of chunk(tokens, MULTICAST_LIMIT)) {

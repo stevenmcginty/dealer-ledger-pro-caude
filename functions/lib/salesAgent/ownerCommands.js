@@ -193,19 +193,27 @@ const handleOwnerCommand = async (companyId, settings, raw) => {
             const conversation = await resolve(companyId, answer[1]);
             if (!conversation)
                 return (0, alerts_1.sendOwnerText)(companyId, `No conversation #${answer[1]}.`);
-            await deliverAnswer(companyId, conversation, answer[2].trim());
+            await deliverAnswer(companyId, settings, conversation, answer[2].trim());
             return;
         }
         // No command word. If exactly one conversation is waiting on him, this is the
         // answer to it — anything else would be guessing.
-        const waiting = (await (0, conversations_1.listConversations)(companyId)).filter(c => c.pendingQuestion);
+        const open = await (0, conversations_1.listConversations)(companyId);
+        const waiting = open.filter(c => c.pendingQuestion);
         if (waiting.length === 1) {
-            await deliverAnswer(companyId, waiting[0], text);
+            await deliverAnswer(companyId, settings, waiting[0], text);
             return;
         }
         if (waiting.length > 1) {
             await (0, alerts_1.sendOwnerText)(companyId, `${waiting.length} conversations are waiting on you, so say which:\n` +
                 waiting.map(c => `ANSWER ${c.shortId} — ${c.pendingQuestion?.question || ''}`).join('\n'));
+            return;
+        }
+        // Nothing was asked, but one draft is sitting there waiting on him: a bare reply
+        // to that alert is what he wants said differently, not a new command.
+        const drafts = open.filter(c => c.pendingDraft);
+        if (drafts.length === 1) {
+            await deliverInstruction(companyId, settings, drafts[0], text);
             return;
         }
         await (0, alerts_1.sendOwnerText)(companyId, HELP);
@@ -219,23 +227,34 @@ exports.handleOwnerCommand = handleOwnerCommand;
 /**
  * Hand the agent something to say. Nothing is pending, so there is no reply to read back
  * to Steve yet — it goes out on the usual delay like any other agent message.
+ *
+ * On an email in approval mode nothing goes out at all: the rewording lands as a fresh
+ * draft, and the alert carrying it is the reply to this.
  */
 const deliverInstruction = async (companyId, settings, conversation, instruction) => {
     try {
         await (0, router_1.answerPendingQuestion)(companyId, conversation.id, instruction);
-        await (0, alerts_1.sendOwnerText)(companyId, `${settings.agentName || 'Dave'} will phrase that and send it.`);
+        const agent = settings.agentName || 'Dave';
+        await (0, alerts_1.sendOwnerText)(companyId, (0, router_1.needsApproval)(conversation, settings)
+            ? `${agent} is redrafting that — the new one is coming for you to approve.`
+            : `${agent} will phrase that and send it.`);
     }
     catch (error) {
         await (0, alerts_1.sendOwnerText)(companyId, `Could not pass that on to #${conversation.shortId}: ${error?.message || 'unknown error'}`);
     }
 };
-const deliverAnswer = async (companyId, conversation, answer) => {
+const deliverAnswer = async (companyId, settings, conversation, answer) => {
     const question = conversation.pendingQuestion?.question;
     try {
         const { reply } = await (0, router_1.answerPendingQuestion)(companyId, conversation.id, answer);
-        await (0, alerts_1.sendOwnerText)(companyId, reply
-            ? `Passed on to #${conversation.shortId}${question ? ` (${question})` : ''}. The agent is saying: ${reply}`
-            : `Noted against #${conversation.shortId}. The agent had nothing to add.`);
+        const where = `#${conversation.shortId}${question ? ` (${question})` : ''}`;
+        await (0, alerts_1.sendOwnerText)(companyId, !reply
+            ? `Noted against #${conversation.shortId}. The agent had nothing to add.`
+            : (0, router_1.needsApproval)(conversation, settings)
+                // The draft alert carries the wording, so repeating it here would be
+                // the same paragraph twice on his phone.
+                ? `Passed on to ${where}. ${settings.agentName || 'Dave'} has drafted the reply for you to approve.`
+                : `Passed on to ${where}. The agent is saying: ${reply}`);
     }
     catch (error) {
         await (0, alerts_1.sendOwnerText)(companyId, `Could not pass that on to #${conversation.shortId}: ${error?.message || 'unknown error'}`);

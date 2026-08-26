@@ -57,6 +57,12 @@ export interface SalesAgentSettings {
     followUpPhoneLeads?: boolean;
     /** Web push to this company's registered devices, alongside the WhatsApp alert. */
     pushNotifications?: boolean;
+    /**
+     * Email replies are written but held until you approve them, on WhatsApp with
+     * `SEND 12` or in the Agent Inbox. WhatsApp and SMS replies always go on their own.
+     * Undefined means on.
+     */
+    emailApprovalMode?: boolean;
     updatedAt: number;
     /**
      * Which connections have credentials stored in `salesAgent/private`.
@@ -105,6 +111,8 @@ export interface Conversation {
     /** The agent has stopped and is waiting for Steve to answer this. */
     pendingQuestion?: { id: string; question: string; askedAt: number; context?: string };
     ownerAnswer?: { question: string; answer: string; answeredAt: number };
+    /** An email reply the agent has written and is holding until you approve it. */
+    pendingDraft?: { id: string; text: string; subject?: string; createdAt: number; source: 'agent' | 'instruction' };
     priceRequests: number;
     summary?: string;
     lastInboundAt: number;
@@ -174,6 +182,7 @@ export const DEFAULT_SALES_AGENT_SETTINGS: SalesAgentSettings = {
     unmatchedStockPolicy: 'include',
     followUpPhoneLeads: false,
     pushNotifications: true,
+    emailApprovalMode: true,
     updatedAt: 0,
 };
 
@@ -406,6 +415,29 @@ export const instructAgent = (companyId: string, convId: string, text: string) =
         { companyId, convId, text },
         60000,
         'Could not pass that on to the agent.'
+    );
+
+/**
+ * Send the email the agent has drafted, as written or after editing it.
+ *
+ * Nothing goes out on the spot: the approved wording joins the queue with no delay and
+ * the next outbox tick carries it, the same road every other reply takes.
+ */
+export const approveAgentDraft = (companyId: string, convId: string, text?: string) =>
+    call<{ companyId: string; convId: string; text?: string }, { ok: boolean; text: string }>(
+        'salesAgentApproveDraft',
+        { companyId, convId, ...(text === undefined ? {} : { text }) },
+        60000,
+        'That draft could not be sent.'
+    );
+
+/** Throw the draft away. The conversation stays with the agent. */
+export const discardAgentDraft = (companyId: string, convId: string) =>
+    call<{ companyId: string; convId: string }, { ok: boolean; had: boolean }>(
+        'salesAgentDiscardDraft',
+        { companyId, convId },
+        30000,
+        'That draft could not be discarded.'
     );
 
 /**

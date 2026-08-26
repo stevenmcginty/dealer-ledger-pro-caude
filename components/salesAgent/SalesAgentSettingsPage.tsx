@@ -543,6 +543,13 @@ const SalesAgentSettingsPage = () => {
                         />
 
                         <Toggle
+                            label="Approve email replies before they're sent"
+                            hint={`${draft.agentName || 'Dave'} drafts, you approve with SEND 12 on WhatsApp or here. WhatsApp replies are still automatic.`}
+                            checked={draft.emailApprovalMode !== false}
+                            onChange={next => edit('emailApprovalMode', next)}
+                        />
+
+                        <Toggle
                             label="Chase missed calls"
                             hint="Automatically WhatsApp people who called via CarGurus/Cazoo and didn't leave a message"
                             checked={!!draft.followUpPhoneLeads}

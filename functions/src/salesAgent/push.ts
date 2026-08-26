@@ -36,6 +36,13 @@ const MULTICAST_LIMIT = 500;
 /** A notification body is a glance, not a read. The whole alert is in the app. */
 const BODY_LIMIT = 200;
 
+/**
+ * Except for a draft. The point of that alert is that Steve reads the actual words the
+ * agent wants to send and answers SEND without opening anything, so it gets room for the
+ * 300 characters of draft the alert carries plus the line that explains how to approve it.
+ */
+const DRAFT_BODY_LIMIT = 450;
+
 const pushTokensPath = (companyId: string) => agentPath(companyId, 'pushTokens');
 
 /** The app is served from Hosting; the link has to be absolute for FCM to accept it. */
@@ -87,7 +94,7 @@ export const sendOwnerPush = async (
 
         const link = alertLink(alert.convId);
         const title = settings?.agentName || 'Dave';
-        const body = alert.text.slice(0, BODY_LIMIT);
+        const body = alert.text.slice(0, alert.kind === 'draft' ? DRAFT_BODY_LIMIT : BODY_LIMIT);
 
         let delivered = 0;
         const dead: string[] = [];

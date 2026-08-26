@@ -44,7 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
+exports.healthCheck = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -87,6 +87,8 @@ Object.defineProperty(exports, "salesAgentSetMode", { enumerable: true, get: fun
 Object.defineProperty(exports, "salesAgentSendReply", { enumerable: true, get: function () { return router_1.salesAgentSendReply; } });
 Object.defineProperty(exports, "salesAgentAnswerQuestion", { enumerable: true, get: function () { return router_1.salesAgentAnswerQuestion; } });
 Object.defineProperty(exports, "salesAgentInstruct", { enumerable: true, get: function () { return router_1.salesAgentInstruct; } });
+Object.defineProperty(exports, "salesAgentApproveDraft", { enumerable: true, get: function () { return router_1.salesAgentApproveDraft; } });
+Object.defineProperty(exports, "salesAgentDiscardDraft", { enumerable: true, get: function () { return router_1.salesAgentDiscardDraft; } });
 Object.defineProperty(exports, "salesAgentSavePrivate", { enumerable: true, get: function () { return router_1.salesAgentSavePrivate; } });
 Object.defineProperty(exports, "salesAgentSimulate", { enumerable: true, get: function () { return router_1.salesAgentSimulate; } });
 var push_1 = require("./salesAgent/push");

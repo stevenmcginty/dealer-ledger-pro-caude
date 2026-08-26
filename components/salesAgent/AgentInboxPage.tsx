@@ -23,7 +23,9 @@ import {
     MODE_LABELS,
     STAGE_LABELS,
     answerAgentQuestion,
+    approveAgentDraft,
     conversationName,
+    discardAgentDraft,
     formatAgentTime,
     instructAgent,
     instructionText,
@@ -60,6 +62,9 @@ const ConversationRow: React.FC<{
 }> = ({ conv, active, onClick }) => {
     const ChannelIcon = CHANNEL_ICONS[conv.channel] || ChatBubbleLeftRightIcon;
     const waiting = !!conv.pendingQuestion;
+    // A drafted reply is the other thing that has stopped and is waiting on you, so it
+    // reads the same way in the list.
+    const drafted = !!conv.pendingDraft;
 
     return (
         <button
@@ -67,7 +72,7 @@ const ConversationRow: React.FC<{
             className={`w-full text-left px-4 py-3 border-l-2 transition-colors ${
                 active
                     ? 'bg-gray-700/60 border-brand-500'
-                    : waiting
+                    : waiting || drafted
                         ? 'bg-amber-950/30 border-amber-500/70 hover:bg-amber-950/50'
                         : conv.escalated
                             ? 'bg-red-950/25 border-red-500/60 hover:bg-red-950/40'
@@ -93,7 +98,8 @@ const ConversationRow: React.FC<{
 
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {waiting && <Badge size="sm" variant="warning">❓ waiting on you</Badge>}
-                {conv.escalated && !waiting && <Badge size="sm" variant="danger">Escalated</Badge>}
+                {drafted && <Badge size="sm" variant="warning">✉ draft waiting</Badge>}
+                {conv.escalated && !waiting && !drafted && <Badge size="sm" variant="danger">Escalated</Badge>}
                 <Badge size="sm" variant={MODE_VARIANT[conv.mode] || 'default'}>{MODE_LABELS[conv.mode] || conv.mode}</Badge>
                 <Badge size="sm" variant="default">{STAGE_LABELS[conv.stage] || conv.stage}</Badge>
                 <span className="ml-auto text-[11px] text-gray-500">{formatAgentTime(conv.updatedAt)}</span>
@@ -175,6 +181,11 @@ const AgentInboxPage = () => {
     const [changingMode, setChangingMode] = useState(false);
     const [agentName, setAgentName] = useState('Dave');
 
+    // The held email draft, as it stands in the box. It starts as what the agent wrote
+    // and whatever is in there when Approve is pressed is what the customer gets.
+    const [draftText, setDraftText] = useState('');
+    const [draftBusy, setDraftBusy] = useState<'' | 'approve' | 'discard'>('');
+
     // What the box does: 'human' sends your words as they are, 'agent' hands them to the
     // agent to word itself. Which one it starts on follows who is answering.
     const [replyMode, setReplyMode] = useState<'human' | 'agent'>('agent');
@@ -183,6 +194,7 @@ const AgentInboxPage = () => {
     const [phrasingSince, setPhrasingSince] = useState<number | null>(null);
 
     const threadRef = useRef<HTMLDivElement>(null);
+    const replyBoxRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
         if (!companyId) return;
@@ -236,6 +248,15 @@ const AgentInboxPage = () => {
         });
         return subscribeToAgentMessages(companyId, activeId, setMessages);
     }, [companyId, activeId]);
+
+    // A new draft — a different conversation, or the agent redrafting this one after you
+    // asked it to — replaces what is in the box. Edits survive anything else, so a live
+    // update cannot wipe out half a sentence you were typing.
+    const draftId = active?.pendingDraft?.id || '';
+    useEffect(() => {
+        setDraftText(active?.pendingDraft?.text || '');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draftId]);
 
     // Telling the agent what to say is the obvious thing to do while it is the one
     // answering. Once you have taken over, the box is yours again.
@@ -329,6 +350,43 @@ const AgentInboxPage = () => {
             setAnswering(false);
         }
     }, [companyId, active, answer, answering, toast]);
+
+    /**
+     * Approve the held email. Whatever is in the box goes, so an edit here is simply the
+     * reply — the agent's wording was a starting point, not something to argue with.
+     */
+    const handleApproveDraft = useCallback(async () => {
+        const text = draftText.trim();
+        if (!companyId || !active || !text || draftBusy) return;
+        setDraftBusy('approve');
+        try {
+            await approveAgentDraft(companyId, active.id, text);
+            toast.success('Approved. It goes out within the minute.');
+        } catch (err: any) {
+            toast.error(err?.message || 'That draft was not sent.');
+        } finally {
+            setDraftBusy('');
+        }
+    }, [companyId, active, draftText, draftBusy, toast]);
+
+    const handleDiscardDraft = useCallback(async () => {
+        if (!companyId || !active || draftBusy) return;
+        setDraftBusy('discard');
+        try {
+            await discardAgentDraft(companyId, active.id);
+            toast.success('Draft binned. Nothing was sent.');
+        } catch (err: any) {
+            toast.error(err?.message || 'That draft could not be discarded.');
+        } finally {
+            setDraftBusy('');
+        }
+    }, [companyId, active, draftBusy, toast]);
+
+    /** Changes go through the agent, not the box above: it writes a fresh draft. */
+    const handleAskForChanges = useCallback(() => {
+        setReplyMode('agent');
+        replyBoxRef.current?.focus();
+    }, []);
 
     const openLead = useCallback(() => {
         const leadId = active?.contact?.leadId;
@@ -524,6 +582,61 @@ const AgentInboxPage = () => {
                             </div>
                         )}
 
+                        {/* written, not sent: the email is waiting on you */}
+                        {active.pendingDraft && (
+                            <div className="border-b border-amber-500/40 bg-amber-950/40 px-4 py-4">
+                                <div className="flex items-start gap-3">
+                                    <EnvelopeIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-400" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-amber-200">
+                                            {agentName} drafted a reply — waiting for your approval
+                                        </p>
+                                        <p className="mt-1 text-[11px] text-gray-500">
+                                            Written {formatAgentTime(active.pendingDraft.createdAt)} · nothing has been sent
+                                            {active.pendingDraft.subject ? ` · ${active.pendingDraft.subject}` : ''}
+                                        </p>
+
+                                        <textarea
+                                            rows={7}
+                                            value={draftText}
+                                            onChange={e => setDraftText(e.target.value)}
+                                            aria-label={`The reply ${agentName} has drafted`}
+                                            className="mt-3 w-full resize-y rounded-lg border border-amber-500/40 bg-gray-900/70 px-3 py-2 text-sm leading-relaxed text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                                        />
+
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <Button
+                                                size="sm"
+                                                variant="primary"
+                                                onClick={handleApproveDraft}
+                                                loading={draftBusy === 'approve'}
+                                                disabled={!draftText.trim() || !!draftBusy}
+                                            >
+                                                Approve &amp; send
+                                            </Button>
+                                            <Button size="sm" variant="secondary" onClick={handleAskForChanges} disabled={!!draftBusy}>
+                                                Ask {agentName} to change…
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={handleDiscardDraft}
+                                                loading={draftBusy === 'discard'}
+                                                disabled={!!draftBusy}
+                                            >
+                                                Discard
+                                            </Button>
+                                        </div>
+
+                                        <p className="mt-2 text-xs text-gray-400">
+                                            Edit it here and your words are what go out. Asking {agentName} to change it
+                                            gets you a new draft to approve instead.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {active.escalated && active.escalationReason && !active.pendingQuestion && (
                             <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-950/30 px-4 py-3">
                                 <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
@@ -569,7 +682,9 @@ const AgentInboxPage = () => {
 
                             <p className="mb-2 text-xs text-gray-500">
                                 {replyMode === 'agent'
-                                    ? `Type the gist of it. ${agentName} puts it in his own words and carries on from there.`
+                                    ? active.pendingDraft
+                                        ? `Say what to change. ${agentName} writes it again and the new draft comes back here for you to approve — nothing is sent in the meantime.`
+                                        : `Type the gist of it. ${agentName} puts it in his own words and carries on from there.`
                                     : active.mode === 'agent'
                                         ? 'The agent is answering this one. Anything you send goes out as you, and the agent keeps going — take over first if you want it to stop.'
                                         : `This goes to the customer exactly as you type it, on ${CHANNEL_LABELS[active.channel] || active.channel}.`}
@@ -584,6 +699,7 @@ const AgentInboxPage = () => {
 
                             <div className="flex items-end gap-2">
                                 <textarea
+                                    ref={replyBoxRef}
                                     rows={2}
                                     value={reply}
                                     onChange={e => setReply(e.target.value)}

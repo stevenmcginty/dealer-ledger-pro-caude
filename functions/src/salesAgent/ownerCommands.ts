@@ -22,7 +22,7 @@ import {
 import { sendOwnerText } from './alerts';
 import { sendNow } from './outbox';
 import { indexStock } from './stock';
-import { answerPendingQuestion, approveDraft } from './router';
+import { answerPendingQuestion, approveDraft, needsApproval } from './router';
 import { Conversation, OutboxJob, SalesAgentSettings } from './types';
 
 const HELP = [
@@ -223,16 +223,17 @@ export const handleOwnerCommand = async (
             const conversation = await resolve(companyId, answer[1]);
             if (!conversation) return sendOwnerText(companyId, `No conversation #${answer[1]}.`);
 
-            await deliverAnswer(companyId, conversation, answer[2].trim());
+            await deliverAnswer(companyId, settings, conversation, answer[2].trim());
             return;
         }
 
         // No command word. If exactly one conversation is waiting on him, this is the
         // answer to it — anything else would be guessing.
-        const waiting = (await listConversations(companyId)).filter(c => c.pendingQuestion);
+        const open = await listConversations(companyId);
+        const waiting = open.filter(c => c.pendingQuestion);
 
         if (waiting.length === 1) {
-            await deliverAnswer(companyId, waiting[0], text);
+            await deliverAnswer(companyId, settings, waiting[0], text);
             return;
         }
 
@@ -242,6 +243,14 @@ export const handleOwnerCommand = async (
                 `${waiting.length} conversations are waiting on you, so say which:\n` +
                 waiting.map(c => `ANSWER ${c.shortId} — ${c.pendingQuestion?.question || ''}`).join('\n')
             );
+            return;
+        }
+
+        // Nothing was asked, but one draft is sitting there waiting on him: a bare reply
+        // to that alert is what he wants said differently, not a new command.
+        const drafts = open.filter(c => c.pendingDraft);
+        if (drafts.length === 1) {
+            await deliverInstruction(companyId, settings, drafts[0], text);
             return;
         }
 
@@ -255,6 +264,9 @@ export const handleOwnerCommand = async (
 /**
  * Hand the agent something to say. Nothing is pending, so there is no reply to read back
  * to Steve yet — it goes out on the usual delay like any other agent message.
+ *
+ * On an email in approval mode nothing goes out at all: the rewording lands as a fresh
+ * draft, and the alert carrying it is the reply to this.
  */
 const deliverInstruction = async (
     companyId: string,
@@ -264,23 +276,40 @@ const deliverInstruction = async (
 ): Promise<void> => {
     try {
         await answerPendingQuestion(companyId, conversation.id, instruction);
-        await sendOwnerText(companyId, `${settings.agentName || 'Dave'} will phrase that and send it.`);
+
+        const agent = settings.agentName || 'Dave';
+        await sendOwnerText(
+            companyId,
+            needsApproval(conversation, settings)
+                ? `${agent} is redrafting that — the new one is coming for you to approve.`
+                : `${agent} will phrase that and send it.`
+        );
     } catch (error: any) {
         await sendOwnerText(companyId, `Could not pass that on to #${conversation.shortId}: ${error?.message || 'unknown error'}`);
     }
 };
 
-const deliverAnswer = async (companyId: string, conversation: Conversation, answer: string): Promise<void> => {
+const deliverAnswer = async (
+    companyId: string,
+    settings: SalesAgentSettings,
+    conversation: Conversation,
+    answer: string
+): Promise<void> => {
     const question = conversation.pendingQuestion?.question;
 
     try {
         const { reply } = await answerPendingQuestion(companyId, conversation.id, answer);
+        const where = `#${conversation.shortId}${question ? ` (${question})` : ''}`;
 
         await sendOwnerText(
             companyId,
-            reply
-                ? `Passed on to #${conversation.shortId}${question ? ` (${question})` : ''}. The agent is saying: ${reply}`
-                : `Noted against #${conversation.shortId}. The agent had nothing to add.`
+            !reply
+                ? `Noted against #${conversation.shortId}. The agent had nothing to add.`
+                : needsApproval(conversation, settings)
+                    // The draft alert carries the wording, so repeating it here would be
+                    // the same paragraph twice on his phone.
+                    ? `Passed on to ${where}. ${settings.agentName || 'Dave'} has drafted the reply for you to approve.`
+                    : `Passed on to ${where}. The agent is saying: ${reply}`
         );
     } catch (error: any) {
         await sendOwnerText(companyId, `Could not pass that on to #${conversation.shortId}: ${error?.message || 'unknown error'}`);
