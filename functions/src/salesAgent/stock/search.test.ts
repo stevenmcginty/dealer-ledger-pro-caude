@@ -295,7 +295,7 @@ describe('describeStockItem', () => {
     it('writes the line the agent reads back to the customer', () => {
         assert.equal(
             describeStockItem(BOXSTER_07),
-            '2007 Porsche Boxster 3.4 S Tiptronic, Black, 62,000 miles, £10,995 (reg BC02YDG)',
+            '2007 Porsche Boxster 3.4 S Tiptronic, Black, 62,000 miles, £10,995 (reg BC02YDG), 3 previous owners',
         );
     });
 
