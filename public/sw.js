@@ -2,7 +2,7 @@
 // hashed /assets/ files. Everything else — Firebase RTDB long-polling, Google
 // APIs, Cloud Functions — must go straight to the network. Wrapping those in
 // respondWith() is what made a PWA refresh hang until site data was cleared.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v5';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v6';
 
 // --- Cloud Messaging ------------------------------------------------------
 // Owner alerts from the sales agent arrive here as web push. There is no second
@@ -49,6 +49,54 @@ const openDaveFromNotification = async (convId, action) => {
     await self.clients.openWindow(daveUrl(convId, action));
   }
 };
+
+// Own the push too. The Firebase SDK stays quiet when a tab is visible and hands
+// the message to the page instead, which on a phone means no shade entry while
+// the app happens to be open. Steve wants it in the bar every time, so this shows
+// it first and stops the SDK from deciding. The page is still told, so the bell
+// opens on whatever screen is showing.
+self.addEventListener('push', event => {
+  if (typeof event.stopImmediatePropagation === 'function') {
+    event.stopImmediatePropagation();
+  }
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (_) {
+    payload = { notification: { title: 'Dave', body: event.data ? event.data.text() : '' } };
+  }
+  const n = payload.notification || {};
+  const d = payload.data || {};
+  const convId = String(d.convId || '');
+  const kind = String(d.kind || '');
+  const isDraft = kind === 'draft';
+  const isQuestion = kind === 'question';
+  const actions = isDraft
+    ? [{ action: 'approve', title: 'Approve' }, { action: 'review', title: 'Edit' }]
+    : isQuestion
+      ? [{ action: 'review', title: 'Answer' }]
+      : [{ action: 'review', title: 'Open' }];
+
+  event.waitUntil((async () => {
+    await self.registration.showNotification(n.title || 'Dave', {
+      body: n.body || '',
+      icon: n.icon || '/icons/icon-192.png',
+      badge: n.badge || '/icons/badge-96.png',
+      tag: n.tag || convId || kind || 'dave',
+      renotify: true,
+      requireInteraction: isDraft || isQuestion,
+      vibrate: [80, 40, 80],
+      data: { convId, kind, url: d.url || '' },
+      actions,
+    });
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windows) {
+      try {
+        client.postMessage({ type: 'dlp:dave-alert', convId, kind, title: n.title || 'Dave', body: n.body || '' });
+      } catch (_) {}
+    }
+  })());
+});
 
 // Own the tap. Registered before firebase.messaging() so we run first and can
 // stop FCM opening Settings / a second window. On a phone the shade buttons

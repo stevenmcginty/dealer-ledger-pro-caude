@@ -106,6 +106,18 @@ export const useAgentPushMessages = (): void => {
             const convId = String(event.data?.convId || '');
             if (type === 'dlp:dave-approve') approveFromShade.current(convId);
             else if (type === 'dlp:dave-review') requestDraftReview(convId);
+            else if (type === 'dlp:dave-alert') {
+                // The worker has already put it in the shade; just open the bell.
+                const kind = String(event.data?.kind || '');
+                requestDraftReview(convId);
+                if (kind !== 'draft' && kind !== 'question') {
+                    const body = String(event.data?.body || '');
+                    toastRef.current.info(body ? `${String(event.data?.title || 'Dave')}: ${body}` : 'Dave', {
+                        label: 'Open in notifications',
+                        onClick: () => requestDraftReview(convId),
+                    });
+                }
+            }
         };
         navigator.serviceWorker.addEventListener('message', onMessage);
         return () => navigator.serviceWorker.removeEventListener('message', onMessage);
