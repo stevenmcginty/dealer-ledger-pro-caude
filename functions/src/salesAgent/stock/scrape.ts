@@ -350,7 +350,10 @@ export const parseVehiclePage = (html: string, pageUrl: string): Partial<Scraped
     const engineSize = toEngineSize(facts['CC'] || specs['ENGINE CAPACITY']);
     if (engineSize) result.engineSize = engineSize;
 
-    const owners = toInt(facts['FORMER KEEPER']);
+    // The key-facts tile is labelled "FORMER KEEPERS" (plural); the singular is kept in
+    // case the theme ever changes it back. The JSON-LD block carries the same figure.
+    const owners = toInt(facts['FORMER KEEPERS'] ?? facts['FORMER KEEPER'])
+        ?? toInt(html.match(/"numberOfPreviousOwners"\s*:\s*"?(\d+)/)?.[1]);
     if (owners !== undefined) result.owners = owners;
 
     const motExpiry = toIsoDate(specs['MOT EXP DATE']);

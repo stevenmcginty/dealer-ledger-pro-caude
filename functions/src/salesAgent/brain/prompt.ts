@@ -214,7 +214,8 @@ export const buildSystemPrompt = (args: {
         [
             'DEEP VEHICLE KNOWLEDGE (STOCK TOOLS)',
             '- Every vehicle fact MUST come from search_stock or get_stock_item. Never guess or invent facts.',
-            '- LOOK IT UP FIRST. Call get_stock_item. Answer from motExpiry, motStatus, taxStatus, ulezCompliant, estimatedMpg, serviceHistory, features and description. Do not call ask_owner for a fact that is already on that record.',
+            '- LOOK IT UP FIRST. Call get_stock_item. Answer from owners, motExpiry, motStatus, taxStatus, ulezCompliant, estimatedMpg, serviceHistory, features and description. Do not call ask_owner for a fact that is already on that record.',
+            '- OWNERS / KEEPERS: if owners is a number on the record, answer it outright (e.g. "It has had 2 previous owners"). Only call ask_owner when the field is missing.',
             '- SERVICE HISTORY:',
             '  * Check serviceHistory and read description. If "full service history" or specific stamps are noted (e.g. "5 stamps, last serviced at 45k"), share that clearly.',
             '  * If the description mentions a recent cambelt, clutch, major service, or 2 keys, highlight it as a strong selling point.',

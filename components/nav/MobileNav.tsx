@@ -67,8 +67,8 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
     ];
     
     const moreMenuItems = isServiceBusiness ? [
-        { label: 'Pipeline', view: 'pipeline' as View, icon: ViewColumnsIcon },
         { label: 'Agent Inbox', view: 'agentInbox' as View, icon: InboxIcon },
+        { label: 'Pipeline', view: 'pipeline' as View, icon: ViewColumnsIcon },
         { label: 'Work Sheets', view: 'workSheets' as View, icon: WrenchScrewdriverIcon },
         { label: 'Work Prep', view: 'workPrep' as View, icon: ClipboardDocumentListIcon },
         { label: 'Internal Jobs', view: 'internalJobs' as View, icon: WrenchScrewdriverIcon },
@@ -79,8 +79,8 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
         { label: 'Filing Cabinet', view: 'filingCabinet' as View, icon: ArchiveBoxIcon },
         { label: 'Settings', view: 'settings' as View, icon: Cog6ToothIcon },
     ] : [
-        { label: 'Pipeline', view: 'pipeline' as View, icon: ViewColumnsIcon },
         { label: 'Agent Inbox', view: 'agentInbox' as View, icon: InboxIcon },
+        { label: 'Pipeline', view: 'pipeline' as View, icon: ViewColumnsIcon },
         { label: 'Garage', view: 'garage' as View, icon: BuildingStorefrontIcon },
         { label: 'Sales', view: 'sales' as View, icon: DocumentTextIcon },
         { label: 'Income', view: 'income' as View, icon: BanknotesIcon },
@@ -131,7 +131,7 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
                     <div 
                         ref={menuRef}
                         onClick={(e) => e.stopPropagation()}
-                        className="absolute bottom-28 right-4 w-64 glass-panel border border-white/10 rounded-2xl shadow-2xl p-2 animate-in slide-in-from-bottom-10 fade-in-0 duration-300"
+                        className="absolute bottom-28 right-4 w-64 max-h-[calc(100dvh-8.5rem)] overflow-y-auto overscroll-contain glass-panel border border-white/10 rounded-2xl shadow-2xl p-2 animate-in slide-in-from-bottom-10 fade-in-0 duration-300"
                     >
                         <ul className="space-y-1">
                             {moreMenuItems.map(({ label, view, icon: Icon }) => (

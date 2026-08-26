@@ -500,6 +500,7 @@ export const describeStockItem = (item: StockItem): string => {
 
     let line = bits.join(', ');
     if (item.reg) line += ` (reg ${item.reg})`;
+    if (typeof item.owners === 'number') line += `, ${item.owners} previous owner${item.owners === 1 ? '' : 's'}`;
     if (item.motExpiry) line += `, MOT ${item.motExpiry}`;
     if (item.ulezCompliant === true) line += ', ULEZ compliant';
     if (item.ulezCompliant === false) line += ', not ULEZ compliant';

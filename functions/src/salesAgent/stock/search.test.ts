@@ -302,7 +302,7 @@ describe('describeStockItem', () => {
     it('says when the car is no longer available', () => {
         assert.equal(
             describeStockItem({ ...BOXSTER_01, status: 'reserved' }),
-            '2001 Porsche Boxster 2.7, Black, 96,400 miles, £5,995 (reg Y421HTM), currently reserved',
+            '2001 Porsche Boxster 2.7, Black, 96,400 miles, £5,995 (reg Y421HTM), 5 previous owners, currently reserved',
         );
     });
 });

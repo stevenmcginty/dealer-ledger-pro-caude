@@ -257,7 +257,7 @@ const ids = (items) => items.map(item => item.id);
         node_assert_1.strict.equal((0, search_1.describeStockItem)(BOXSTER_07), '2007 Porsche Boxster 3.4 S Tiptronic, Black, 62,000 miles, £10,995 (reg BC02YDG)');
     });
     (0, node_test_1.it)('says when the car is no longer available', () => {
-        node_assert_1.strict.equal((0, search_1.describeStockItem)({ ...BOXSTER_01, status: 'reserved' }), '2001 Porsche Boxster 2.7, Black, 96,400 miles, £5,995 (reg Y421HTM), currently reserved');
+        node_assert_1.strict.equal((0, search_1.describeStockItem)({ ...BOXSTER_01, status: 'reserved' }), '2001 Porsche Boxster 2.7, Black, 96,400 miles, £5,995 (reg Y421HTM), 5 previous owners, currently reserved');
     });
 });
 //# sourceMappingURL=search.test.js.map
