@@ -13,6 +13,7 @@ import { View, NewCanvasItem, CanvasItem, Notification } from './types';
 import DesktopNav from './components/nav/DesktopNav';
 import MobileNav from './components/nav/MobileNav';
 import NotificationBell from './components/nav/NotificationBell';
+import AgentInboxButton from './components/nav/AgentInboxButton';
 import Spinner from './components/common/Spinner';
 import UpdateBanner from './components/common/UpdateBanner';
 import AppUpdateButton from './components/common/AppUpdateButton';
@@ -344,6 +345,7 @@ const LedgerCore = () => {
                   </div>
                 )}
                 <AppUpdateButton />
+                <AgentInboxButton />
                 <NotificationBell notifications={notifications} />
              </div>
         </header>
@@ -414,6 +416,7 @@ const LedgerCore = () => {
                 </div>
                 
                 <AppUpdateButton />
+                <AgentInboxButton />
                 <NotificationBell notifications={notifications} />
             </div>
         </header>
