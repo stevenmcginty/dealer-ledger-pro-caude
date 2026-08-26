@@ -79,6 +79,8 @@ Also from cardealer5: "Vehicle Reservation Successful - Radlett Cars" (cc radlet
 ## 7. Direct customer email (no platform)
 Plain email from a person, subject like "Porsche" / "Peugeot rcz". Body is the message; name from From header; phone via extractUkMobiles; vehicle by fuzzy match of subject+body against stock titles. Quoted replies ("On ... wrote:", "From: ... Sent: ...", "Sent from Outlook") must be stripped.
 
+Direct mail that is **generic marketing / spam and not about a car or the sales desk** is `kind='ignore'` (`spam:not_car_related`): SEO pitches, mailing-list blasts, "grow your dealership", unsubscribe footers with no vehicle. A human writing "is the Boxster still available?" or "are you open Saturday?" is kept. Platform leads (CarGurus, Cazoo, website, eBay, AutoTrader) never go through this filter.
+
 ## Ignore list (never create a lead)
 CarGurus `Lead Intelligence:` / `marketing@` / `marketing-info@`; cardealer5 `sales@` newsletters; jigsawfinance payouts; bca.com; partsinmotion; facebookmail; dealerforecourt; totalcarcheck forwards; anything from radlettcars@gmail.com itself; threads Steve has already replied to within 2 minutes.
 

@@ -53,6 +53,18 @@ export interface LedgerVehicle {
     year?: number;
     mileage?: number;
     status?: 'Available' | 'Deposit Paid' | 'Sold';
+    /** Customer-safe facts from Motor Ledger Pro. Never purchasePrice. */
+    color?: string;
+    fuelType?: string;
+    engineSize?: string;
+    motDueDate?: string;
+    motStatus?: string;
+    taxStatus?: string;
+    taxDueDate?: string;
+    annualRoadTax?: number;
+    estimatedMpg?: number;
+    ulezCompliant?: boolean;
+    advertisedPrice?: number | null;
 }
 
 /** Every account's vehicles in one list, plus who is willing to have theirs discussed. */
@@ -107,6 +119,8 @@ const readLedgerSnapshot = async (indexingCompanyId: string): Promise<LedgerSnap
         if (!raw) return;
 
         for (const [id, vehicle] of Object.entries(raw)) {
+            const row = vehicle as Record<string, unknown>;
+            const advertised = Number(row.advertisedPrice);
             vehicles.push({
                 id,
                 companyId,
@@ -116,6 +130,17 @@ const readLedgerSnapshot = async (indexingCompanyId: string): Promise<LedgerSnap
                 year: vehicle.year,
                 mileage: vehicle.mileage,
                 status: vehicle.status,
+                color: typeof row.color === 'string' ? row.color : undefined,
+                fuelType: typeof row.fuelType === 'string' ? row.fuelType : undefined,
+                engineSize: typeof row.engineSize === 'string' ? row.engineSize : undefined,
+                motDueDate: typeof row.motDueDate === 'string' ? row.motDueDate : undefined,
+                motStatus: typeof row.motStatus === 'string' ? row.motStatus : undefined,
+                taxStatus: typeof row.taxStatus === 'string' ? row.taxStatus : undefined,
+                taxDueDate: typeof row.taxDueDate === 'string' ? row.taxDueDate : undefined,
+                annualRoadTax: Number.isFinite(Number(row.annualRoadTax)) ? Number(row.annualRoadTax) : undefined,
+                estimatedMpg: Number.isFinite(Number(row.estimatedMpg)) ? Number(row.estimatedMpg) : undefined,
+                ulezCompliant: typeof row.ulezCompliant === 'boolean' ? row.ulezCompliant : undefined,
+                advertisedPrice: Number.isFinite(advertised) && advertised > 0 ? advertised : undefined,
             });
         }
     }));
@@ -132,6 +157,87 @@ const statusFromLedger = (status?: LedgerVehicle['status']): StockItem['status']
     if (status === 'Deposit Paid') return 'reserved';
     if (status === 'Available') return 'available';
     return undefined;
+};
+
+const firstString = (...values: Array<string | undefined>): string | undefined => {
+    for (const value of values) {
+        const trimmed = (value || '').trim();
+        if (trimmed) return trimmed;
+    }
+    return undefined;
+};
+
+/** ISO `2027-03-15` or a UK date, as something Dave can say out loud. */
+export const formatMotDate = (value?: string): string | undefined => {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return undefined;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+    if (iso) {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const month = months[Number(iso[2]) - 1];
+        return month ? `${Number(iso[3])} ${month} ${iso[1]}` : trimmed;
+    }
+    return trimmed;
+};
+
+/**
+ * Fill gaps on a website advert from the Motor Ledger Pro record.
+ *
+ * The live advert wins on price, mileage and the blurb — that is what the customer
+ * saw. MOT, tax, ULEZ and the DVLA facts live on the ledger and are the better
+ * source. Purchase price never comes across.
+ */
+export const overlayLedgerFacts = (item: StockItem, match: LedgerVehicle): StockItem => {
+    const motExpiry = firstString(formatMotDate(match.motDueDate), item.motExpiry);
+    const price = item.price > 0 ? item.price : (match.advertisedPrice || 0);
+
+    return {
+        ...item,
+        ledgerVehicleId: match.id,
+        ownerCompanyId: match.companyId,
+        status: statusFromLedger(match.status) ?? item.status,
+        colour: firstString(item.colour, match.color),
+        fuel: firstString(item.fuel, match.fuelType),
+        engineSize: firstString(item.engineSize, match.engineSize),
+        mileage: item.mileage && item.mileage > 0 ? item.mileage : match.mileage,
+        year: item.year || match.year,
+        make: firstString(item.make, match.make) || item.make,
+        model: firstString(item.model, match.model) || item.model,
+        reg: firstString(item.reg, match.reg),
+        price,
+        ...(motExpiry ? { motExpiry } : {}),
+        ...(match.motStatus ? { motStatus: match.motStatus } : {}),
+        ...(match.taxStatus ? { taxStatus: match.taxStatus } : {}),
+        ...(match.taxDueDate ? { taxDueDate: match.taxDueDate } : {}),
+        ...(typeof match.annualRoadTax === 'number' ? { annualRoadTax: match.annualRoadTax } : {}),
+        ...(typeof match.estimatedMpg === 'number' ? { estimatedMpg: match.estimatedMpg } : {}),
+        ...(typeof match.ulezCompliant === 'boolean' ? { ulezCompliant: match.ulezCompliant } : {}),
+    };
+};
+
+/** A car on the ledger that is not on the website still has to be findable. */
+export const stockItemFromLedger = (vehicle: LedgerVehicle, indexedAt: number): StockItem => {
+    const year = vehicle.year;
+    const title = [year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.reg || 'Vehicle';
+    const price = vehicle.advertisedPrice && vehicle.advertisedPrice > 0 ? vehicle.advertisedPrice : 0;
+
+    return overlayLedgerFacts({
+        id: `ledger-${vehicle.id}`,
+        url: '',
+        make: vehicle.make || '',
+        model: vehicle.model || '',
+        variant: '',
+        title,
+        price,
+        year,
+        mileage: vehicle.mileage,
+        fuel: vehicle.fuelType,
+        colour: vehicle.color,
+        engineSize: vehicle.engineSize,
+        reg: vehicle.reg,
+        status: 'available',
+        indexedAt,
+    }, vehicle);
 };
 
 export interface LedgerMatchOptions {
@@ -213,15 +319,42 @@ export const matchToLedger = (
         claimed.add(vehicleKey(match));
         const hiddenReason = shared(match.companyId) ? undefined : ('owner_opted_out' as const);
 
-        return {
+        return overlayLedgerFacts({
             ...item,
-            ledgerVehicleId: match.id,
-            ownerCompanyId: match.companyId,
             ...(hiddenReason ? { hiddenReason } : {}),
-            status: statusFromLedger(match.status) ?? item.status,
             indexedAt,
-        };
+        }, match);
     });
+};
+
+/**
+ * Website adverts plus this company's own ledger cars that never made it onto
+ * the site. Dave answers from this combined list so a car booked into Motor
+ * Ledger Pro is not invisible just because the advert is late.
+ */
+export const mergeLedgerIntoIndex = (
+    items: ScrapedStockItem[],
+    vehicles: LedgerVehicle[],
+    options: LedgerMatchOptions
+): StockItem[] => {
+    const matched = matchToLedger(items, vehicles, options);
+    const claimed = new Set(
+        matched
+            .filter(item => item.ledgerVehicleId && item.ownerCompanyId)
+            .map(item => `${item.ownerCompanyId}/${item.ledgerVehicleId}`)
+    );
+
+    const indexedAt = Date.now();
+    const extras: StockItem[] = [];
+
+    for (const vehicle of vehicles) {
+        if (vehicle.companyId !== options.companyId) continue;
+        if (vehicle.status === 'Sold') continue;
+        if (claimed.has(vehicleKey(vehicle))) continue;
+        extras.push(stockItemFromLedger(vehicle, indexedAt));
+    }
+
+    return [...matched, ...extras];
 };
 
 /**
@@ -241,7 +374,7 @@ export const indexStock = async (companyId: string): Promise<StockMeta> => {
         errors.push(...scraped.errors);
 
         const { vehicles, sharesStock } = await readLedgerSnapshot(companyId);
-        items = matchToLedger(scraped.items, vehicles, {
+        items = mergeLedgerIntoIndex(scraped.items, vehicles, {
             companyId,
             sharesStock,
             unmatchedStockPolicy: settings.unmatchedStockPolicy === 'exclude' ? 'exclude' : 'include',

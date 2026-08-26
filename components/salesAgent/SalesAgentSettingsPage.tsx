@@ -543,11 +543,72 @@ const SalesAgentSettingsPage = () => {
                         />
 
                         <Toggle
-                            label="Approve email replies before they're sent"
-                            hint={`${draft.agentName || 'Dave'} drafts, you approve with SEND 12 on WhatsApp or here. WhatsApp replies are still automatic.`}
+                            label="Approve replies before they're sent"
+                            hint={`${draft.agentName || 'Dave'} drafts the reply and it waits in the notification bell for you to approve, edit, or send back for a rewrite. Applies to email now and to WhatsApp once that channel is sending.`}
                             checked={draft.emailApprovalMode !== false}
                             onChange={next => edit('emailApprovalMode', next)}
                         />
+
+                        <div className="space-y-3">
+                            <Toggle
+                                label="Only send during office hours"
+                                hint={`${draft.agentName || 'Dave'} still drafts and notifies you at night. Approve whenever — after hours the reply waits until opening time.`}
+                                checked={draft.sendHours?.enabled !== false}
+                                onChange={next => edit('sendHours', { ...draft.sendHours, enabled: next })}
+                            />
+                            {draft.sendHours?.enabled !== false && (
+                                <div className="ml-14 space-y-3">
+                                    <div className="flex flex-wrap items-end gap-3">
+                                        <div className="w-36">
+                                            <Input
+                                                type="time"
+                                                label="From"
+                                                value={draft.sendHours?.start || '08:00'}
+                                                onChange={e => edit('sendHours', { ...draft.sendHours, start: e.target.value || '08:00' })}
+                                            />
+                                        </div>
+                                        <div className="w-36">
+                                            <Input
+                                                type="time"
+                                                label="To"
+                                                value={draft.sendHours?.end || '17:00'}
+                                                onChange={e => edit('sendHours', { ...draft.sendHours, end: e.target.value || '17:00' })}
+                                            />
+                                        </div>
+                                        <p className="pb-2.5 text-xs text-gray-500">Europe/London</p>
+                                    </div>
+                                    <div>
+                                        <p className="mb-1.5 text-sm font-medium text-gray-300">Days</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const).map((label, day) => {
+                                                const selected = (draft.sendHours?.days || [1, 2, 3, 4, 5, 6]).includes(day);
+                                                return (
+                                                    <button
+                                                        key={label}
+                                                        type="button"
+                                                        aria-pressed={selected}
+                                                        onClick={() => {
+                                                            const current = draft.sendHours?.days || [1, 2, 3, 4, 5, 6];
+                                                            const next = selected
+                                                                ? current.filter(d => d !== day)
+                                                                : [...current, day].sort((a, b) => a - b);
+                                                            edit('sendHours', { ...draft.sendHours, days: next.length ? next : [day] });
+                                                        }}
+                                                        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                                                            selected
+                                                                ? 'bg-brand-600 text-white'
+                                                                : 'bg-gray-700 text-gray-400 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         <Toggle
                             label="Chase missed calls"

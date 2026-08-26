@@ -14,9 +14,8 @@ import { saveSalesAgentSettings } from '../../services/salesAgentService';
  * a desktop have to be turned on separately, and neither knows about the other.
  *
  * Every reason push cannot happen is spelled out rather than left as a button
- * that does nothing. The one that catches people is iOS: Safari will not grant
- * notification permission to a tab, only to the app once it has been added to
- * the home screen (iOS 16.4 or later).
+ * that does nothing. Shade alerts are Android Chrome only — that is the phone
+ * in Steve's pocket. iOS is told so, not walked through a home-screen install.
  */
 
 /** Matches the switch on the settings page it sits inside. */
@@ -61,7 +60,7 @@ const DEVICE_STATE: Record<PushStatus, { label: string; detail: string; variant:
     },
     available: {
         label: 'Off for this device',
-        detail: 'Turn it on and this device will buzz for every alert Dave sends you.',
+        detail: 'On an Android phone in Chrome: turn it on, then pull down the notification shade. Approve sends Dave’s reply; Edit opens it to change.',
         variant: 'default',
     },
     blocked: {
@@ -70,13 +69,13 @@ const DEVICE_STATE: Record<PushStatus, { label: string; detail: string; variant:
         variant: 'warning',
     },
     'needs-install': {
-        label: 'Needs the home screen',
-        detail: 'On an iPhone or iPad, Safari only allows alerts once the app has been added to the home screen. Share → Add to Home Screen, open it from there, then come back. Needs iOS 16.4 or later.',
+        label: 'Not available here',
+        detail: 'Dave’s shade alerts are Android only. Open this on your Android phone in Chrome.',
         variant: 'warning',
     },
     unsupported: {
         label: 'Not available here',
-        detail: 'This browser cannot receive web push. The WhatsApp alert still goes out.',
+        detail: 'Dave’s lock-screen alerts are Android Chrome only. The WhatsApp ping still goes out, and the bell in the app still works.',
         variant: 'default',
     },
     unconfigured: {
@@ -165,8 +164,8 @@ const PushNotificationsCard: React.FC<PushNotificationsCardProps> = ({ companyId
             <Card.Body>
                 <div className="space-y-6">
                     <Switch
-                        label="Push alerts to your phones"
-                        hint="Every alert Dave sends you — new enquiry, question, booking, escalation — also goes to the devices below. The WhatsApp message still goes out either way."
+                        label="Push alerts to your Android phone"
+                        hint="Android Chrome only. Expand the notification for Approve and Edit. The WhatsApp ping still goes out either way."
                         checked={pushOn}
                         onChange={handleToggle}
                     />

@@ -63,6 +63,17 @@ export interface SalesAgentSettings {
      * Undefined means on.
      */
     emailApprovalMode?: boolean;
+    /**
+     * When Dave may send to the customer. Drafts and notifications still happen
+     * at night; an approved reply outside this window waits until the next opening.
+     */
+    sendHours?: {
+        enabled?: boolean;
+        start?: string;
+        end?: string;
+        days?: number[];
+        timeZone?: string;
+    };
     updatedAt: number;
     /**
      * Which connections have credentials stored in `salesAgent/private`.
@@ -111,8 +122,15 @@ export interface Conversation {
     /** The agent has stopped and is waiting for Steve to answer this. */
     pendingQuestion?: { id: string; question: string; askedAt: number; context?: string };
     ownerAnswer?: { question: string; answer: string; answeredAt: number };
-    /** An email reply the agent has written and is holding until you approve it. */
-    pendingDraft?: { id: string; text: string; subject?: string; createdAt: number; source: 'agent' | 'instruction' };
+    /** A reply the agent has written and is holding until you approve it. */
+    pendingDraft?: {
+        id: string;
+        text: string;
+        subject?: string;
+        createdAt: number;
+        source: 'agent' | 'instruction';
+        customerText?: string;
+    };
     priceRequests: number;
     summary?: string;
     lastInboundAt: number;
@@ -183,6 +201,13 @@ export const DEFAULT_SALES_AGENT_SETTINGS: SalesAgentSettings = {
     followUpPhoneLeads: false,
     pushNotifications: true,
     emailApprovalMode: true,
+    sendHours: {
+        enabled: true,
+        start: '08:00',
+        end: '17:00',
+        days: [1, 2, 3, 4, 5, 6],
+        timeZone: 'Europe/London',
+    },
     updatedAt: 0,
 };
 
@@ -208,6 +233,13 @@ export const subscribeToSalesAgentSettings = (
             ...raw,
             channels: { ...DEFAULT_SALES_AGENT_SETTINGS.channels, ...(raw.channels || {}) },
             replyDelaySeconds: normaliseDelay(raw.replyDelaySeconds),
+            sendHours: {
+                ...DEFAULT_SALES_AGENT_SETTINGS.sendHours,
+                ...(raw.sendHours || {}),
+                days: Array.isArray(raw.sendHours?.days) && raw.sendHours.days.length
+                    ? raw.sendHours.days
+                    : DEFAULT_SALES_AGENT_SETTINGS.sendHours?.days,
+            },
             connections: { ...(raw.connections || {}) },
         });
     };
@@ -296,6 +328,53 @@ export const setConnectionFlag = (
 /** Opening a conversation clears its unread count. */
 export const markConversationRead = (companyId: string, convId: string) =>
     db.ref(`${agentRoot(companyId)}/conversations/${convId}/unread`).set(0);
+
+const rtdbKey = (s: string): string => s.replace(/[.#$\[\]\/]/g, '_');
+
+const contactIndexKeys = (conv: Conversation): string[] => {
+    const keys: string[] = [];
+    const add = (channel: Channel, address?: string) => {
+        if (!address) return;
+        const prefix = channel === 'email' ? 'email' : channel === 'whatsapp' ? 'wa' : 'sms';
+        const addr = channel === 'email' ? address.trim().toLowerCase() : address.trim();
+        if (addr) keys.push(rtdbKey(`${prefix}:${addr}`));
+    };
+    add(conv.channel, conv.address);
+    add('email', conv.contact?.email);
+    add('whatsapp', conv.contact?.phone);
+    add('sms', conv.contact?.phone);
+    return [...new Set(keys)];
+};
+
+/** One bubble out of the thread. Does not touch the conversation itself. */
+export const deleteAgentMessage = (companyId: string, convId: string, messageId: string) =>
+    db.ref(`${agentRoot(companyId)}/conversations/${convId}/messages/${messageId}`).remove();
+
+/**
+ * Remove a conversation and the indexes that would send the next inbound back
+ * into it. Queued replies for that thread are dropped so they cannot go out
+ * after Steve has thrown the thread away.
+ */
+export const deleteAgentConversation = async (companyId: string, conv: Conversation): Promise<void> => {
+    const root = agentRoot(companyId);
+    const updates: Record<string, null> = {
+        [`${root}/conversations/${conv.id}`]: null,
+    };
+    if (conv.shortId) updates[`${root}/shortIds/${conv.shortId}`] = null;
+
+    for (const key of contactIndexKeys(conv)) {
+        const snap = await db.ref(`${root}/contactIndex/${key}`).once('value');
+        if (snap.val() === conv.id) updates[`${root}/contactIndex/${key}`] = null;
+    }
+
+    const outboxSnap = await db.ref(`${root}/outbox`).once('value');
+    const outbox = (outboxSnap.val() || {}) as Record<string, { convId?: string }>;
+    Object.entries(outbox).forEach(([jobId, job]) => {
+        if (job?.convId === conv.id) updates[`${root}/outbox/${jobId}`] = null;
+    });
+
+    await db.ref().update(updates);
+};
 
 // --- Callables -------------------------------------------------------------
 
@@ -418,18 +497,35 @@ export const instructAgent = (companyId: string, convId: string, text: string) =
     );
 
 /**
- * Send the email the agent has drafted, as written or after editing it.
+ * Send the reply the agent has drafted, as written or after editing it.
  *
- * Nothing goes out on the spot: the approved wording joins the queue with no delay and
- * the next outbox tick carries it, the same road every other reply takes.
+ * During office hours it goes out on the spot. After hours it is queued until
+ * the next opening; `sendAfter` says when.
  */
 export const approveAgentDraft = (companyId: string, convId: string, text?: string) =>
-    call<{ companyId: string; convId: string; text?: string }, { ok: boolean; text: string }>(
+    call<{ companyId: string; convId: string; text?: string }, { ok: boolean; text: string; sendAfter: number }>(
         'salesAgentApproveDraft',
         { companyId, convId, ...(text === undefined ? {} : { text }) },
         60000,
         'That draft could not be sent.'
     );
+
+/** "Thu, 8:00 am" in the dealership's timezone. */
+export const formatQueuedSend = (at: number, timeZone = 'Europe/London'): string =>
+    new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        weekday: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+        hourCycle: 'h12',
+    }).format(new Date(at));
+
+export const approvedSendMessage = (channelLabel: string, sendAfter?: number, timeZone?: string): string => {
+    if (sendAfter && sendAfter > Date.now() + 5000) {
+        return `Queued to send ${channelLabel} at ${formatQueuedSend(sendAfter, timeZone)}.`;
+    }
+    return `Sent on ${channelLabel}.`;
+};
 
 /** Throw the draft away. The conversation stays with the agent. */
 export const discardAgentDraft = (companyId: string, convId: string) =>

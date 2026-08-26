@@ -44,8 +44,21 @@ export interface SalesAgentSettings {
     unmatchedStockPolicy?: 'include' | 'exclude';
     /** Push notifications to this company's phones as well as WhatsApp alerts (default true). */
     pushNotifications?: boolean;
-    /** Email replies are drafted and held for the owner to approve (default true). WhatsApp/SMS always send. */
+    /** Replies are drafted and held for the owner to approve before they go out (default true). Applies to email now and to WhatsApp once that channel is sending. */
     emailApprovalMode?: boolean;
+    /**
+     * When Dave is allowed to send to the customer. Drafting and owner alerts
+     * still happen around the clock; an approved reply outside this window waits
+     * until the next opening. Default 08:00–17:00 Europe/London, Mon–Sat.
+     */
+    sendHours?: {
+        enabled?: boolean;
+        start?: string;
+        end?: string;
+        /** 0 = Sunday … 6 = Saturday. */
+        days?: number[];
+        timeZone?: string;
+    };
     followUpPhoneLeads?: boolean;        // auto-WhatsApp CarGurus/Cazoo phone leads & missed calls
     /** client-readable connected flags (set by the app after a successful save / OAuth return) */
     connections?: { whatsapp?: boolean; twilio?: boolean; gmail?: boolean };
@@ -78,6 +91,12 @@ export interface StockItem {
     owners?: number;
     serviceHistory?: string;
     motExpiry?: string;
+    motStatus?: string;
+    taxStatus?: string;
+    taxDueDate?: string;
+    annualRoadTax?: number;
+    estimatedMpg?: number;
+    ulezCompliant?: boolean;
     reg?: string;
     description?: string;                // dealer blurb, trimmed to ~1500 chars
     features?: string[];
@@ -129,8 +148,16 @@ export interface Conversation {
     pendingQuestion?: { id: string; question: string; askedAt: number; context?: string };
     /** Steve's answer, consumed by the next brain run and then cleared. */
     ownerAnswer?: { question: string; answer: string; answeredAt: number };
-    /** An email reply the agent has written but not sent; waiting on SEND from Steve. See emailApprovalMode. */
-    pendingDraft?: { id: string; text: string; subject?: string; createdAt: number; source: 'agent' | 'instruction' };
+    /** A reply the agent has written but not sent; waiting on SEND from Steve. See emailApprovalMode. */
+    pendingDraft?: {
+        id: string;
+        text: string;
+        subject?: string;
+        createdAt: number;
+        source: 'agent' | 'instruction';
+        /** The customer message this draft is answering, so the review UI can show both sides. */
+        customerText?: string;
+    };
     priceRequests: number;               // how many times they've pushed on price
     summary?: string;                    // rolling summary maintained by brain
     lastInboundAt: number;

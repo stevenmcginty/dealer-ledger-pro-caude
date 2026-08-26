@@ -100,6 +100,10 @@ describe('System prompt generation', () => {
         assert.ok(prompt.includes('SMARTER PART-EXCHANGE & FINANCE PROBING'));
         assert.ok(prompt.includes('DO NOT call ask_owner until you have BOTH the registration and approximate mileage'));
         assert.ok(prompt.includes('DEEP VEHICLE KNOWLEDGE'));
+        assert.ok(prompt.includes('LOOK IT UP FIRST'));
+        assert.ok(prompt.includes('NEVER NAME A COLLEAGUE'));
+        assert.ok(!prompt.includes("I'll have Steve run a valuation"));
+        assert.ok(!prompt.includes('check that slot with Steve'));
     });
 
     it('generates messaging-specific instructions when channel is whatsapp', () => {

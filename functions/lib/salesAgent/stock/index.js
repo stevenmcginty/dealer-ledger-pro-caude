@@ -55,7 +55,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.indexStock = exports.matchToLedger = void 0;
+exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.indexStock = exports.mergeLedgerIntoIndex = exports.matchToLedger = exports.stockItemFromLedger = exports.overlayLedgerFacts = exports.formatMotDate = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const lookup_1 = require("../../vehicle/lookup");
@@ -107,6 +107,8 @@ const readLedgerSnapshot = async (indexingCompanyId) => {
         if (!raw)
             return;
         for (const [id, vehicle] of Object.entries(raw)) {
+            const row = vehicle;
+            const advertised = Number(row.advertisedPrice);
             vehicles.push({
                 id,
                 companyId,
@@ -116,6 +118,17 @@ const readLedgerSnapshot = async (indexingCompanyId) => {
                 year: vehicle.year,
                 mileage: vehicle.mileage,
                 status: vehicle.status,
+                color: typeof row.color === 'string' ? row.color : undefined,
+                fuelType: typeof row.fuelType === 'string' ? row.fuelType : undefined,
+                engineSize: typeof row.engineSize === 'string' ? row.engineSize : undefined,
+                motDueDate: typeof row.motDueDate === 'string' ? row.motDueDate : undefined,
+                motStatus: typeof row.motStatus === 'string' ? row.motStatus : undefined,
+                taxStatus: typeof row.taxStatus === 'string' ? row.taxStatus : undefined,
+                taxDueDate: typeof row.taxDueDate === 'string' ? row.taxDueDate : undefined,
+                annualRoadTax: Number.isFinite(Number(row.annualRoadTax)) ? Number(row.annualRoadTax) : undefined,
+                estimatedMpg: Number.isFinite(Number(row.estimatedMpg)) ? Number(row.estimatedMpg) : undefined,
+                ulezCompliant: typeof row.ulezCompliant === 'boolean' ? row.ulezCompliant : undefined,
+                advertisedPrice: Number.isFinite(advertised) && advertised > 0 ? advertised : undefined,
             });
         }
     }));
@@ -132,6 +145,86 @@ const statusFromLedger = (status) => {
         return 'available';
     return undefined;
 };
+const firstString = (...values) => {
+    for (const value of values) {
+        const trimmed = (value || '').trim();
+        if (trimmed)
+            return trimmed;
+    }
+    return undefined;
+};
+/** ISO `2027-03-15` or a UK date, as something Dave can say out loud. */
+const formatMotDate = (value) => {
+    const trimmed = (value || '').trim();
+    if (!trimmed)
+        return undefined;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+    if (iso) {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const month = months[Number(iso[2]) - 1];
+        return month ? `${Number(iso[3])} ${month} ${iso[1]}` : trimmed;
+    }
+    return trimmed;
+};
+exports.formatMotDate = formatMotDate;
+/**
+ * Fill gaps on a website advert from the Motor Ledger Pro record.
+ *
+ * The live advert wins on price, mileage and the blurb — that is what the customer
+ * saw. MOT, tax, ULEZ and the DVLA facts live on the ledger and are the better
+ * source. Purchase price never comes across.
+ */
+const overlayLedgerFacts = (item, match) => {
+    const motExpiry = firstString((0, exports.formatMotDate)(match.motDueDate), item.motExpiry);
+    const price = item.price > 0 ? item.price : (match.advertisedPrice || 0);
+    return {
+        ...item,
+        ledgerVehicleId: match.id,
+        ownerCompanyId: match.companyId,
+        status: statusFromLedger(match.status) ?? item.status,
+        colour: firstString(item.colour, match.color),
+        fuel: firstString(item.fuel, match.fuelType),
+        engineSize: firstString(item.engineSize, match.engineSize),
+        mileage: item.mileage && item.mileage > 0 ? item.mileage : match.mileage,
+        year: item.year || match.year,
+        make: firstString(item.make, match.make) || item.make,
+        model: firstString(item.model, match.model) || item.model,
+        reg: firstString(item.reg, match.reg),
+        price,
+        ...(motExpiry ? { motExpiry } : {}),
+        ...(match.motStatus ? { motStatus: match.motStatus } : {}),
+        ...(match.taxStatus ? { taxStatus: match.taxStatus } : {}),
+        ...(match.taxDueDate ? { taxDueDate: match.taxDueDate } : {}),
+        ...(typeof match.annualRoadTax === 'number' ? { annualRoadTax: match.annualRoadTax } : {}),
+        ...(typeof match.estimatedMpg === 'number' ? { estimatedMpg: match.estimatedMpg } : {}),
+        ...(typeof match.ulezCompliant === 'boolean' ? { ulezCompliant: match.ulezCompliant } : {}),
+    };
+};
+exports.overlayLedgerFacts = overlayLedgerFacts;
+/** A car on the ledger that is not on the website still has to be findable. */
+const stockItemFromLedger = (vehicle, indexedAt) => {
+    const year = vehicle.year;
+    const title = [year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.reg || 'Vehicle';
+    const price = vehicle.advertisedPrice && vehicle.advertisedPrice > 0 ? vehicle.advertisedPrice : 0;
+    return (0, exports.overlayLedgerFacts)({
+        id: `ledger-${vehicle.id}`,
+        url: '',
+        make: vehicle.make || '',
+        model: vehicle.model || '',
+        variant: '',
+        title,
+        price,
+        year,
+        mileage: vehicle.mileage,
+        fuel: vehicle.fuelType,
+        colour: vehicle.color,
+        engineSize: vehicle.engineSize,
+        reg: vehicle.reg,
+        status: 'available',
+        indexedAt,
+    }, vehicle);
+};
+exports.stockItemFromLedger = stockItemFromLedger;
 /** Vehicle ids are per-account, so a claim has to name the account too. */
 const vehicleKey = (vehicle) => `${vehicle.companyId}/${vehicle.id}`;
 /**
@@ -188,17 +281,38 @@ const matchToLedger = (items, vehicles, options) => {
         }
         claimed.add(vehicleKey(match));
         const hiddenReason = shared(match.companyId) ? undefined : 'owner_opted_out';
-        return {
+        return (0, exports.overlayLedgerFacts)({
             ...item,
-            ledgerVehicleId: match.id,
-            ownerCompanyId: match.companyId,
             ...(hiddenReason ? { hiddenReason } : {}),
-            status: statusFromLedger(match.status) ?? item.status,
             indexedAt,
-        };
+        }, match);
     });
 };
 exports.matchToLedger = matchToLedger;
+/**
+ * Website adverts plus this company's own ledger cars that never made it onto
+ * the site. Dave answers from this combined list so a car booked into Motor
+ * Ledger Pro is not invisible just because the advert is late.
+ */
+const mergeLedgerIntoIndex = (items, vehicles, options) => {
+    const matched = (0, exports.matchToLedger)(items, vehicles, options);
+    const claimed = new Set(matched
+        .filter(item => item.ledgerVehicleId && item.ownerCompanyId)
+        .map(item => `${item.ownerCompanyId}/${item.ledgerVehicleId}`));
+    const indexedAt = Date.now();
+    const extras = [];
+    for (const vehicle of vehicles) {
+        if (vehicle.companyId !== options.companyId)
+            continue;
+        if (vehicle.status === 'Sold')
+            continue;
+        if (claimed.has(vehicleKey(vehicle)))
+            continue;
+        extras.push((0, exports.stockItemFromLedger)(vehicle, indexedAt));
+    }
+    return [...matched, ...extras];
+};
+exports.mergeLedgerIntoIndex = mergeLedgerIntoIndex;
 /**
  * Re-index one company's stock. Returns the meta record that was written, so the
  * manual "index now" button can show the outcome without a second read.
@@ -213,7 +327,7 @@ const indexStock = async (companyId) => {
         const scraped = await (0, scrape_1.scrapeStock)({ stockListUrl: sourceUrl, deadline: startedAt + SCRAPE_BUDGET_MS });
         errors.push(...scraped.errors);
         const { vehicles, sharesStock } = await readLedgerSnapshot(companyId);
-        items = (0, exports.matchToLedger)(scraped.items, vehicles, {
+        items = (0, exports.mergeLedgerIntoIndex)(scraped.items, vehicles, {
             companyId,
             sharesStock,
             unmatchedStockPolicy: settings.unmatchedStockPolicy === 'exclude' ? 'exclude' : 'include',

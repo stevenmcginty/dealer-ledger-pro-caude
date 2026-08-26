@@ -2,7 +2,7 @@
 // hashed /assets/ files. Everything else — Firebase RTDB long-polling, Google
 // APIs, Cloud Functions — must go straight to the network. Wrapping those in
 // respondWith() is what made a PWA refresh hang until site data was cleared.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v4';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v5';
 
 // --- Cloud Messaging ------------------------------------------------------
 // Owner alerts from the sales agent arrive here as web push. There is no second
@@ -15,6 +15,54 @@ const fcmParams = new URL(self.location.href).searchParams;
 const fcmApiKey = fcmParams.get('fcmKey');
 const fcmSenderId = fcmParams.get('fcmSender');
 const fcmAppId = fcmParams.get('fcmApp');
+
+const daveFromNotification = (notification) => {
+  const payload = (notification && notification.data) || {};
+  const inner = payload.FCM_MSG || payload;
+  const data = inner.data || payload;
+  const convId = String((data && data.convId) || payload.convId || '');
+  const kind = String((data && data.kind) || payload.kind || '');
+  return { convId, kind };
+};
+
+const daveUrl = (convId, action) => {
+  const params = new URLSearchParams();
+  if (convId) params.set('dave', convId);
+  if (action === 'approve') params.set('daveAction', 'approve');
+  const query = params.toString();
+  return self.location.origin + '/app' + (query ? '?' + query : '');
+};
+
+const openDaveFromNotification = async (convId, action) => {
+  const type = action === 'approve' ? 'dlp:dave-approve' : 'dlp:dave-review';
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of windows) {
+    try {
+      client.postMessage({ type, convId });
+    } catch (_) {}
+    if (client.focus) {
+      await client.focus();
+      return;
+    }
+  }
+  if (self.clients.openWindow) {
+    await self.clients.openWindow(daveUrl(convId, action));
+  }
+};
+
+// Own the tap. Registered before firebase.messaging() so we run first and can
+// stop FCM opening Settings / a second window. On a phone the shade buttons
+// (Approve / Edit) land here as event.action.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  if (typeof event.stopImmediatePropagation === 'function') {
+    event.stopImmediatePropagation();
+  }
+
+  const { convId } = daveFromNotification(event.notification);
+  const action = event.action === 'approve' ? 'approve' : 'review';
+  event.waitUntil(openDaveFromNotification(convId, action));
+});
 
 if (fcmApiKey && fcmSenderId && fcmAppId) {
   try {
@@ -31,12 +79,8 @@ if (fcmApiKey && fcmSenderId && fcmAppId) {
       messagingSenderId: fcmSenderId,
       appId: fcmAppId,
     });
-    // Constructing it is the whole job. The SDK installs its own push and
-    // notificationclick listeners: a background alert is shown from the
-    // notification block of the payload, a tap focuses an already-open tab at
-    // webpush.fcmOptions.link (or opens one), and an alert arriving while a tab
-    // is visible is forwarded to that tab instead — which is what onMessage in
-    // services/pushService.ts turns into a toast.
+    // Shows the alert from the payload and forwards a visible-tab push to
+    // onMessage. Clicks are handled above, not by the SDK.
     firebase.messaging();
   } catch (err) {
     console.warn('[SW] Cloud Messaging is not available in this worker', err);

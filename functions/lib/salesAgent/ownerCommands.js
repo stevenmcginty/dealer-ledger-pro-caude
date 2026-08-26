@@ -18,6 +18,7 @@ const alerts_1 = require("./alerts");
 const outbox_1 = require("./outbox");
 const stock_1 = require("./stock");
 const router_1 = require("./router");
+const sendHours_1 = require("./sendHours");
 const HELP = [
     'Commands:',
     'TAKE OVER 12 — you handle it, the agent goes quiet',
@@ -25,7 +26,7 @@ const HELP = [
     'REPLY 12 your message — send that to the customer',
     'TELL 12 your message — the agent says it in its own words',
     'ANSWER 12 your answer — answer what the agent asked',
-    'SEND 12 — send the email the agent drafted',
+    'SEND 12 — send the reply the agent drafted',
     'STATUS — what is open',
     'PAUSE ALL / RESUME ALL — the master switch',
     'STOCK — re-index the website now',
@@ -180,8 +181,11 @@ const handleOwnerCommand = async (companyId, settings, raw) => {
             if (!conversation)
                 return (0, alerts_1.sendOwnerText)(companyId, `No conversation #${send[1]}.`);
             try {
-                const { name } = await (0, router_1.approveDraft)(companyId, conversation.id);
-                await (0, alerts_1.sendOwnerText)(companyId, `Sent to ${name}.`);
+                const { name, sendAfter } = await (0, router_1.approveDraft)(companyId, conversation.id);
+                const waiting = sendAfter > Date.now() + 2000;
+                await (0, alerts_1.sendOwnerText)(companyId, waiting
+                    ? `Queued for ${name} at ${(0, sendHours_1.formatSendAt)(sendAfter, (0, sendHours_1.resolveSendHours)(settings).timeZone)}.`
+                    : `Sent to ${name}.`);
             }
             catch (error) {
                 await (0, alerts_1.sendOwnerText)(companyId, `Could not send #${conversation.shortId}: ${error?.message || 'unknown error'}`);

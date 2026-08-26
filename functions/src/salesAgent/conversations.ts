@@ -146,6 +146,13 @@ const SETTINGS_DEFAULTS: SalesAgentSettings = {
     followUpPhoneLeads: false,
     emailAddress: '',
     signature: '',
+    sendHours: {
+        enabled: true,
+        start: '08:00',
+        end: '17:00',
+        days: [1, 2, 3, 4, 5, 6],
+        timeZone: 'Europe/London',
+    },
     updatedAt: 0,
 };
 
@@ -160,6 +167,13 @@ export const readSettings = async (companyId: string): Promise<SalesAgentSetting
         replyDelaySeconds: Array.isArray(saved.replyDelaySeconds) && saved.replyDelaySeconds.length === 2
             ? saved.replyDelaySeconds
             : SETTINGS_DEFAULTS.replyDelaySeconds,
+        sendHours: {
+            ...(SETTINGS_DEFAULTS.sendHours || {}),
+            ...(saved.sendHours || {}),
+            days: Array.isArray(saved.sendHours?.days) && saved.sendHours.days.length
+                ? saved.sendHours.days
+                : [1, 2, 3, 4, 5, 6],
+        },
     };
 };
 

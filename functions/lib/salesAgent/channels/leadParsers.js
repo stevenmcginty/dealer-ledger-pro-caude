@@ -51,7 +51,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.messageOrDefault = exports.crmLeadSource = exports.isCazooReservationPhish = exports.parseLeadEmail = exports.looksLikeSpam = exports.findReg = exports.isNoReplyAddress = exports.parseFromHeader = void 0;
+exports.messageOrDefault = exports.crmLeadSource = exports.isCazooReservationPhish = exports.parseLeadEmail = exports.isGenericMarketing = exports.isSalesDeskRelevant = exports.looksLikeSpam = exports.findReg = exports.isNoReplyAddress = exports.parseFromHeader = void 0;
 const cheerio = __importStar(require("cheerio"));
 const types_1 = require("../types");
 // --- Address handling -------------------------------------------------------
@@ -101,6 +101,10 @@ const IGNORE_SENDERS = [
     /dealerforecourt/i,
     /totalcarcheck/i,
     /^marketing(-info)?@/i,
+    /^newsletter@/i,
+    /^promo@/i,
+    /^mailer@/i,
+    /@(?:sendgrid|mailchimp|constantcontact|intercom|hubspot|mailgun)\./i,
     /^sales@cardealer5\.co\.uk$/i,
 ];
 const IGNORE_SUBJECTS = [
@@ -228,6 +232,53 @@ const looksLikeSpam = (text, html, selfEmail) => {
     return !hasPlainContact;
 };
 exports.looksLikeSpam = looksLikeSpam;
+/**
+ * Direct mail to the sales inbox. Platform leads never reach this — they are
+ * already about a car. A human writing "is it still available?" is in; an SEO
+ * pitch or a mailing-list blast is not. Bare words like "car" or "dealership"
+ * are not enough on their own, because marketing mail uses them too.
+ */
+const CAR_MAKES = [
+    'ford', 'bmw', 'audi', 'vw', 'volkswagen', 'mercedes', 'merc', 'toyota', 'honda', 'nissan',
+    'vauxhall', 'peugeot', 'renault', 'kia', 'hyundai', 'mazda', 'mini', 'fiat', 'seat', 'skoda',
+    'volvo', 'jaguar', 'porsche', 'maserati', 'tesla', 'citroen', 'dacia', 'suzuki', 'lexus',
+    'jeep', 'cupra', 'ferrari', 'bentley', 'subaru', 'land rover', 'range rover', 'alfa',
+];
+const CUSTOMER_ENQUIRY_RE = new RegExp([
+    '\\b(?:mot|mileage|ulez|test[- ]?drive|part[- ]?ex(?:change)?|\\bpx\\b)\\b',
+    '\\b(?:viewing|warranty|service history)\\b',
+    '\\b(?:still available|in stock|for sale|advertised|interested in)\\b',
+    '\\b(?:opening hours?|what time (?:are you|do you)|are you open)\\b',
+    `\\b(?:${CAR_MAKES.join('|')})\\b`,
+].join('|'), 'i');
+const MARKETING_RE = new RegExp([
+    'unsubscribe',
+    'view (?:this )?email in (?:your )?browser',
+    'manage (?:your )?preferences',
+    'this is an automated (?:message|email)',
+    'you(?:\'ve| have) been selected',
+    '\\b(?:seo|backlinks?|guest posts?)\\b',
+    'rank(?:ing)? on google',
+    'increase your (?:sales|leads|traffic|visibility)',
+    'grow your (?:dealership|business|sales)',
+    'dear (?:sir|partner|dealer|valued)',
+    '\\b(?:bitcoin|cryptocurrency|viagra|cialis)\\b',
+    'mailing list',
+    'limited[- ]time offer',
+    'click here to (?:claim|verify|confirm|unsubscribe)',
+].join('|'), 'i');
+const isSalesDeskRelevant = (subject, text) => {
+    if ((0, exports.findReg)(subject, text))
+        return true;
+    return CUSTOMER_ENQUIRY_RE.test(`${subject || ''}\n${text || ''}`);
+};
+exports.isSalesDeskRelevant = isSalesDeskRelevant;
+const isGenericMarketing = (subject, text, from) => {
+    if (from && /^(newsletter|promo|marketing|mailer|noreply)@/i.test(from))
+        return true;
+    return MARKETING_RE.test(`${subject || ''}\n${text || ''}`);
+};
+exports.isGenericMarketing = isGenericMarketing;
 // --- Per-source parsers -----------------------------------------------------
 /** "*Name:* paul summerfield" — CarGurus writes every field this way. */
 const starField = (text, label) => {
@@ -536,6 +587,9 @@ const parseLeadEmail = (raw) => {
         return parseDirectEmail(raw, 'eBay');
     if (/autotrader\.co\.uk$/i.test(domain))
         return parseDirectEmail(raw, 'AutoTrader');
+    if (!(0, exports.isSalesDeskRelevant)(subject, text) && (0, exports.isGenericMarketing)(subject, text, from)) {
+        return ignored('Direct', 'spam:not_car_related');
+    }
     return parseDirectEmail(raw, 'Direct');
 };
 exports.parseLeadEmail = parseLeadEmail;

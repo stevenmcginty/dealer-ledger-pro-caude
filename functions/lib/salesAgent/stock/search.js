@@ -459,6 +459,12 @@ const describeStockItem = (item) => {
     let line = bits.join(', ');
     if (item.reg)
         line += ` (reg ${item.reg})`;
+    if (item.motExpiry)
+        line += `, MOT ${item.motExpiry}`;
+    if (item.ulezCompliant === true)
+        line += ', ULEZ compliant';
+    if (item.ulezCompliant === false)
+        line += ', not ULEZ compliant';
     if (item.status && item.status !== 'available')
         line += `, currently ${item.status}`;
     return line;

@@ -23,6 +23,7 @@ import { sendOwnerText } from './alerts';
 import { sendNow } from './outbox';
 import { indexStock } from './stock';
 import { answerPendingQuestion, approveDraft, needsApproval } from './router';
+import { formatSendAt, resolveSendHours } from './sendHours';
 import { Conversation, OutboxJob, SalesAgentSettings } from './types';
 
 const HELP = [
@@ -32,7 +33,7 @@ const HELP = [
     'REPLY 12 your message — send that to the customer',
     'TELL 12 your message — the agent says it in its own words',
     'ANSWER 12 your answer — answer what the agent asked',
-    'SEND 12 — send the email the agent drafted',
+    'SEND 12 — send the reply the agent drafted',
     'STATUS — what is open',
     'PAUSE ALL / RESUME ALL — the master switch',
     'STOCK — re-index the website now',
@@ -210,8 +211,14 @@ export const handleOwnerCommand = async (
             if (!conversation) return sendOwnerText(companyId, `No conversation #${send[1]}.`);
 
             try {
-                const { name } = await approveDraft(companyId, conversation.id);
-                await sendOwnerText(companyId, `Sent to ${name}.`);
+                const { name, sendAfter } = await approveDraft(companyId, conversation.id);
+                const waiting = sendAfter > Date.now() + 2000;
+                await sendOwnerText(
+                    companyId,
+                    waiting
+                        ? `Queued for ${name} at ${formatSendAt(sendAfter, resolveSendHours(settings).timeZone)}.`
+                        : `Sent to ${name}.`
+                );
             } catch (error: any) {
                 await sendOwnerText(companyId, `Could not send #${conversation.shortId}: ${error?.message || 'unknown error'}`);
             }

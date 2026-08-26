@@ -143,6 +143,12 @@ const detailView = (item: StockItem) =>
         owners: item.owners,
         serviceHistory: item.serviceHistory,
         motExpiry: item.motExpiry,
+        motStatus: item.motStatus,
+        taxStatus: item.taxStatus,
+        taxDueDate: item.taxDueDate,
+        annualRoadTax: item.annualRoadTax,
+        estimatedMpg: item.estimatedMpg,
+        ulezCompliant: item.ulezCompliant,
         monthlyFrom: item.monthlyFrom,
         features: (item.features || []).slice(0, 30),
         description: (item.description || '').slice(0, 1500),
@@ -171,6 +177,7 @@ const resultView = (item: StockSearchResult) =>
         owners: item.owners,
         serviceHistory: item.serviceHistory,
         motExpiry: item.motExpiry,
+        ulezCompliant: item.ulezCompliant,
         url: item.url,
     });
 
@@ -225,7 +232,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     {
         name: 'search_stock',
         description:
-            'Search the dealership stock list. Call this every time a customer mentions a car, however vaguely, and before you say anything at all about what is or is not available. Put their own words in `text`: it understands years, plate codes ("13 plate", "07 plate"), colours, body styles and nicknames ("boxter", "rangie", "merc"). Returns up to 5 vehicles, surest first, each with a matchQuality of exact, close or weak. Reserved and sold cars come back automatically if nothing available matches.',
+            'Search the dealership stock database (Motor Ledger Pro plus radlettcarsales.com). Call this every time a customer mentions a car, however vaguely, and before you say anything at all about what is or is not available. Put their own words in `text`: it understands years, plate codes ("13 plate", "07 plate"), colours, body styles and nicknames ("boxter", "rangie", "merc"). Returns up to 5 vehicles, surest first, each with a matchQuality of exact, close or weak. Reserved and sold cars come back automatically if nothing available matches.',
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -244,7 +251,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     {
         name: 'get_stock_item',
         description:
-            'Full detail on one vehicle by its stock id, including mileage, owners, service history, MOT and spec. Use this the moment a customer asks anything specific about a car.',
+            'Full detail on one vehicle by its stock id: mileage, owners, service history, MOT, tax, ULEZ, mpg, spec and the advert blurb. This is the combined Motor Ledger Pro + website record. Use it the moment a customer asks anything specific about a car, before you say you need to check with anyone.',
         parameters: {
             type: Type.OBJECT,
             properties: { id: { type: Type.STRING, description: 'The stock id from a search_stock result.' } },
@@ -287,7 +294,7 @@ export const toolDeclarations: FunctionDeclaration[] = [
     {
         name: 'ask_owner',
         description:
-            'Ask the owner a question and wait for his answer before replying properly. Use this for confirmed viewing slots, part-exchange valuations (ONLY AFTER you have gathered the customer\'s vehicle registration and approximate mileage), damage or write-off history, any specific offer the customer makes, and any fact the stock record and business info do not cover. Never call this for part-exchange until you have both the reg and mileage. Never guess instead of calling this.',
+            'Ask the sales desk a question internally and wait for the answer before replying properly. The customer must never hear a colleague\'s name. Use this ONLY for confirmed viewing slots, part-exchange valuations (after you have the customer\'s registration AND approximate mileage), damage or write-off history, a specific offer, or a fact that search_stock, get_stock_item and get_business_info did not cover. Never use this as a first step for spec, MOT, ULEZ, tax, service history or whether a car is in stock — look those up. Never call this for part-exchange until you have both the reg and mileage.',
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -446,7 +453,6 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         // Rather than just refusing (which risks the model shrugging and inventing a
         // confirmation anyway) we raise the question with the owner on its behalf.
         if (!ctx.conversation.ownerAnswer) {
-            const owner = ctx.settings.ownerName || 'Steve';
             const vehicle = ctx.effects.vehicleInterest?.title || ctx.conversation.vehicleInterest?.title || 'the vehicle';
             ctx.effects.askOwner = {
                 question: `${name} wants to view the ${vehicle} ${window}. Does that work?`,
@@ -455,7 +461,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
             return {
                 ok: false,
                 confirmed: false,
-                error: `Not booked. You cannot confirm a slot yourself. I have put the question to ${owner} for you. Tell the customer you are checking it with ${owner} and will come back to them shortly. Do not say booked or confirmed.`,
+                error: 'Not booked. You cannot confirm a slot yourself. The diary question has gone to the sales desk. Tell the customer you are checking the diary and will come back to them shortly. Do not name a colleague. Do not say booked or confirmed.',
             };
         }
 
@@ -472,18 +478,16 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         const reason = str(args.reason) || 'unspecified';
         const ownerMessage = str(args.message_for_owner) || reason;
         ctx.effects.escalate = { reason, ownerMessage };
-        const owner = ctx.settings.ownerName || 'Steve';
-        return { ok: true, note: `${owner} has been pinged. Tell the customer he will come back to them shortly. Keep talking to them in the meantime.` };
+        return { ok: true, note: 'The sales desk has been pinged. Tell the customer you will come back to them shortly. Do not name a colleague. Keep talking to them in the meantime.' };
     },
 
     async ask_owner(args, ctx) {
         const question = str(args.question);
         if (!question) return { ok: false, error: 'question is required' };
         ctx.effects.askOwner = drop({ question, context: str(args.context) });
-        const owner = ctx.settings.ownerName || 'Steve';
         return {
             ok: true,
-            note: `Sent to ${owner}. Now write the customer a short holding line in this same turn, never an empty reply: say you will find that out and come straight back to them. Only name ${owner} if the question was a viewing time or money. Do not answer the question yourself and do not guess.`,
+            note: 'Sent to the sales desk. Now write the customer a short holding line in this same turn, never an empty reply: say you will find that out and come straight back to them. Never name a colleague — they do not know who that is. Do not answer the question yourself and do not guess.',
         };
     },
 
@@ -492,8 +496,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         ctx.effects.handoff = true;
         // The owner still has to be told, and handoff on its own is silent.
         ctx.effects.escalate = ctx.effects.escalate || { reason, ownerMessage: `Handing over: ${reason}` };
-        const owner = ctx.settings.ownerName || 'Steve';
-        return { ok: true, note: `${owner} is taking this over. Say he will pick it up personally, then stop.` };
+        return { ok: true, note: 'A colleague on the sales desk is taking this over. Say someone from the team will pick it up, then stop. Do not name them.' };
     },
 
     async note_price_push(_args, ctx) {

@@ -52,11 +52,12 @@ const appBaseUrl = (): string =>
 /**
  * Where a tapped notification lands.
  *
- * The app routes on the path (`/app/<view>`, see contexts/UIContext.tsx), not on a
- * hash, and the Agent Inbox picks the conversation up out of `?conv=`.
+ * Not a view change. `?dave=` is picked up by the notification bell so Steve can
+ * approve or edit the draft on whatever page he is already on. Opening the Agent
+ * Inbox (or Settings) on tap is how the previous link wasted the click.
  */
 export const alertLink = (convId: string): string =>
-    `${appBaseUrl()}/app/agentInbox${convId ? `?conv=${encodeURIComponent(convId)}` : ''}`;
+    `${appBaseUrl()}/app${convId ? `?dave=${encodeURIComponent(convId)}` : ''}`;
 
 const readTokens = async (companyId: string): Promise<Array<{ key: string; token: string }>> => {
     const snap = await db().ref(pushTokensPath(companyId)).once('value');
@@ -99,6 +100,17 @@ export const sendOwnerPush = async (
         let delivered = 0;
         const dead: string[] = [];
 
+        const isDraft = alert.kind === 'draft';
+        const isQuestion = alert.kind === 'question';
+        const actions = isDraft
+            ? [
+                { action: 'approve', title: 'Approve' },
+                { action: 'review', title: 'Edit' },
+            ]
+            : isQuestion
+                ? [{ action: 'review', title: 'Answer' }]
+                : [{ action: 'review', title: 'Open' }];
+
         for (const batch of chunk(tokens, MULTICAST_LIMIT)) {
             const response = await admin.messaging().sendEachForMulticast({
                 tokens: batch.map(entry => entry.token),
@@ -118,6 +130,10 @@ export const sendOwnerPush = async (
                         // One conversation replaces its own previous alert rather than
                         // stacking three notifications for the same customer.
                         tag: alert.convId || alert.kind,
+                        renotify: true,
+                        requireInteraction: isDraft || isQuestion,
+                        vibrate: [80, 40, 80],
+                        actions,
                     },
                     fcmOptions: { link },
                 },

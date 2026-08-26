@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { crmLeadSource, isNoReplyAddress, looksLikeSpam, parseFromHeader, parseLeadEmail } from './leadParsers';
+import { crmLeadSource, isGenericMarketing, isNoReplyAddress, isSalesDeskRelevant, looksLikeSpam, parseFromHeader, parseLeadEmail } from './leadParsers';
 
 const SELF = 'radlettcars@gmail.com';
 
@@ -361,6 +361,38 @@ describe('things that must never become a lead', () => {
             looksLikeSpam('Is the Boxster available? Call me on 07700 900456.\n--\nwww.myshop.co.uk', undefined, SELF),
             false
         );
+    });
+
+    it('drops generic marketing that is not about a car', () => {
+        const lead = email({
+            from: 'leads@seo-boost.example',
+            subject: 'Grow your dealership traffic',
+            text: 'We help car dealers rank on Google. Unsubscribe at the bottom of this mailing list email.',
+        });
+        assert.equal(lead.kind, 'ignore');
+        assert.equal(lead.ignoreReason, 'spam:not_car_related');
+        assert.equal(isSalesDeskRelevant('Grow your dealership traffic', 'We help car dealers rank on Google'), false);
+        assert.equal(isGenericMarketing('Grow your dealership', 'unsubscribe from this mailing list'), true);
+    });
+
+    it('keeps a plain customer email about a car', () => {
+        const lead = email({
+            from: 'Sam Cobb <sam@hotmail.co.uk>',
+            subject: 'Porsche',
+            text: 'Hi, is the Boxster still available? Can I come for a viewing Saturday?',
+        });
+        assert.equal(lead.kind, 'enquiry');
+        assert.equal(lead.source, 'Direct');
+        assert.equal(isSalesDeskRelevant('Porsche', 'is the Boxster still available?'), true);
+    });
+
+    it('keeps a short hours question to the sales desk', () => {
+        const lead = email({
+            from: 'jo@gmail.com',
+            subject: 'Saturday',
+            text: 'Are you open Saturday morning?',
+        });
+        assert.equal(lead.kind, 'enquiry');
     });
 
     it('drops the newsletters, the finance payouts and its own sent mail', () => {

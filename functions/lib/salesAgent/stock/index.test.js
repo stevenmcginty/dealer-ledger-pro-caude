@@ -105,4 +105,43 @@ const run = (items, vehicles, over = {}) => (0, index_1.matchToLedger)(items, ve
         node_assert_1.strict.deepEqual(items.map(item => item.hiddenReason), [undefined, 'unmatched_excluded']);
     });
 });
+(0, node_test_1.describe)('ledger facts on the stock record', () => {
+    (0, node_test_1.it)('formats an ISO MOT date the way Dave should say it', () => {
+        node_assert_1.strict.equal((0, index_1.formatMotDate)('2027-03-15'), '15 March 2027');
+    });
+    (0, node_test_1.it)('fills MOT, ULEZ and colour from Motor Ledger Pro when the advert is thin', () => {
+        const [item] = run([advert({ id: '1', reg: 'YE17ABC' })], [vehicle({
+                id: 'v-steve',
+                companyId: US,
+                reg: 'YE17ABC',
+                color: 'Race Red',
+                motDueDate: '2027-03-15',
+                ulezCompliant: true,
+                advertisedPrice: 11995,
+            })]);
+        node_assert_1.strict.equal(item.colour, 'Race Red');
+        node_assert_1.strict.equal(item.motExpiry, '15 March 2027');
+        node_assert_1.strict.equal(item.ulezCompliant, true);
+        node_assert_1.strict.equal(item.price, 12995);
+    });
+    (0, node_test_1.it)('does not let the ledger overwrite a live advert price', () => {
+        const overlaid = (0, index_1.overlayLedgerFacts)({ ...advert({ id: '1', price: 12995, status: 'available' }), indexedAt: 0 }, vehicle({ id: 'v', companyId: US, advertisedPrice: 9999 }));
+        node_assert_1.strict.equal(overlaid.price, 12995);
+    });
+    (0, node_test_1.it)('adds a ledger car that is not on the website', () => {
+        const items = (0, index_1.mergeLedgerIntoIndex)([advert({ id: '1', reg: 'YE17ABC' })], [
+            vehicle({ id: 'v-on-site', companyId: US, reg: 'YE17ABC' }),
+            vehicle({ id: 'v-forecourt', companyId: US, make: 'Kia', model: 'Sportage', year: 2019, advertisedPrice: 14995, status: 'Available' }),
+        ], { companyId: US, sharesStock: sharing(), unmatchedStockPolicy: 'include' });
+        const extra = items.find(item => item.id === 'ledger-v-forecourt');
+        node_assert_1.strict.ok(extra);
+        node_assert_1.strict.equal(extra?.make, 'Kia');
+        node_assert_1.strict.equal(extra?.price, 14995);
+        node_assert_1.strict.equal(extra?.ledgerVehicleId, 'v-forecourt');
+    });
+    (0, node_test_1.it)('does not add a sold ledger car that is off the website', () => {
+        const items = (0, index_1.mergeLedgerIntoIndex)([], [vehicle({ id: 'v-sold', companyId: US, status: 'Sold', make: 'Ford', model: 'Fiesta' })], { companyId: US, sharesStock: sharing(), unmatchedStockPolicy: 'include' });
+        node_assert_1.strict.equal(items.length, 0);
+    });
+});
 //# sourceMappingURL=index.test.js.map

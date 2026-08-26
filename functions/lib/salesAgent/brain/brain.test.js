@@ -92,6 +92,10 @@ const prompt_1 = require("./prompt");
         node_assert_1.strict.ok(prompt.includes('SMARTER PART-EXCHANGE & FINANCE PROBING'));
         node_assert_1.strict.ok(prompt.includes('DO NOT call ask_owner until you have BOTH the registration and approximate mileage'));
         node_assert_1.strict.ok(prompt.includes('DEEP VEHICLE KNOWLEDGE'));
+        node_assert_1.strict.ok(prompt.includes('LOOK IT UP FIRST'));
+        node_assert_1.strict.ok(prompt.includes('NEVER NAME A COLLEAGUE'));
+        node_assert_1.strict.ok(!prompt.includes("I'll have Steve run a valuation"));
+        node_assert_1.strict.ok(!prompt.includes('check that slot with Steve'));
     });
     (0, node_test_1.it)('generates messaging-specific instructions when channel is whatsapp', () => {
         const prompt = (0, prompt_1.buildSystemPrompt)({

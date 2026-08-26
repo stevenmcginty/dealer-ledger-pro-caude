@@ -130,10 +130,7 @@ const capReply = (text, channel = 'whatsapp') => {
     return [greeting, body, signoff].filter(Boolean).join('\n\n');
 };
 exports.capReply = capReply;
-const safeHintReply = (settings) => {
-    const owner = settings.ownerName || 'Steve';
-    return `We price competitively, but there's usually a bit of movement, a few hundred pounds. I've asked ${owner} to come back to you with a figure, he'll be in touch shortly.`;
-};
+const safeHintReply = (_settings) => "We price competitively, but there's usually a bit of movement, a few hundred pounds. Let me come back to you with a figure shortly.";
 /**
  * Which listed price a figure in the reply should be measured against. The
  * vehicle they are actually interested in if we looked it up this turn,

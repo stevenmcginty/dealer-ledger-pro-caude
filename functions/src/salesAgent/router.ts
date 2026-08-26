@@ -35,6 +35,7 @@ import {
 } from './conversations';
 import { describeCustomer, recordOwnerInbound, sendOwnerAlert } from './alerts';
 import { NewOutboxJob, enqueue, randomDelayMs, sendNow } from './outbox';
+import { isWithinSendHours, morningJitterMs, resolveSendHours, scheduleSendAfter } from './sendHours';
 import { handleOwnerCommand } from './ownerCommands';
 import { registerWhatsAppRouting, templateFallbackFor, withinCustomerServiceWindow } from './channels/whatsapp';
 import { registerTwilioRouting } from './channels/twilio';
@@ -58,6 +59,15 @@ const FOLLOW_UP_TEMPLATE = 'enquiry_followup';
 
 /** Template used to answer a missed call or a phone lead. */
 const MISSED_CALL_TEMPLATE = 'missed_call_followup';
+
+/** Human-feel delay, then the next office-hours window if that lands after close. */
+const queueSendAfter = (settings: SalesAgentSettings, extraDelayMs = 0): number => {
+    const hours = resolveSendHours(settings);
+    const now = Date.now();
+    const proposed = now + extraDelayMs;
+    const jitter = isWithinSendHours(hours, proposed) ? 0 : morningJitterMs();
+    return scheduleSendAfter(settings, now, extraDelayMs, jitter);
+};
 
 export interface InboundOptions {
     /** Set by the Gmail adapter; the platform-specific reading of a lead email. */
@@ -172,7 +182,7 @@ const handlePhoneLead = async (
         text: `Thanks for calling ${settings.dealershipName || 'us'} earlier. Which car were you calling about?`,
         templateName: MISSED_CALL_TEMPLATE,
         templateParams: [settings.dealershipName || 'Radlett Car Sales'],
-        sendAfter: Date.now() + randomDelayMs(settings.replyDelaySeconds),
+        sendAfter: queueSendAfter(settings, randomDelayMs(settings.replyDelaySeconds)),
     });
 };
 
@@ -411,11 +421,17 @@ export const runAgentTurn = async (
     const reply = (result.reply || '').trim();
     if (!reply || options.simulate) return { reply };
 
-    // Draft & Approve (Steve, 26 Aug): an email goes out under the dealership's name and
-    // sits in somebody's inbox forever, so it waits for Steve. A WhatsApp or a text still
-    // goes on its own — an enquiry answered an hour late is an enquiry lost.
+    // Draft & Approve (Steve, 26 Aug): nothing goes out under the dealership's name
+    // until Steve has read it. WhatsApp uses the same hold once that channel is sending.
     if (needsApproval(conversation, settings)) {
-        await holdDraft(companyId, conversation, settings, reply, inbound.subject, options.draftSource || 'agent');
+        const source = options.draftSource || 'agent';
+        const customerText = (
+            source === 'instruction'
+                ? conversation.pendingDraft?.customerText
+                : inbound.text
+        ) || [...history].reverse().find(m => m.from === 'customer')?.text || inbound.text || '';
+
+        await holdDraft(companyId, conversation, settings, reply, inbound.subject, source, customerText);
         return { reply };
     }
 
@@ -425,9 +441,9 @@ export const runAgentTurn = async (
 
 // --- Draft & Approve --------------------------------------------------------
 
-/** Email replies are held for approval unless Steve has turned that off. */
-export const needsApproval = (conversation: Conversation, settings: SalesAgentSettings): boolean =>
-    conversation.channel === 'email' && settings.emailApprovalMode !== false;
+/** Replies are held for approval unless Steve has turned that off. */
+export const needsApproval = (_conversation: Conversation, settings: SalesAgentSettings): boolean =>
+    settings.emailApprovalMode !== false;
 
 /** A draft in an alert is a glance, not the whole email. */
 const trimForAlert = (text: string, limit = 300): string =>
@@ -459,7 +475,8 @@ const holdDraft = async (
     settings: SalesAgentSettings,
     text: string,
     inboundSubject: string | undefined,
-    source: 'agent' | 'instruction'
+    source: 'agent' | 'instruction',
+    customerText: string
 ): Promise<void> => {
     const subject = conversation.emailSubject || inboundSubject;
 
@@ -469,6 +486,7 @@ const holdDraft = async (
         ...(subject ? { subject } : {}),
         createdAt: Date.now(),
         source,
+        ...(customerText ? { customerText } : {}),
     };
 
     await updateConversation(companyId, conversation.id, { pendingDraft });
@@ -478,17 +496,18 @@ const holdDraft = async (
 };
 
 /**
- * Approve the held draft and put it on the queue.
+ * Approve the held draft.
  *
- * It goes out with no human-feel delay: the wait was Steve reading it, and by the time he
- * has pressed the button the customer has been waiting long enough. An edited version
- * replaces the agent's wording entirely.
+ * During office hours it goes out now — Steve is on the button, so a human-feel delay
+ * would just look broken. After hours it joins the outbox until the next opening
+ * (default 8am). An edited version replaces the agent's wording entirely. The draft
+ * stays put if the send fails, so he can try again.
  */
 export const approveDraft = async (
     companyId: string,
     convId: string,
     edited?: string
-): Promise<{ text: string; name: string }> => {
+): Promise<{ text: string; name: string; sendAfter: number }> => {
     const conversation = await getConversation(companyId, convId);
     if (!conversation) throw new Error(`Conversation ${convId} not found`);
 
@@ -498,7 +517,10 @@ export const approveDraft = async (
     const text = (edited || draft.text || '').trim();
     if (!text) throw new Error('There is nothing to send.');
 
-    await enqueue({
+    const settings = await readSettings(companyId);
+    const sendAfter = queueSendAfter(settings, 0);
+
+    const job = {
         companyId,
         convId,
         channel: conversation.channel,
@@ -506,13 +528,24 @@ export const approveDraft = async (
         text,
         subject: draft.subject || conversation.emailSubject,
         emailThreadId: conversation.emailThreadId,
-        sendAfter: Date.now(),
-    });
+        sendAfter,
+    };
+
+    if (sendAfter > Date.now() + 2000) {
+        await enqueue(job);
+    } else {
+        await sendNow({
+            ...job,
+            id: 'approved-draft',
+            attempts: 0,
+            createdAt: Date.now(),
+        }, 'agent');
+    }
 
     await updateConversation(companyId, convId, { pendingDraft: null });
     delete conversation.pendingDraft;
 
-    return { text, name: describeCustomer(conversation) };
+    return { text, name: describeCustomer(conversation), sendAfter };
 };
 
 /** Throw the held draft away. Nothing is sent and the agent is not asked to try again. */
@@ -546,7 +579,7 @@ const deliverReply = async (
     reply: string,
     inbound: InboundMessage
 ): Promise<void> => {
-    const sendAfter = Date.now() + randomDelayMs(settings.replyDelaySeconds);
+    const sendAfter = queueSendAfter(settings, randomDelayMs(settings.replyDelaySeconds));
     const onEmail = conversation.channel === 'email';
 
     if (onEmail) {
@@ -774,24 +807,26 @@ export const salesAgentInstruct = functions
     });
 
 /**
- * Approve the email the agent has drafted, optionally after editing it.
+ * Approve the reply the agent has drafted, optionally after editing it.
  *
- * Nothing is sent from here — the job goes on the outbox with no delay and the next tick
- * carries it, which is the same road every other reply takes and the only one that knows
- * how to retry a Gmail blip.
+ * Sent immediately — Steve is sitting on the button, and a minute on the outbox queue
+ * would look like the tap did nothing. Gmail credentials live in functions secrets, so
+ * this callable has to mount them the same way the reply box does.
  */
-export const salesAgentApproveDraft = functions.https.onCall(async (data, context) => {
-    const companyId = await requireMember(context, data?.companyId);
-    const convId = String(data?.convId || '');
-    const edited = data?.text === undefined ? undefined : String(data.text).trim();
+export const salesAgentApproveDraft = functions
+    .runWith({ secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
+        const companyId = await requireMember(context, data?.companyId);
+        const convId = String(data?.convId || '');
+        const edited = data?.text === undefined ? undefined : String(data.text).trim();
 
-    try {
-        const { text } = await approveDraft(companyId, convId, edited);
-        return { ok: true, text };
-    } catch (error: any) {
-        throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');
-    }
-});
+        try {
+            const { text, sendAfter } = await approveDraft(companyId, convId, edited);
+            return { ok: true, text, sendAfter };
+        } catch (error: any) {
+            throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');
+        }
+    });
 
 /** Bin the draft. The conversation stays with the agent unless you also take it over. */
 export const salesAgentDiscardDraft = functions.https.onCall(async (data, context) => {

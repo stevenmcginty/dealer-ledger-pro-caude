@@ -307,6 +307,35 @@ const email = (over) => (0, leadParsers_1.parseLeadEmail)({
     (0, node_test_1.it)('does not mistake a real customer with a link in their signature for spam', () => {
         node_assert_1.strict.equal((0, leadParsers_1.looksLikeSpam)('Is the Boxster available? Call me on 07700 900456.\n--\nwww.myshop.co.uk', undefined, SELF), false);
     });
+    (0, node_test_1.it)('drops generic marketing that is not about a car', () => {
+        const lead = email({
+            from: 'leads@seo-boost.example',
+            subject: 'Grow your dealership traffic',
+            text: 'We help car dealers rank on Google. Unsubscribe at the bottom of this mailing list email.',
+        });
+        node_assert_1.strict.equal(lead.kind, 'ignore');
+        node_assert_1.strict.equal(lead.ignoreReason, 'spam:not_car_related');
+        node_assert_1.strict.equal((0, leadParsers_1.isSalesDeskRelevant)('Grow your dealership traffic', 'We help car dealers rank on Google'), false);
+        node_assert_1.strict.equal((0, leadParsers_1.isGenericMarketing)('Grow your dealership', 'unsubscribe from this mailing list'), true);
+    });
+    (0, node_test_1.it)('keeps a plain customer email about a car', () => {
+        const lead = email({
+            from: 'Sam Cobb <sam@hotmail.co.uk>',
+            subject: 'Porsche',
+            text: 'Hi, is the Boxster still available? Can I come for a viewing Saturday?',
+        });
+        node_assert_1.strict.equal(lead.kind, 'enquiry');
+        node_assert_1.strict.equal(lead.source, 'Direct');
+        node_assert_1.strict.equal((0, leadParsers_1.isSalesDeskRelevant)('Porsche', 'is the Boxster still available?'), true);
+    });
+    (0, node_test_1.it)('keeps a short hours question to the sales desk', () => {
+        const lead = email({
+            from: 'jo@gmail.com',
+            subject: 'Saturday',
+            text: 'Are you open Saturday morning?',
+        });
+        node_assert_1.strict.equal(lead.kind, 'enquiry');
+    });
     (0, node_test_1.it)('drops the newsletters, the finance payouts and its own sent mail', () => {
         node_assert_1.strict.equal(email({ from: 'marketing@cargurus.com', subject: 'News' }).kind, 'ignore');
         node_assert_1.strict.equal(email({ from: 'sales@cardealer5.co.uk', subject: 'Newsletter' }).kind, 'ignore');

@@ -27,7 +27,7 @@ import { registerPushToken, unregisterPushToken } from './salesAgentService';
  * - `enabled`     this device is on the list
  * - `available`   it could be, nobody has asked yet
  * - `blocked`     notifications were refused in the browser's own settings
- * - `needs-install` iOS only: Safari grants push to installed PWAs, not tabs
+ * - `needs-install` unused: shade alerts are Android-only, iOS is `unsupported`
  * - `unsupported` the browser has no push, or is a private window
  * - `unconfigured` this build has no Cloud Messaging keys (see config.ts)
  */
@@ -45,6 +45,7 @@ export interface PushAlert {
     body: string;
     convId: string;
     url: string;
+    kind: string;
 }
 
 const TOKEN_KEY = 'dlp.pushToken';
@@ -111,10 +112,13 @@ const messaging = async () => {
 /** What the settings card shows without asking the user for anything. */
 export const readPushStatus = async (): Promise<PushStatus> => {
     if (!isPushConfigured()) return 'unconfigured';
-    // Checked before isSupported(): Safari in a tab reports no support at all,
-    // and "your browser cannot do this" is the wrong thing to tell somebody
-    // whose phone can, once the app is on the home screen.
-    if (isIos() && !isInstalled()) return 'needs-install';
+    // Shade alerts (Approve / Edit on the notification) are Android Chrome only.
+    // iOS web push cannot do those buttons, so we do not offer it. A token that
+    // was already granted can still be turned off.
+    if (isIos()) {
+        if (Notification.permission === 'granted' && readStoredToken()) return 'enabled';
+        return 'unsupported';
+    }
     if (!(await isSupported())) return 'unsupported';
     if (Notification.permission === 'denied') return 'blocked';
     if (Notification.permission === 'granted' && readStoredToken()) return 'enabled';
@@ -184,6 +188,7 @@ const toAlert = (payload: MessagePayload): PushAlert => ({
     body: payload.notification?.body || '',
     convId: payload.data?.convId || '',
     url: payload.data?.url || payload.fcmOptions?.link || '',
+    kind: payload.data?.kind || '',
 });
 
 /**

@@ -3,6 +3,7 @@ import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import { Badge, Button, EmptyState, useToast } from '../ui';
 import Spinner from '../common/Spinner';
+import Modal from '../common/Modal';
 import {
     ArrowLeftIcon,
     ArrowTopRightOnSquareIcon,
@@ -13,6 +14,7 @@ import {
     InboxIcon,
     PhoneIcon,
     SparklesIcon,
+    TrashIcon,
 } from '../icons';
 import {
     AgentMessage,
@@ -24,7 +26,10 @@ import {
     STAGE_LABELS,
     answerAgentQuestion,
     approveAgentDraft,
+    approvedSendMessage,
     conversationName,
+    deleteAgentConversation,
+    deleteAgentMessage,
     discardAgentDraft,
     formatAgentTime,
     instructAgent,
@@ -59,7 +64,8 @@ const ConversationRow: React.FC<{
     conv: Conversation;
     active: boolean;
     onClick: () => void;
-}> = ({ conv, active, onClick }) => {
+    onDelete: () => void;
+}> = ({ conv, active, onClick, onDelete }) => {
     const ChannelIcon = CHANNEL_ICONS[conv.channel] || ChatBubbleLeftRightIcon;
     const waiting = !!conv.pendingQuestion;
     // A drafted reply is the other thing that has stopped and is waiting on you, so it
@@ -67,9 +73,8 @@ const ConversationRow: React.FC<{
     const drafted = !!conv.pendingDraft;
 
     return (
-        <button
-            onClick={onClick}
-            className={`w-full text-left px-4 py-3 border-l-2 transition-colors ${
+        <div
+            className={`flex items-stretch border-l-2 transition-colors ${
                 active
                     ? 'bg-gray-700/60 border-brand-500'
                     : waiting || drafted
@@ -78,6 +83,11 @@ const ConversationRow: React.FC<{
                             ? 'bg-red-950/25 border-red-500/60 hover:bg-red-950/40'
                             : 'border-transparent hover:bg-gray-700/40'
             }`}
+        >
+        <button
+            type="button"
+            onClick={onClick}
+            className="min-w-0 flex-1 text-left px-4 py-3"
         >
             <div className="flex items-center gap-2">
                 <ChannelIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
@@ -105,11 +115,24 @@ const ConversationRow: React.FC<{
                 <span className="ml-auto text-[11px] text-gray-500">{formatAgentTime(conv.updatedAt)}</span>
             </div>
         </button>
+            <button
+                type="button"
+                onClick={onDelete}
+                aria-label={`Delete conversation with ${conversationName(conv)}`}
+                className="flex-shrink-0 px-3 text-gray-500 hover:text-red-400"
+            >
+                <TrashIcon className="h-4 w-4" />
+            </button>
+        </div>
     );
 };
 
 /** A message in the thread. The customer is on the left, this side on the right. */
-const MessageBubble: React.FC<{ message: AgentMessage; agentName: string }> = ({ message, agentName }) => {
+const MessageBubble: React.FC<{
+    message: AgentMessage;
+    agentName: string;
+    onDelete: () => void;
+}> = ({ message, agentName, onDelete }) => {
     const mine = message.from !== 'customer';
     const fromOwner = message.from === 'owner';
     const instruction = instructionText(message);
@@ -118,37 +141,55 @@ const MessageBubble: React.FC<{ message: AgentMessage; agentName: string }> = ({
     // in the thread — it is a note about one, and it reads as one.
     if (instruction) {
         return (
-            <div className="flex justify-center">
+            <div className="group flex items-center justify-center gap-2">
                 <p className="max-w-[85%] text-center text-[11px] leading-relaxed text-gray-500">
                     <span className="font-medium text-gray-400">You told {agentName}:</span> {instruction}
                 </p>
+                <button
+                    type="button"
+                    onClick={onDelete}
+                    aria-label="Delete this note"
+                    className="flex-shrink-0 p-1 text-gray-500 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                >
+                    <TrashIcon className="h-3.5 w-3.5" />
+                </button>
             </div>
         );
     }
 
     return (
-        <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+        <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
             <div className="max-w-[75%]">
                 {mine && (
                     <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-400' : 'text-brand-400'}`}>
                         {fromOwner ? 'You' : 'Agent'}
                     </p>
                 )}
-                <div
-                    className={`rounded-2xl px-4 py-2.5 shadow ${
-                        !mine
-                            ? 'rounded-tl-sm bg-gray-700 text-gray-100'
-                            : fromOwner
-                                ? 'rounded-tr-sm bg-emerald-700 text-white'
-                                : 'rounded-tr-sm bg-brand-600 text-white'
-                    }`}
-                >
-                    {message.subject && (
-                        <p className="mb-1 border-b border-white/20 pb-1 text-xs font-semibold opacity-80">
-                            {message.subject}
-                        </p>
-                    )}
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.text}</p>
+                <div className={`flex items-end gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
+                    <div
+                        className={`rounded-2xl px-4 py-2.5 shadow ${
+                            !mine
+                                ? 'rounded-tl-sm bg-gray-700 text-gray-100'
+                                : fromOwner
+                                    ? 'rounded-tr-sm bg-emerald-700 text-white'
+                                    : 'rounded-tr-sm bg-brand-600 text-white'
+                        }`}
+                    >
+                        {message.subject && (
+                            <p className="mb-1 border-b border-white/20 pb-1 text-xs font-semibold opacity-80">
+                                {message.subject}
+                            </p>
+                        )}
+                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.text}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onDelete}
+                        aria-label="Delete this message"
+                        className="flex-shrink-0 p-1 text-gray-500 hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                    >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
                 </div>
                 <p className={`mt-1 text-[11px] text-gray-500 ${mine ? 'text-right' : ''}`}>
                     {formatAgentTime(message.createdAt)}
@@ -192,6 +233,10 @@ const AgentInboxPage = () => {
     // Set while the agent is turning an instruction into a message. Cleared by the
     // outbound message landing in the thread, which can be a minute after the fact.
     const [phrasingSince, setPhrasingSince] = useState<number | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<
+        { kind: 'thread'; conv: Conversation } | { kind: 'message'; message: AgentMessage } | null
+    >(null);
+    const [deleting, setDeleting] = useState(false);
 
     const threadRef = useRef<HTMLDivElement>(null);
     const replyBoxRef = useRef<HTMLTextAreaElement>(null);
@@ -360,14 +405,36 @@ const AgentInboxPage = () => {
         if (!companyId || !active || !text || draftBusy) return;
         setDraftBusy('approve');
         try {
-            await approveAgentDraft(companyId, active.id, text);
-            toast.success('Approved. It goes out within the minute.');
+            const result = await approveAgentDraft(companyId, active.id, text);
+            toast.success(approvedSendMessage(CHANNEL_LABELS[active.channel] || active.channel, result.sendAfter));
         } catch (err: any) {
             toast.error(err?.message || 'That draft was not sent.');
         } finally {
             setDraftBusy('');
         }
     }, [companyId, active, draftText, draftBusy, toast]);
+
+    const handleConfirmDelete = useCallback(async () => {
+        if (!companyId || !pendingDelete || deleting) return;
+        setDeleting(true);
+        try {
+            if (pendingDelete.kind === 'thread') {
+                const id = pendingDelete.conv.id;
+                await deleteAgentConversation(companyId, pendingDelete.conv);
+                if (activeId === id) setActiveId(null);
+                toast.success('Conversation deleted.');
+            } else {
+                if (!activeId) return;
+                await deleteAgentMessage(companyId, activeId, pendingDelete.message.id);
+                toast.success('Message deleted.');
+            }
+            setPendingDelete(null);
+        } catch (err: any) {
+            toast.error(err?.message || 'That could not be deleted.');
+        } finally {
+            setDeleting(false);
+        }
+    }, [companyId, pendingDelete, deleting, activeId, toast]);
 
     const handleDiscardDraft = useCallback(async () => {
         if (!companyId || !active || draftBusy) return;
@@ -452,6 +519,7 @@ const AgentInboxPage = () => {
                                 conv={conv}
                                 active={conv.id === activeId}
                                 onClick={() => setActiveId(conv.id)}
+                                onDelete={() => setPendingDelete({ kind: 'thread', conv })}
                             />
                         ))}
                     </div>
@@ -541,6 +609,15 @@ const AgentInboxPage = () => {
                                         Pause
                                     </Button>
                                 )}
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setPendingDelete({ kind: 'thread', conv: active })}
+                                    className="text-red-400 hover:text-red-300"
+                                >
+                                    <TrashIcon className="h-4 w-4" />
+                                    Delete thread
+                                </Button>
                             </div>
                         </div>
 
@@ -630,7 +707,8 @@ const AgentInboxPage = () => {
 
                                         <p className="mt-2 text-xs text-gray-400">
                                             Edit it here and your words are what go out. Asking {agentName} to change it
-                                            gets you a new draft to approve instead.
+                                            gets you a new draft to approve instead. After office hours, Approve queues
+                                            it until opening time.
                                         </p>
                                     </div>
                                 </div>
@@ -648,7 +726,12 @@ const AgentInboxPage = () => {
                         <div ref={threadRef} className="min-h-[20rem] max-h-[50vh] space-y-4 overflow-y-auto px-4 py-4">
                             {messages.length ? (
                                 messages.map(message => (
-                                    <MessageBubble key={message.id} message={message} agentName={agentName} />
+                                    <MessageBubble
+                                        key={message.id}
+                                        message={message}
+                                        agentName={agentName}
+                                        onDelete={() => setPendingDelete({ kind: 'message', message })}
+                                    />
                                 ))
                             ) : (
                                 <p className="py-8 text-center text-sm text-gray-500">Nothing said yet.</p>
@@ -731,6 +814,29 @@ const AgentInboxPage = () => {
                     </div>
                 )}
             </div>
+
+            {pendingDelete && (
+                <Modal onClose={() => { if (!deleting) setPendingDelete(null); }} size="sm">
+                    <div className="p-6 text-center">
+                        <h3 className="text-lg font-semibold text-white">
+                            {pendingDelete.kind === 'thread' ? 'Delete conversation' : 'Delete message'}
+                        </h3>
+                        <p className="mt-2 text-sm text-gray-400">
+                            {pendingDelete.kind === 'thread'
+                                ? `Remove the thread with ${conversationName(pendingDelete.conv)}? A new message from them will start a fresh conversation. Queued replies for this thread will not be sent.`
+                                : 'Remove this message from the thread? It does not unsend anything that already went out.'}
+                        </p>
+                        <div className="mt-6 flex justify-center gap-3">
+                            <Button variant="secondary" onClick={() => setPendingDelete(null)} disabled={deleting}>
+                                Cancel
+                            </Button>
+                            <Button variant="danger" onClick={handleConfirmDelete} loading={deleting} disabled={deleting}>
+                                Delete
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

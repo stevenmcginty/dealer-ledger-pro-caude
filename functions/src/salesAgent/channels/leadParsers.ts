@@ -133,6 +133,10 @@ const IGNORE_SENDERS = [
     /dealerforecourt/i,
     /totalcarcheck/i,
     /^marketing(-info)?@/i,
+    /^newsletter@/i,
+    /^promo@/i,
+    /^mailer@/i,
+    /@(?:sendgrid|mailchimp|constantcontact|intercom|hubspot|mailgun)\./i,
     /^sales@cardealer5\.co\.uk$/i,
 ];
 
@@ -272,6 +276,60 @@ export const looksLikeSpam = (text: string, html: string | undefined, selfEmail?
 
     const hasPlainContact = bodyEmails(text || '', selfEmail).length > 0 || extractUkMobiles(text || '').length > 0;
     return !hasPlainContact;
+};
+
+/**
+ * Direct mail to the sales inbox. Platform leads never reach this — they are
+ * already about a car. A human writing "is it still available?" is in; an SEO
+ * pitch or a mailing-list blast is not. Bare words like "car" or "dealership"
+ * are not enough on their own, because marketing mail uses them too.
+ */
+const CAR_MAKES = [
+    'ford', 'bmw', 'audi', 'vw', 'volkswagen', 'mercedes', 'merc', 'toyota', 'honda', 'nissan',
+    'vauxhall', 'peugeot', 'renault', 'kia', 'hyundai', 'mazda', 'mini', 'fiat', 'seat', 'skoda',
+    'volvo', 'jaguar', 'porsche', 'maserati', 'tesla', 'citroen', 'dacia', 'suzuki', 'lexus',
+    'jeep', 'cupra', 'ferrari', 'bentley', 'subaru', 'land rover', 'range rover', 'alfa',
+];
+
+const CUSTOMER_ENQUIRY_RE = new RegExp(
+    [
+        '\\b(?:mot|mileage|ulez|test[- ]?drive|part[- ]?ex(?:change)?|\\bpx\\b)\\b',
+        '\\b(?:viewing|warranty|service history)\\b',
+        '\\b(?:still available|in stock|for sale|advertised|interested in)\\b',
+        '\\b(?:opening hours?|what time (?:are you|do you)|are you open)\\b',
+        `\\b(?:${CAR_MAKES.join('|')})\\b`,
+    ].join('|'),
+    'i'
+);
+
+const MARKETING_RE = new RegExp(
+    [
+        'unsubscribe',
+        'view (?:this )?email in (?:your )?browser',
+        'manage (?:your )?preferences',
+        'this is an automated (?:message|email)',
+        'you(?:\'ve| have) been selected',
+        '\\b(?:seo|backlinks?|guest posts?)\\b',
+        'rank(?:ing)? on google',
+        'increase your (?:sales|leads|traffic|visibility)',
+        'grow your (?:dealership|business|sales)',
+        'dear (?:sir|partner|dealer|valued)',
+        '\\b(?:bitcoin|cryptocurrency|viagra|cialis)\\b',
+        'mailing list',
+        'limited[- ]time offer',
+        'click here to (?:claim|verify|confirm|unsubscribe)',
+    ].join('|'),
+    'i'
+);
+
+export const isSalesDeskRelevant = (subject: string, text: string): boolean => {
+    if (findReg(subject, text)) return true;
+    return CUSTOMER_ENQUIRY_RE.test(`${subject || ''}\n${text || ''}`);
+};
+
+export const isGenericMarketing = (subject: string, text: string, from?: string): boolean => {
+    if (from && /^(newsletter|promo|marketing|mailer|noreply)@/i.test(from)) return true;
+    return MARKETING_RE.test(`${subject || ''}\n${text || ''}`);
 };
 
 // --- Per-source parsers -----------------------------------------------------
@@ -629,6 +687,10 @@ export const parseLeadEmail = (raw: RawEmail): ParsedLead => {
     const domain = from.split('@')[1] || '';
     if (/ebay\.co\.uk$/i.test(domain)) return parseDirectEmail(raw, 'eBay');
     if (/autotrader\.co\.uk$/i.test(domain)) return parseDirectEmail(raw, 'AutoTrader');
+
+    if (!isSalesDeskRelevant(subject, text) && isGenericMarketing(subject, text, from)) {
+        return ignored('Direct', 'spam:not_car_related');
+    }
 
     return parseDirectEmail(raw, 'Direct');
 };
