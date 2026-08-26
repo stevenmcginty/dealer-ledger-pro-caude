@@ -1,11 +1,13 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Card, Badge, Avatar, Button } from '../components/ui';
 import { EmptyState } from '../components/ui';
-import { UserGroupIcon, PhoneIcon, EnvelopeIcon, DocumentTextIcon, ArrowLeftIcon, EditIcon } from '../components/icons';
+import { UserGroupIcon, PhoneIcon, EnvelopeIcon, DocumentTextIcon, ArrowLeftIcon, EditIcon, ChatBubbleLeftRightIcon } from '../components/icons';
 import { useData } from '../hooks/useData';
 import { useUI } from '../hooks/useUI';
 import { LeadStage } from '../types';
 import ActivityTimeline from '../components/crm/ActivityTimeline';
+import StartWhatsAppSheet from '../components/salesAgent/StartWhatsAppSheet';
+import { requestAgentConversation } from '../utils/agentInboxLink';
 
 const STAGE_COLORS: Record<LeadStage, 'default' | 'primary' | 'success' | 'warning' | 'danger'> = {
     [LeadStage.NEW]: 'primary',
@@ -19,8 +21,9 @@ const STAGE_COLORS: Record<LeadStage, 'default' | 'primary' | 'success' | 'warni
 const STAGE_OPTIONS = Object.values(LeadStage);
 
 const LeadDetailPage: React.FC = () => {
-    const { leads, selectedLeadId, vehicles, updateLeadStage } = useData();
+    const { companyId, leads, selectedLeadId, vehicles, updateLeadStage } = useData();
     const { setView, openModal } = useUI();
+    const [whatsAppOpen, setWhatsAppOpen] = useState(false);
 
     const lead = leads.find(l => l.id === selectedLeadId);
 
@@ -190,6 +193,17 @@ const LeadDetailPage: React.FC = () => {
                     <Card>
                         <Card.Header>Quick Actions</Card.Header>
                         <Card.Body className="space-y-2">
+                            {lead.phone && (
+                                <button
+                                    onClick={() => setWhatsAppOpen(true)}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
+                                >
+                                    <div className="p-1.5 rounded-lg bg-emerald-500/20">
+                                        <ChatBubbleLeftRightIcon className="w-4 h-4 text-emerald-400" />
+                                    </div>
+                                    WhatsApp
+                                </button>
+                            )}
                             <button
                                 onClick={handleLogCall}
                                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
@@ -282,6 +296,27 @@ const LeadDetailPage: React.FC = () => {
                     </Card>
                 </div>
             </div>
+
+            {whatsAppOpen && companyId && (
+                <StartWhatsAppSheet
+                    companyId={companyId}
+                    defaults={{
+                        phone: lead.phone,
+                        firstName: lead.firstName,
+                        lastName: lead.lastName,
+                        vehicleTitle: linkedVehicle
+                            ? `${linkedVehicle.make} ${linkedVehicle.model}`.trim()
+                            : lead.vehicleOfInterest,
+                        leadId: lead.id,
+                    }}
+                    onClose={() => setWhatsAppOpen(false)}
+                    onStarted={convId => {
+                        setWhatsAppOpen(false);
+                        requestAgentConversation(convId);
+                        setView('agentInbox');
+                    }}
+                />
+            )}
         </div>
     );
 };

@@ -434,6 +434,29 @@ export const saveSalesAgentPrivate = (
     'Could not save those credentials.'
 );
 
+/**
+ * One Gmail / one WhatsApp number, several ledger accounts. Tokens stay on
+ * `companyId`. Threads land in the member that owns the car.
+ * `whatsappLive` defaults off; connecting the number does not start sending.
+ */
+export const saveSalesAgentSharedInbox = (
+    companyId: string,
+    input: {
+        memberCompanyIds: string[];
+        fallbackCompanyId?: string;
+        name?: string;
+        whatsappLive?: boolean;
+    }
+) => call<
+    { companyId: string; memberCompanyIds: string[]; fallbackCompanyId?: string; name?: string; whatsappLive?: boolean },
+    { ok: true; inbox: { id: string; memberCompanyIds: string[]; whatsappLive?: boolean } }
+>(
+    'salesAgentSaveSharedInbox',
+    { companyId, ...input },
+    30000,
+    'Could not save the shared inbox.'
+);
+
 /** Where to send the browser to hand Gmail access to the agent. */
 export const getGmailAuthUrl = (companyId: string) =>
     call<{ companyId: string }, { url: string }>(
@@ -460,6 +483,24 @@ export const setConversationMode = (companyId: string, convId: string, mode: Con
         30000,
         'Could not change who is answering.'
     );
+
+/**
+ * Open a WhatsApp thread to a number from this ledger. First message is the
+ * approved follow-up template. While WhatsApp is not live the thread is still
+ * created and nothing is sent.
+ */
+export const startAgentWhatsApp = (
+    companyId: string,
+    input: { phone: string; firstName?: string; lastName?: string; vehicleTitle?: string; leadId?: string }
+) => call<
+    { companyId: string; phone: string; firstName?: string; lastName?: string; vehicleTitle?: string; leadId?: string },
+    { ok: true; convId: string; created: boolean; sent: boolean; live: boolean }
+>(
+    'salesAgentStartWhatsApp',
+    { companyId, ...input },
+    60000,
+    'That WhatsApp could not be started.'
+);
 
 /** Send a message to the customer as Steve, on whichever channel they used. */
 export const sendAgentReply = (companyId: string, convId: string, text: string) =>
@@ -502,10 +543,10 @@ export const instructAgent = (companyId: string, convId: string, text: string) =
  * During office hours it goes out on the spot. After hours it is queued until
  * the next opening; `sendAfter` says when.
  */
-export const approveAgentDraft = (companyId: string, convId: string, text?: string) =>
-    call<{ companyId: string; convId: string; text?: string }, { ok: boolean; text: string; sendAfter: number }>(
+export const approveAgentDraft = (companyId: string, convId: string, text?: string, signAs: 'agent' | 'owner' = 'agent') =>
+    call<{ companyId: string; convId: string; text?: string; signAs: 'agent' | 'owner' }, { ok: boolean; text: string; sendAfter: number }>(
         'salesAgentApproveDraft',
-        { companyId, convId, ...(text === undefined ? {} : { text }) },
+        { companyId, convId, signAs, ...(text === undefined ? {} : { text }) },
         60000,
         'That draft could not be sent.'
     );

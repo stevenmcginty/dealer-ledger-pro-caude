@@ -50,6 +50,7 @@ import {
     resolveConversationHome,
     saveSharedInbox,
 } from './inboxRouting';
+import { startOutboundWhatsApp } from './startWhatsApp';
 import {
     Contact,
     Conversation,
@@ -574,10 +575,30 @@ const holdDraft = async (
  * (default 8am). An edited version replaces the agent's wording entirely. The draft
  * stays put if the send fails, so he can try again.
  */
+/**
+ * The agent's wording, the owner's name.
+ *
+ * Steve wants Dave to do the typing but the email to come from him (Steve, 26
+ * Aug). The sign-off — the last few lines — has the agent's name swapped for the
+ * owner's; the body is left alone, and the thread records it as the owner.
+ */
+export const signAsOwner = (text: string, agentName: string, ownerName: string): string => {
+    const agent = agentName.trim();
+    const owner = ownerName.trim();
+    if (!agent || !owner || agent.toLowerCase() === owner.toLowerCase()) return text;
+
+    const lines = text.split('\n');
+    const tail = Math.max(0, lines.length - 5);
+    const pattern = new RegExp(`\\b${agent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+    for (let i = tail; i < lines.length; i++) lines[i] = lines[i].replace(pattern, owner);
+    return lines.join('\n');
+};
+
 export const approveDraft = async (
     companyId: string,
     convId: string,
-    edited?: string
+    edited?: string,
+    signAs: 'agent' | 'owner' = 'agent'
 ): Promise<{ text: string; name: string; sendAfter: number }> => {
     const conversation = await getConversation(companyId, convId);
     if (!conversation) throw new Error(`Conversation ${convId} not found`);
@@ -585,10 +606,11 @@ export const approveDraft = async (
     const draft = conversation.pendingDraft;
     if (!draft) throw new Error('There is no draft waiting on that one.');
 
-    const text = (edited || draft.text || '').trim();
+    const settings = await readSettings(companyId);
+    let text = (edited || draft.text || '').trim();
+    if (signAs === 'owner') text = signAsOwner(text, settings.agentName || 'Dave', settings.ownerName || '');
     if (!text) throw new Error('There is nothing to send.');
 
-    const settings = await readSettings(companyId);
     const sendAfter = queueSendAfter(settings, 0);
 
     const job = {
@@ -600,6 +622,7 @@ export const approveDraft = async (
         subject: draft.subject || conversation.emailSubject,
         emailThreadId: conversation.emailThreadId,
         sendAfter,
+        ...(signAs === 'owner' ? { from: 'owner' as const } : {}),
     };
 
     if (sendAfter > Date.now() + 2000) {
@@ -610,7 +633,7 @@ export const approveDraft = async (
             id: 'approved-draft',
             attempts: 0,
             createdAt: Date.now(),
-        }, 'agent');
+        }, signAs);
     }
 
     await updateConversation(companyId, convId, { pendingDraft: null });
@@ -823,6 +846,10 @@ export const salesAgentSendReply = functions
         const conversation = await getConversation(companyId, convId);
         if (!conversation) throw new functions.https.HttpsError('not-found', 'That conversation no longer exists.');
 
+        if (conversation.channel === 'whatsapp' && !(await isWhatsAppLiveFor(companyId))) {
+            throw new functions.https.HttpsError('failed-precondition', 'WhatsApp is not live yet. The thread is here; nothing will be sent until Meta verification is on.');
+        }
+
         const job: OutboxJob = {
             id: 'immediate',
             companyId,
@@ -899,9 +926,10 @@ export const salesAgentApproveDraft = functions
         const companyId = await requireMember(context, data?.companyId);
         const convId = String(data?.convId || '');
         const edited = data?.text === undefined ? undefined : String(data.text).trim();
+        const signAs = data?.signAs === 'owner' ? 'owner' : 'agent';
 
         try {
-            const { text, sendAfter } = await approveDraft(companyId, convId, edited);
+            const { text, sendAfter } = await approveDraft(companyId, convId, edited, signAs);
             return { ok: true, text, sendAfter };
         } catch (error: any) {
             throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');
@@ -974,6 +1002,42 @@ export const salesAgentSavePrivate = functions.https.onCall(async (data, context
 });
 
 /**
+ * Open a WhatsApp thread to a number from this ledger, Steve's or Chris's.
+ *
+ * First message is the approved follow-up template — Meta will not take free
+ * text until the customer replies. While WhatsApp is not live the thread is
+ * still created and nothing is sent.
+ */
+export const salesAgentStartWhatsApp = functions
+    .runWith({ timeoutSeconds: 60 })
+    .https.onCall(async (data, context) => {
+        const companyId = await requireMember(context, data?.companyId);
+
+        try {
+            return {
+                ok: true,
+                ...(await startOutboundWhatsApp({
+                    companyId,
+                    phone: String(data?.phone || ''),
+                    firstName: data?.firstName ? String(data.firstName) : undefined,
+                    lastName: data?.lastName ? String(data.lastName) : undefined,
+                    vehicleTitle: data?.vehicleTitle ? String(data.vehicleTitle) : undefined,
+                    leadId: data?.leadId ? String(data.leadId) : undefined,
+                })),
+            };
+        } catch (error: any) {
+            const message = error?.message || 'That WhatsApp could not be started.';
+            if (/does not look like a phone number/i.test(message)) {
+                throw new functions.https.HttpsError('invalid-argument', message);
+            }
+            if (/other ledger/i.test(message)) {
+                throw new functions.https.HttpsError('already-exists', message);
+            }
+            throw new functions.https.HttpsError('failed-precondition', message);
+        }
+    });
+
+/**
  * Register who shares this Gmail / WhatsApp number. Tokens stay on the calling
  * company. Threads are placed on the member that owns the car.
  *
@@ -983,15 +1047,22 @@ export const salesAgentSavePrivate = functions.https.onCall(async (data, context
 export const salesAgentSaveSharedInbox = functions.https.onCall(async (data, context) => {
     const companyId = await requireMember(context, data?.companyId);
     const members = Array.isArray(data?.memberCompanyIds) ? data.memberCompanyIds.map(String) : [];
+    const existing = await inboxForMember(companyId);
 
-    if (!members.length) {
+    // Naming another company here hands it our tokens and lets its threads land in
+    // our ledger. Only someone who belongs to every company listed may do that.
+    for (const other of [...members, ...(data?.fallbackCompanyId ? [String(data.fallbackCompanyId)] : [])]) {
+        if (other !== companyId) await requireMember(context, other);
+    }
+
+    if (!members.length && !existing) {
         throw new functions.https.HttpsError('invalid-argument', 'Name at least one other Dealer Ledger Pro company that shares this inbox.');
     }
 
     try {
         const inbox = await saveSharedInbox({
             credentialCompanyId: companyId,
-            memberCompanyIds: members,
+            memberCompanyIds: members.length ? members : (existing?.memberCompanyIds || []),
             fallbackCompanyId: data?.fallbackCompanyId ? String(data.fallbackCompanyId) : undefined,
             name: data?.name ? String(data.name) : undefined,
             whatsappLive: data?.whatsappLive === undefined ? undefined : data.whatsappLive === true,

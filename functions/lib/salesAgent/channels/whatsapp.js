@@ -47,11 +47,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.templateFallbackFor = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplate = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
+exports.templateFallbackFor = exports.renderFallbackTemplate = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplate = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
 const crypto = __importStar(require("crypto"));
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
 const conversations_1 = require("../conversations");
+const inboxRouting_1 = require("../inboxRouting");
 const types_1 = require("../types");
 const router_1 = require("../router");
 const GRAPH_VERSION = 'v21.0';
@@ -78,7 +79,7 @@ const companyForWhatsAppPhoneId = async (phoneNumberId) => {
 };
 exports.companyForWhatsAppPhoneId = companyForWhatsAppPhoneId;
 const graphPost = async (companyId, body) => {
-    const priv = await (0, conversations_1.readPrivate)(companyId);
+    const priv = await (0, inboxRouting_1.readSendPrivate)(companyId);
     const wa = priv.whatsapp;
     if (!wa?.accessToken || !wa?.phoneNumberId) {
         throw new Error('WhatsApp is not connected for this company');
@@ -138,6 +139,11 @@ const markRead = async (companyId, messageId) => {
 };
 exports.whatsappSender = {
     send: async (companyId, job) => {
+        // Every customer-facing WhatsApp passes through here: the agent's replies,
+        // approved drafts, the owner's REPLY, the app's reply box. One gate.
+        if (!(await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId))) {
+            throw new Error('WhatsApp is not live yet (Meta verification pending), so this message was not sent.');
+        }
         const providerId = job.templateName
             ? await (0, exports.sendWhatsAppTemplate)(companyId, job.to, job.templateName, job.templateParams || [])
             : await (0, exports.sendWhatsAppText)(companyId, job.to, job.text);
@@ -287,6 +293,9 @@ exports.salesAgentWhatsAppWebhook = functions
  * stay in one file.
  */
 exports.FALLBACK_TEMPLATE = 'enquiry_followup';
+/** The approved template's wording, for the thread record. */
+const renderFallbackTemplate = (params) => `Hi ${params[0] || 'there'}, thanks for enquiring about the ${params[1] || 'car'}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`;
+exports.renderFallbackTemplate = renderFallbackTemplate;
 const templateFallbackFor = (firstName, vehicleTitle) => ({
     templateName: exports.FALLBACK_TEMPLATE,
     templateParams: [(0, exports.sanitiseTemplateParam)(firstName || 'there'), (0, exports.sanitiseTemplateParam)(vehicleTitle || 'car')],

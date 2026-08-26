@@ -256,6 +256,8 @@ export interface SharedContactRef {
 
 export interface OutboxJob {
     id: string;
+    /** Who the thread shows as the sender. Default agent. */
+    from?: 'agent' | 'owner';
     companyId: string;
     convId: string;
     channel: Channel;
@@ -301,6 +303,18 @@ export const toE164 = (raw: string): string => {
     if (d.startsWith('0')) return '+44' + d.slice(1);
     if (d.startsWith('44')) return '+' + d;
     return '+' + d;
+};
+
+/**
+ * A number we are willing to open a WhatsApp thread to. toE164 will happily
+ * turn "0" into "+44"; this will not.
+ */
+export const parseOutboundPhone = (raw: string): string | null => {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return null;
+    if (trimmed.replace(/[^\d]/g, '').length < 10) return null;
+    const e164 = toE164(trimmed);
+    return /^\+[1-9]\d{9,14}$/.test(e164) ? e164 : null;
 };
 
 export const extractUkMobiles = (text: string): string[] => {

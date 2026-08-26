@@ -49,6 +49,7 @@ exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = expor
 const functions = __importStar(require("firebase-functions/v1"));
 const googleapis_1 = require("googleapis");
 const conversations_1 = require("./conversations");
+const inboxRouting_1 = require("./inboxRouting");
 exports.GMAIL_SECRETS = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'];
 exports.GMAIL_SCOPES = [
     'https://www.googleapis.com/auth/gmail.modify',
@@ -177,6 +178,7 @@ exports.salesAgentGmailOAuthCallback = functions
             email,
         });
         await (0, exports.registerGmailRouting)(email, companyId);
+        await (0, inboxRouting_1.bindInboxChannelsFromPrivate)(companyId);
         await (0, exports.startGmailWatch)(companyId);
         res.redirect(appReturnUrl('connected'));
     }

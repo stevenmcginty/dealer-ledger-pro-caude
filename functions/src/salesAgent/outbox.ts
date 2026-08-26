@@ -24,7 +24,7 @@ import {
     updateConversation,
 } from './conversations';
 import { gmailSender } from './channels/gmail';
-import { templateFallbackFor, whatsappSender, withinCustomerServiceWindow } from './channels/whatsapp';
+import { renderFallbackTemplate, templateFallbackFor, whatsappSender, withinCustomerServiceWindow } from './channels/whatsapp';
 import { twilioSender } from './channels/twilio';
 import { GMAIL_SECRETS } from './gmailAuth';
 import { Channel, ChannelSender, OutboxJob } from './types';
@@ -78,12 +78,17 @@ const applyWhatsAppWindow = async (job: OutboxJob): Promise<OutboxJob> => {
 
     console.warn(`Outbox ${job.id}: outside the 24h window, falling back to a template`);
 
+    const fallback = templateFallbackFor(
+        conversation?.contact?.firstName,
+        conversation?.vehicleInterest?.title
+    );
+
     return {
         ...job,
-        ...templateFallbackFor(
-            conversation?.contact?.firstName,
-            conversation?.vehicleInterest?.title
-        ),
+        ...fallback,
+        // What the thread shows has to be what the customer got, not the words that
+        // could not be sent.
+        text: renderFallbackTemplate(fallback.templateParams || []),
     };
 };
 
@@ -117,7 +122,7 @@ export const sendNow = async (
             direction: 'out',
             channel: prepared.channel,
             text: prepared.text,
-            from,
+            from: prepared.from || from,
             providerId,
             subject: prepared.subject,
             createdAt: Date.now(),

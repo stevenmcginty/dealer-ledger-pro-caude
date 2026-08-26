@@ -17,7 +17,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { describeStockItem, rankStock } from './search';
+import { describeStockItem, matchEnquiryStock, rankStock } from './search';
 import type { StockItem } from '../types';
 
 const car = (over: Partial<StockItem> & { id: string }): StockItem => ({
@@ -260,6 +260,48 @@ describe("cars the agent is not allowed to sell", () => {
         assert.deepEqual(ids(hits), ['boxster-07']);
         assert.equal(hits[0].matchQuality, 'exact');
         assert.equal(hits[0].hiddenReason, 'owner_opted_out');
+    });
+});
+
+describe('which ledger owns the enquiry', () => {
+    const STEVE = 'company-steve';
+    const CHRIS = 'company-chris';
+
+    const OWNED: StockItem[] = STOCK.map(item => {
+        if (item.id === BOXSTER_07.id) {
+            return { ...item, ownerCompanyId: CHRIS, hiddenReason: 'owner_opted_out' as const };
+        }
+        if (item.id === 'focus-17') return { ...item, ownerCompanyId: STEVE };
+        return item;
+    });
+
+    it('routes a registration to the company that holds that car, even when it is hidden from Dave', () => {
+        const item = matchEnquiryStock(OWNED, { reg: 'BC02 YDG' });
+        assert.equal(item?.id, BOXSTER_07.id);
+        assert.equal(item?.ownerCompanyId, CHRIS);
+    });
+
+    it('routes a stock id the same way', () => {
+        const item = matchEnquiryStock(OWNED, { stockId: BOXSTER_07.id });
+        assert.equal(item?.ownerCompanyId, CHRIS);
+    });
+
+    it('routes a clear description to the owner', () => {
+        const item = matchEnquiryStock(OWNED, { title: 'black 2007 boxster' });
+        assert.equal(item?.id, BOXSTER_07.id);
+        assert.equal(item?.ownerCompanyId, CHRIS);
+    });
+
+    it('refuses a weak guess so the thread is not pinned to the wrong dealer', () => {
+        assert.equal(matchEnquiryStock(OWNED, { text: 'recaro' }), null);
+    });
+
+    it('refuses when two close hits belong to different dealers', () => {
+        const clash: StockItem[] = [
+            { ...BOXSTER_07, ownerCompanyId: CHRIS },
+            { ...BOXSTER_01, ownerCompanyId: STEVE },
+        ];
+        assert.equal(matchEnquiryStock(clash, { title: 'porsche boxster' }), null);
     });
 });
 

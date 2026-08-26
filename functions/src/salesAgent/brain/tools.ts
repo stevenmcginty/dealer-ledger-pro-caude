@@ -62,7 +62,7 @@ export interface ToolEffects {
     priceRequests?: number;
     contact?: Contact;
     preferredTime?: string;
-    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string };
+    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; ownerCompanyId?: string };
     /** Listed price of every vehicle a tool returned this run, by stock id. Feeds the price guard. */
     seenPrices: Map<string, number>;
     /** Every monthly finance figure a tool returned this run. A monthly figure the

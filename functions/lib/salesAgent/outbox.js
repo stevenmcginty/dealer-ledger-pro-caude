@@ -95,9 +95,13 @@ const applyWhatsAppWindow = async (job) => {
     if ((0, whatsapp_1.withinCustomerServiceWindow)(conversation?.lastCustomerMessageAt))
         return job;
     console.warn(`Outbox ${job.id}: outside the 24h window, falling back to a template`);
+    const fallback = (0, whatsapp_1.templateFallbackFor)(conversation?.contact?.firstName, conversation?.vehicleInterest?.title);
     return {
         ...job,
-        ...(0, whatsapp_1.templateFallbackFor)(conversation?.contact?.firstName, conversation?.vehicleInterest?.title),
+        ...fallback,
+        // What the thread shows has to be what the customer got, not the words that
+        // could not be sent.
+        text: (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || []),
     };
 };
 /**
@@ -125,7 +129,7 @@ const sendNow = async (job, from = 'agent') => {
             direction: 'out',
             channel: prepared.channel,
             text: prepared.text,
-            from,
+            from: prepared.from || from,
             providerId,
             subject: prepared.subject,
             createdAt: Date.now(),

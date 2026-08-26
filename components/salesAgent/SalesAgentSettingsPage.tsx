@@ -33,6 +33,7 @@ import {
 } from '../../services/salesAgentService';
 import AgentSimulator from './AgentSimulator';
 import PushNotificationsCard from './PushNotificationsCard';
+import SharedInboxCard from './SharedInboxCard';
 
 /** A labelled on/off switch. The agent's settings are mostly yes-or-no answers. */
 const Toggle: React.FC<{
@@ -665,6 +666,9 @@ const SalesAgentSettingsPage = () => {
                 enabled={draft.pushNotifications !== false}
                 onChanged={next => setDraft(prev => ({ ...prev, pushNotifications: next }))}
             />
+
+            {/* ---- shared inbox ------------------------------------------ */}
+            <SharedInboxCard companyId={companyId} />
 
             {/* ---- stock index ------------------------------------------- */}
             <Card padding="lg">

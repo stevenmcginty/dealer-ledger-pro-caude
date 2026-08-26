@@ -15,6 +15,7 @@ import * as functions from 'firebase-functions/v1';
 import twilio from 'twilio';
 
 import { BRAIN_SECRETS, db, readPrivate, routingPath } from '../conversations';
+import { readSendPrivate } from '../inboxRouting';
 import { ChannelSender, InboundMessage, rtdbKey, toE164 } from '../types';
 import { handleInbound } from '../router';
 
@@ -35,7 +36,7 @@ export const companyForTwilioNumber = async (toNumber: string): Promise<string |
 
 export const twilioSender: ChannelSender = {
     send: async (companyId, job) => {
-        const priv = await readPrivate(companyId);
+        const priv = await readSendPrivate(companyId);
         const config = priv.twilio;
 
         if (!config?.accountSid || !config?.authToken || !config?.fromNumber) {

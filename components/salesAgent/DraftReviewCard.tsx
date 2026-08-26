@@ -11,6 +11,7 @@ import {
     discardAgentDraft,
     formatAgentTime,
     instructAgent,
+    subscribeToSalesAgentSettings,
 } from '../../services/salesAgentService';
 
 interface DraftReviewCardProps {
@@ -32,6 +33,10 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
     const [text, setText] = useState(draft?.text || '');
     const [instruction, setInstruction] = useState('');
     const [busy, setBusy] = useState<'' | 'approve' | 'rewrite' | 'discard'>('');
+    // Dave writes it; the toggle decides whose name goes at the bottom.
+    const [ownerName, setOwnerName] = useState('');
+    const [signAs, setSignAs] = useState<'agent' | 'owner'>('agent');
+    useEffect(() => subscribeToSalesAgentSettings(companyId, s => setOwnerName(s.ownerName || '')), [companyId]);
 
     const draftId = draft?.id || '';
     useEffect(() => {
@@ -45,13 +50,13 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
         if (!next || busy) return;
         setBusy('approve');
         try {
-            const result = await approveAgentDraft(companyId, conv.id, next);
+            const result = await approveAgentDraft(companyId, conv.id, next, signAs);
             toast.success(approvedSendMessage(CHANNEL_LABELS[conv.channel] || conv.channel, result.sendAfter));
         } catch (err: any) {
             toast.error(err?.message || 'That draft was not sent.');
             setBusy('');
         }
-    }, [text, busy, companyId, conv.id, conv.channel, toast]);
+    }, [text, busy, companyId, conv.id, conv.channel, toast, signAs]);
 
     const handleRewrite = useCallback(async () => {
         const next = instruction.trim();
@@ -117,6 +122,27 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                 />
             </div>
 
+            {ownerName && (
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span>Send as</span>
+                    <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
+                        {(['agent', 'owner'] as const).map(who => (
+                            <button
+                                key={who}
+                                type="button"
+                                onClick={() => setSignAs(who)}
+                                disabled={!!busy}
+                                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                                    signAs === who ? 'bg-brand-600 text-white' : 'bg-gray-900/60 text-gray-300 hover:bg-gray-800'
+                                }`}
+                            >
+                                {who === 'agent' ? agentName : ownerName}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
                 <Button
                     size="sm"
@@ -125,7 +151,7 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                     loading={busy === 'approve'}
                     disabled={!text.trim() || !!busy}
                 >
-                    Approve &amp; send
+                    Approve &amp; send{signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}
                 </Button>
                 <Button
                     size="sm"

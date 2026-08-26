@@ -51,6 +51,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.salesAgentBackfillLeads = exports.gmailSender = exports.salesAgentGmailPush = exports.toRawEmail = exports.stripQuotedReply = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
+const inboxRouting_1 = require("../inboxRouting");
 const conversations_1 = require("../conversations");
 const gmailAuth_1 = require("../gmailAuth");
 const router_1 = require("../router");
@@ -188,6 +189,50 @@ const processMessage = async (companyId, selfEmail, message) => {
     await (0, router_1.handleInbound)(inbound, { lead });
 };
 /**
+ * A reply Steve or Chris typed in Gmail itself, not in the app.
+ *
+ * Without this the agent never learns the desk already answered, and carries on
+ * from where it thought the thread was. Every SENT message is checked against the
+ * conversations of every company on the inbox; one whose Gmail thread matches is
+ * recorded as the owner speaking, and any draft the agent was holding for that
+ * thread is dropped — the owner has answered it themselves.
+ */
+const recordOwnerSentMessage = async (credentialCompanyId, selfEmail, message) => {
+    const threadId = message.threadId;
+    const id = message.id;
+    if (!threadId || !id)
+        return;
+    const inbox = await (0, inboxRouting_1.inboxForMember)(credentialCompanyId);
+    const companyIds = inbox?.memberCompanyIds?.length ? inbox.memberCompanyIds : [credentialCompanyId];
+    for (const companyId of companyIds) {
+        const conversation = (await (0, conversations_1.listConversations)(companyId)).find(conv => conv.emailThreadId === threadId);
+        if (!conversation)
+            continue;
+        // The app's own sends are already on the thread under this id.
+        const history = await (0, conversations_1.readHistory)(companyId, conversation.id, 200);
+        if (history.some(m => m.providerId === id))
+            return;
+        const raw = (0, exports.toRawEmail)(message, selfEmail);
+        const text = raw.text.trim();
+        if (!text)
+            return;
+        await (0, conversations_1.appendMessage)(companyId, conversation, {
+            direction: 'out',
+            channel: 'email',
+            text,
+            from: 'owner',
+            providerId: id,
+            subject: raw.subject,
+            createdAt: Number(message.internalDate) || Date.now(),
+        });
+        const patch = { lastOutboundAt: Number(message.internalDate) || Date.now() };
+        if (conversation.pendingDraft)
+            patch.pendingDraft = null;
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, patch);
+        return;
+    }
+};
+/**
  * The Pub/Sub push.
  *
  * A 404 from history.list means the stored id has aged out (Gmail keeps roughly a week).
@@ -259,6 +304,41 @@ exports.salesAgentGmailPush = functions
             console.error(`Gmail: handling message ${id} for company ${companyId} failed`, error);
         }
     }
+    // Second pass: what the desk sent from Gmail itself.
+    try {
+        const sent = new Set();
+        let sentPage;
+        do {
+            const page = await gmail.users.history.list({
+                userId: 'me',
+                startHistoryId,
+                historyTypes: ['messageAdded'],
+                labelId: 'SENT',
+                maxResults: 500,
+                pageToken: sentPage,
+            });
+            for (const record of page.data.history || []) {
+                for (const added of record.messagesAdded || []) {
+                    const id = added.message?.id;
+                    if (id && !seen.has(id))
+                        sent.add(id);
+                }
+            }
+            sentPage = page.data.nextPageToken || undefined;
+        } while (sentPage);
+        for (const id of sent) {
+            try {
+                const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+                await recordOwnerSentMessage(companyId, emailAddress, full.data);
+            }
+            catch (error) {
+                console.error(`Gmail: recording sent message ${id} for company ${companyId} failed`, error);
+            }
+        }
+    }
+    catch (error) {
+        console.warn(`Gmail: sent-mail pass for ${emailAddress} failed`, error);
+    }
     await (0, conversations_1.db)().ref((0, conversations_1.privatePath)(companyId, 'gmail/historyId')).set(latestHistoryId);
     return null;
 });
@@ -308,10 +388,11 @@ const buildMime = (parts) => {
 };
 exports.gmailSender = {
     send: async (companyId, job) => {
+        const credId = await (0, inboxRouting_1.credentialsCompanyId)(companyId);
         const [settings, priv, gmail] = await Promise.all([
             (0, conversations_1.readSettings)(companyId),
-            (0, conversations_1.readPrivate)(companyId),
-            (0, gmailAuth_1.gmailClientFor)(companyId),
+            (0, conversations_1.readPrivate)(credId),
+            (0, gmailAuth_1.gmailClientFor)(credId),
         ]);
         const fromEmail = priv.gmail?.email || settings.emailAddress;
         if (!fromEmail)

@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.answerPendingQuestion = exports.discardDraft = exports.approveDraft = exports.needsApproval = exports.runAgentTurn = exports.handleInbound = exports.BRAIN_SECRETS = void 0;
+exports.salesAgentSimulate = exports.salesAgentSaveSharedInbox = exports.salesAgentStartWhatsApp = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.answerPendingQuestion = exports.discardDraft = exports.approveDraft = exports.signAsOwner = exports.needsApproval = exports.runAgentTurn = exports.handleInbound = exports.BRAIN_SECRETS = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const brain_1 = require("./brain");
 const prompt_1 = require("./brain/prompt");
@@ -62,6 +62,8 @@ const ownerCommands_1 = require("./ownerCommands");
 const whatsapp_1 = require("./channels/whatsapp");
 const twilio_1 = require("./channels/twilio");
 const leadParsers_1 = require("./channels/leadParsers");
+const inboxRouting_1 = require("./inboxRouting");
+const startWhatsApp_1 = require("./startWhatsApp");
 const types_1 = require("./types");
 /** Opening template for a lead that came in by email but left us a mobile. */
 const FOLLOW_UP_TEMPLATE = 'enquiry_followup';
@@ -130,6 +132,7 @@ const attachVehicle = async (companyId, conversation, lead) => {
             stockId: item.id,
             title: item.title,
             ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+            ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
         }
         : lead.vehicle?.title
             ? { title: lead.vehicle.title }
@@ -154,6 +157,8 @@ const handlePhoneLead = async (companyId, conversation, settings, lead) => {
     const autoFollowUp = settings.followUpPhoneLeads === true || clearlyUnanswered;
     if (!autoFollowUp || !settings.channels.whatsapp || !lead.phone)
         return;
+    if (!(await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId)))
+        return;
     await (0, outbox_1.enqueue)({
         companyId,
         convId: conversation.id,
@@ -166,28 +171,48 @@ const handlePhoneLead = async (companyId, conversation, settings, lead) => {
     });
 };
 const handleInbound = async (msg, options = {}) => {
-    const { companyId } = msg;
-    const settings = await (0, conversations_1.readSettings)(companyId);
-    if (!(await (0, conversations_1.claimProviderId)(companyId, msg.providerId)))
-        return;
-    // Steve's own number is a control channel, not a customer. Checked before the
-    // enabled flag so PAUSE ALL is reversible.
-    const isOwner = msg.channel === 'whatsapp' &&
-        !!settings.ownerAlertNumber &&
-        (0, types_1.toE164)(msg.address) === (0, types_1.toE164)(settings.ownerAlertNumber);
-    if (isOwner) {
-        await (0, alerts_1.recordOwnerInbound)(companyId);
-        await (0, ownerCommands_1.handleOwnerCommand)(companyId, settings, msg.text || '');
+    const credentialCompanyId = msg.companyId;
+    const inbox = await (0, inboxRouting_1.inboxForMember)(credentialCompanyId);
+    // Shared inbox: one Gmail/WhatsApp retry must not be claimed once per member.
+    if (inbox) {
+        if (!(await (0, inboxRouting_1.claimSharedProviderId)(inbox.id, msg.providerId)))
+            return;
+    }
+    else if (!(await (0, conversations_1.claimProviderId)(credentialCompanyId, msg.providerId))) {
         return;
     }
     const lead = options.lead;
     const contact = contactFromLead(msg, lead);
+    // Owner commands come from a personal mobile. Each member's alert number is
+    // tried so Chris's TAKE OVER hits Chris's short ids, not Steve's.
+    if (msg.channel === 'whatsapp') {
+        const ownerCompanyId = await (0, inboxRouting_1.ownerCompanyForWhatsApp)(inbox, msg.address, credentialCompanyId);
+        if (ownerCompanyId) {
+            await (0, alerts_1.recordOwnerInbound)(ownerCompanyId);
+            const ownerSettings = await (0, conversations_1.readSettings)(ownerCompanyId);
+            await (0, ownerCommands_1.handleOwnerCommand)(ownerCompanyId, ownerSettings, msg.text || '');
+            return;
+        }
+    }
+    const home = await (0, inboxRouting_1.resolveConversationHome)({
+        inbox,
+        credentialCompanyId,
+        channel: msg.channel,
+        address: msg.address,
+        contact,
+        lead,
+        text: lead ? (0, leadParsers_1.messageOrDefault)(lead, lead.vehicle?.title) : msg.text,
+    });
+    const companyId = home.companyId;
+    msg.companyId = companyId;
+    const settings = await (0, conversations_1.readSettings)(companyId);
     const { conversation, isNew } = await (0, conversations_1.findOrCreateConversation)(companyId, msg.channel, msg.address, contact, {
         source: lead ? (0, leadParsers_1.crmLeadSource)(lead.source) : undefined,
-        vehicleOfInterest: lead?.vehicle?.title,
+        vehicleOfInterest: lead?.vehicle?.title || home.stockItem?.title,
         emailThreadId: msg.emailThreadId,
         emailSubject: msg.subject,
     });
+    await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, msg.channel, msg.address);
     const text = lead ? (0, leadParsers_1.messageOrDefault)(lead, conversation.vehicleInterest?.title) : msg.text;
     await (0, conversations_1.appendMessage)(companyId, conversation, {
         direction: 'in',
@@ -210,17 +235,39 @@ const handleInbound = async (msg, options = {}) => {
         patch.emailThreadId = msg.emailThreadId;
     if (msg.subject)
         patch.emailSubject = msg.subject;
+    if (isNew && inbox && home.reason !== 'single') {
+        patch.routing = {
+            inboxId: inbox.id,
+            reason: home.reason,
+            ...(home.ownerCompanyId ? { ownerCompanyId: home.ownerCompanyId } : {}),
+        };
+    }
     await (0, conversations_1.updateConversation)(companyId, conversation.id, patch);
     Object.assign(conversation, patch);
-    // The master switch. Everything above this line is bookkeeping that must happen
-    // whether or not the agent is allowed to speak.
+    if (home.stockItem && !conversation.vehicleInterest?.stockId) {
+        const item = home.stockItem;
+        const vehicleInterest = {
+            stockId: item.id,
+            title: item.title,
+            ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+            ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
+        };
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, { vehicleInterest });
+        conversation.vehicleInterest = vehicleInterest;
+    }
+    else if (lead) {
+        await attachVehicle(companyId, conversation, lead);
+    }
+    // The master switch. Bookkeeping and the new-lead ping still happen when Dave
+    // is off, so a car routed to Chris is not silent in his inbox.
+    if (isNew) {
+        const unmatched = inbox && home.reason === 'fallback'
+            ? ' (not matched to a ledger car — in the shared fallback inbox)'
+            : '';
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'new_conversation', conversation, `#${conversation.shortId} New ${msg.channel} enquiry from ${(0, alerts_1.describeCustomer)(conversation)}${unmatched}: ${text.slice(0, 200)}`);
+    }
     if (!settings.enabled)
         return;
-    if (lead)
-        await attachVehicle(companyId, conversation, lead);
-    if (isNew) {
-        await (0, alerts_1.sendOwnerAlert)(companyId, 'new_conversation', conversation, `#${conversation.shortId} New ${msg.channel} enquiry from ${(0, alerts_1.describeCustomer)(conversation)}: ${text.slice(0, 200)}`);
-    }
     if (lead?.kind === 'phone_lead' || lead?.kind === 'missed_call') {
         await handlePhoneLead(companyId, conversation, settings, lead);
         return;
@@ -390,17 +437,39 @@ const holdDraft = async (companyId, conversation, settings, text, inboundSubject
  * (default 8am). An edited version replaces the agent's wording entirely. The draft
  * stays put if the send fails, so he can try again.
  */
-const approveDraft = async (companyId, convId, edited) => {
+/**
+ * The agent's wording, the owner's name.
+ *
+ * Steve wants Dave to do the typing but the email to come from him (Steve, 26
+ * Aug). The sign-off — the last few lines — has the agent's name swapped for the
+ * owner's; the body is left alone, and the thread records it as the owner.
+ */
+const signAsOwner = (text, agentName, ownerName) => {
+    const agent = agentName.trim();
+    const owner = ownerName.trim();
+    if (!agent || !owner || agent.toLowerCase() === owner.toLowerCase())
+        return text;
+    const lines = text.split('\n');
+    const tail = Math.max(0, lines.length - 5);
+    const pattern = new RegExp(`\\b${agent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+    for (let i = tail; i < lines.length; i++)
+        lines[i] = lines[i].replace(pattern, owner);
+    return lines.join('\n');
+};
+exports.signAsOwner = signAsOwner;
+const approveDraft = async (companyId, convId, edited, signAs = 'agent') => {
     const conversation = await (0, conversations_1.getConversation)(companyId, convId);
     if (!conversation)
         throw new Error(`Conversation ${convId} not found`);
     const draft = conversation.pendingDraft;
     if (!draft)
         throw new Error('There is no draft waiting on that one.');
-    const text = (edited || draft.text || '').trim();
+    const settings = await (0, conversations_1.readSettings)(companyId);
+    let text = (edited || draft.text || '').trim();
+    if (signAs === 'owner')
+        text = (0, exports.signAsOwner)(text, settings.agentName || 'Dave', settings.ownerName || '');
     if (!text)
         throw new Error('There is nothing to send.');
-    const settings = await (0, conversations_1.readSettings)(companyId);
     const sendAfter = queueSendAfter(settings, 0);
     const job = {
         companyId,
@@ -411,6 +480,7 @@ const approveDraft = async (companyId, convId, edited) => {
         subject: draft.subject || conversation.emailSubject,
         emailThreadId: conversation.emailThreadId,
         sendAfter,
+        ...(signAs === 'owner' ? { from: 'owner' } : {}),
     };
     if (sendAfter > Date.now() + 2000) {
         await (0, outbox_1.enqueue)(job);
@@ -421,7 +491,7 @@ const approveDraft = async (companyId, convId, edited) => {
             id: 'approved-draft',
             attempts: 0,
             createdAt: Date.now(),
-        }, 'agent');
+        }, signAs);
     }
     await (0, conversations_1.updateConversation)(companyId, convId, { pendingDraft: null });
     delete conversation.pendingDraft;
@@ -466,33 +536,40 @@ const deliverReply = async (companyId, conversation, settings, reply, inbound) =
             sendAfter,
         });
     }
-    const phone = onEmail && settings.preferWhatsAppReply && settings.channels.whatsapp
+    const phone = onEmail
         ? conversation.contact?.phone || inbound.extractedPhones?.[0]
         : undefined;
     if (phone) {
         const e164 = (0, types_1.toE164)(phone);
-        await (0, outbox_1.enqueue)({
-            companyId,
-            convId: conversation.id,
-            channel: 'whatsapp',
-            to: e164,
-            text: reply,
-            templateName: FOLLOW_UP_TEMPLATE,
-            templateParams: [
-                conversation.contact?.firstName || 'there',
-                conversation.vehicleInterest?.title || 'car',
-            ],
-            sendAfter,
-        });
+        const contact = { ...(conversation.contact || {}), phone: e164 };
+        // Index the mobile even while WhatsApp is dark, so a later inbound finds
+        // this thread instead of opening a second one.
         await (0, conversations_1.indexContact)(companyId, 'whatsapp', e164, conversation.id);
         await (0, conversations_1.indexContact)(companyId, 'sms', e164, conversation.id);
-        const moved = {
-            channel: 'whatsapp',
-            address: e164,
-            contact: { ...(conversation.contact || {}), phone: e164 },
-        };
-        await (0, conversations_1.updateConversation)(companyId, conversation.id, moved);
-        Object.assign(conversation, moved);
+        conversation.contact = contact;
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, { contact });
+        await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, 'whatsapp', e164);
+        const whatsappLive = settings.preferWhatsAppReply
+            && settings.channels.whatsapp
+            && await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId);
+        if (whatsappLive) {
+            await (0, outbox_1.enqueue)({
+                companyId,
+                convId: conversation.id,
+                channel: 'whatsapp',
+                to: e164,
+                text: reply,
+                templateName: FOLLOW_UP_TEMPLATE,
+                templateParams: [
+                    conversation.contact?.firstName || 'there',
+                    conversation.vehicleInterest?.title || 'car',
+                ],
+                sendAfter,
+            });
+            const moved = { channel: 'whatsapp', address: e164, contact };
+            await (0, conversations_1.updateConversation)(companyId, conversation.id, moved);
+            Object.assign(conversation, moved);
+        }
         return;
     }
     if (onEmail)
@@ -585,6 +662,9 @@ exports.salesAgentSendReply = functions
     const conversation = await (0, conversations_1.getConversation)(companyId, convId);
     if (!conversation)
         throw new functions.https.HttpsError('not-found', 'That conversation no longer exists.');
+    if (conversation.channel === 'whatsapp' && !(await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId))) {
+        throw new functions.https.HttpsError('failed-precondition', 'WhatsApp is not live yet. The thread is here; nothing will be sent until Meta verification is on.');
+    }
     const job = {
         id: 'immediate',
         companyId,
@@ -658,8 +738,9 @@ exports.salesAgentApproveDraft = functions
     const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
     const convId = String(data?.convId || '');
     const edited = data?.text === undefined ? undefined : String(data.text).trim();
+    const signAs = data?.signAs === 'owner' ? 'owner' : 'agent';
     try {
-        const { text, sendAfter } = await (0, exports.approveDraft)(companyId, convId, edited);
+        const { text, sendAfter } = await (0, exports.approveDraft)(companyId, convId, edited, signAs);
         return { ok: true, text, sendAfter };
     }
     catch (error) {
@@ -716,11 +797,81 @@ exports.salesAgentSavePrivate = functions.https.onCall(async (data, context) => 
         await (0, whatsapp_1.registerWhatsAppRouting)(whatsapp.phoneNumberId, companyId);
     if (twilio?.fromNumber)
         await (0, twilio_1.registerTwilioRouting)(twilio.fromNumber, companyId);
+    await (0, inboxRouting_1.bindInboxChannelsFromPrivate)(companyId);
     return {
         ok: true,
         whatsapp: !!whatsapp?.phoneNumberId,
         twilio: !!twilio?.fromNumber,
     };
+});
+/**
+ * Open a WhatsApp thread to a number from this ledger, Steve's or Chris's.
+ *
+ * First message is the approved follow-up template — Meta will not take free
+ * text until the customer replies. While WhatsApp is not live the thread is
+ * still created and nothing is sent.
+ */
+exports.salesAgentStartWhatsApp = functions
+    .runWith({ timeoutSeconds: 60 })
+    .https.onCall(async (data, context) => {
+    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    try {
+        return {
+            ok: true,
+            ...(await (0, startWhatsApp_1.startOutboundWhatsApp)({
+                companyId,
+                phone: String(data?.phone || ''),
+                firstName: data?.firstName ? String(data.firstName) : undefined,
+                lastName: data?.lastName ? String(data.lastName) : undefined,
+                vehicleTitle: data?.vehicleTitle ? String(data.vehicleTitle) : undefined,
+                leadId: data?.leadId ? String(data.leadId) : undefined,
+            })),
+        };
+    }
+    catch (error) {
+        const message = error?.message || 'That WhatsApp could not be started.';
+        if (/does not look like a phone number/i.test(message)) {
+            throw new functions.https.HttpsError('invalid-argument', message);
+        }
+        if (/other ledger/i.test(message)) {
+            throw new functions.https.HttpsError('already-exists', message);
+        }
+        throw new functions.https.HttpsError('failed-precondition', message);
+    }
+});
+/**
+ * Register who shares this Gmail / WhatsApp number. Tokens stay on the calling
+ * company. Threads are placed on the member that owns the car.
+ *
+ * `whatsappLive` defaults off and stays off unless it is passed true — connecting
+ * the Cloud API is not the same as sending.
+ */
+exports.salesAgentSaveSharedInbox = functions.https.onCall(async (data, context) => {
+    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const members = Array.isArray(data?.memberCompanyIds) ? data.memberCompanyIds.map(String) : [];
+    const existing = await (0, inboxRouting_1.inboxForMember)(companyId);
+    // Naming another company here hands it our tokens and lets its threads land in
+    // our ledger. Only someone who belongs to every company listed may do that.
+    for (const other of [...members, ...(data?.fallbackCompanyId ? [String(data.fallbackCompanyId)] : [])]) {
+        if (other !== companyId)
+            await (0, conversations_1.requireMember)(context, other);
+    }
+    if (!members.length && !existing) {
+        throw new functions.https.HttpsError('invalid-argument', 'Name at least one other Dealer Ledger Pro company that shares this inbox.');
+    }
+    try {
+        const inbox = await (0, inboxRouting_1.saveSharedInbox)({
+            credentialCompanyId: companyId,
+            memberCompanyIds: members.length ? members : (existing?.memberCompanyIds || []),
+            fallbackCompanyId: data?.fallbackCompanyId ? String(data.fallbackCompanyId) : undefined,
+            name: data?.name ? String(data.name) : undefined,
+            whatsappLive: data?.whatsappLive === undefined ? undefined : data.whatsappLive === true,
+        });
+        return { ok: true, inbox };
+    }
+    catch (error) {
+        throw new functions.https.HttpsError('internal', error?.message || 'The shared inbox could not be saved.');
+    }
 });
 /**
  * The in-app simulator.

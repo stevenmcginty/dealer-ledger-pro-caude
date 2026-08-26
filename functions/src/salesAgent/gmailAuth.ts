@@ -16,6 +16,7 @@ import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 
 import { db, privatePath, readPrivate, requireMember, routingPath } from './conversations';
+import { bindInboxChannelsFromPrivate } from './inboxRouting';
 
 export const GMAIL_SECRETS = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'];
 
@@ -174,6 +175,7 @@ export const salesAgentGmailOAuthCallback = functions
             });
 
             await registerGmailRouting(email, companyId);
+            await bindInboxChannelsFromPrivate(companyId);
             await startGmailWatch(companyId);
 
             res.redirect(appReturnUrl('connected'));

@@ -13,6 +13,7 @@ import {
     ExclamationTriangleIcon,
     InboxIcon,
     PhoneIcon,
+    PlusIcon,
     SparklesIcon,
     TrashIcon,
 } from '../icons';
@@ -46,6 +47,7 @@ import {
     takeConversationFromUrl,
     takeRequestedConversation,
 } from '../../utils/agentInboxLink';
+import StartWhatsAppSheet from './StartWhatsAppSheet';
 
 const CHANNEL_ICONS: Record<Channel, React.ComponentType<{ className?: string }>> = {
     whatsapp: ChatBubbleLeftRightIcon,
@@ -162,7 +164,7 @@ const MessageBubble: React.FC<{
             <div className="max-w-[75%]">
                 {mine && (
                     <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-400' : 'text-brand-400'}`}>
-                        {fromOwner ? 'You' : 'Agent'}
+                        {fromOwner ? 'You' : agentName}
                     </p>
                 )}
                 <div className={`flex items-end gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
@@ -237,6 +239,7 @@ const AgentInboxPage = () => {
         { kind: 'thread'; conv: Conversation } | { kind: 'message'; message: AgentMessage } | null
     >(null);
     const [deleting, setDeleting] = useState(false);
+    const [composeOpen, setComposeOpen] = useState(false);
 
     const threadRef = useRef<HTMLDivElement>(null);
     const replyBoxRef = useRef<HTMLTextAreaElement>(null);
@@ -480,16 +483,6 @@ const AgentInboxPage = () => {
         );
     }
 
-    if (!conversations.length) {
-        return (
-            <EmptyState
-                icon={<InboxIcon className="w-12 h-12" />}
-                title="No enquiries yet"
-                description="When somebody messages on WhatsApp, texts, or emails, the agent answers here and you can step in at any point."
-            />
-        );
-    }
-
     const ChannelIcon = active ? (CHANNEL_ICONS[active.channel] || ChatBubbleLeftRightIcon) : ChatBubbleLeftRightIcon;
 
     return (
@@ -507,13 +500,25 @@ const AgentInboxPage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-[22rem_1fr] gap-4">
                 {/* ---- list ------------------------------------------------ */}
                 <div className={`rounded-xl border border-gray-700/50 bg-gray-800/60 overflow-hidden ${active ? 'hidden lg:block' : ''}`}>
-                    <div className="border-b border-gray-700/50 px-4 py-3">
+                    <div className="border-b border-gray-700/50 px-4 py-3 flex items-center justify-between gap-2">
                         <h2 className="text-sm font-semibold text-white">
                             {conversations.length} {conversations.length === 1 ? 'conversation' : 'conversations'}
                         </h2>
+                        <Button size="sm" variant="secondary" onClick={() => setComposeOpen(true)}>
+                            <PlusIcon className="h-4 w-4" />
+                            New WhatsApp
+                        </Button>
                     </div>
                     <div className="max-h-[70vh] divide-y divide-gray-700/40 overflow-y-auto">
-                        {conversations.map(conv => (
+                        {conversations.length === 0 ? (
+                            <div className="p-6">
+                                <EmptyState
+                                    icon={<InboxIcon className="w-12 h-12" />}
+                                    title="No enquiries yet"
+                                    description="When somebody messages, the agent answers here. You can also open a WhatsApp to a new number from this inbox."
+                                />
+                            </div>
+                        ) : conversations.map(conv => (
                             <ConversationRow
                                 key={conv.id}
                                 conv={conv}
@@ -814,6 +819,17 @@ const AgentInboxPage = () => {
                     </div>
                 )}
             </div>
+
+            {composeOpen && companyId && (
+                <StartWhatsAppSheet
+                    companyId={companyId}
+                    onClose={() => setComposeOpen(false)}
+                    onStarted={convId => {
+                        setComposeOpen(false);
+                        setActiveId(convId);
+                    }}
+                />
+            )}
 
             {pendingDelete && (
                 <Modal onClose={() => { if (!deleting) setPendingDelete(null); }} size="sm">

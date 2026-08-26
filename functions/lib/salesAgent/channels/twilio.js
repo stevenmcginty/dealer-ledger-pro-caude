@@ -52,6 +52,7 @@ exports.salesAgentSmsWebhook = exports.twilioSender = exports.companyForTwilioNu
 const functions = __importStar(require("firebase-functions/v1"));
 const twilio_1 = __importDefault(require("twilio"));
 const conversations_1 = require("../conversations");
+const inboxRouting_1 = require("../inboxRouting");
 const types_1 = require("../types");
 const router_1 = require("../router");
 /**
@@ -73,7 +74,7 @@ const companyForTwilioNumber = async (toNumber) => {
 exports.companyForTwilioNumber = companyForTwilioNumber;
 exports.twilioSender = {
     send: async (companyId, job) => {
-        const priv = await (0, conversations_1.readPrivate)(companyId);
+        const priv = await (0, inboxRouting_1.readSendPrivate)(companyId);
         const config = priv.twilio;
         if (!config?.accountSid || !config?.authToken || !config?.fromNumber) {
             throw new Error('Twilio is not connected for this company');

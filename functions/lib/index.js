@@ -44,7 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
+exports.healthCheck = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentStartWhatsApp = exports.salesAgentSaveSharedInbox = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -90,6 +90,8 @@ Object.defineProperty(exports, "salesAgentInstruct", { enumerable: true, get: fu
 Object.defineProperty(exports, "salesAgentApproveDraft", { enumerable: true, get: function () { return router_1.salesAgentApproveDraft; } });
 Object.defineProperty(exports, "salesAgentDiscardDraft", { enumerable: true, get: function () { return router_1.salesAgentDiscardDraft; } });
 Object.defineProperty(exports, "salesAgentSavePrivate", { enumerable: true, get: function () { return router_1.salesAgentSavePrivate; } });
+Object.defineProperty(exports, "salesAgentSaveSharedInbox", { enumerable: true, get: function () { return router_1.salesAgentSaveSharedInbox; } });
+Object.defineProperty(exports, "salesAgentStartWhatsApp", { enumerable: true, get: function () { return router_1.salesAgentStartWhatsApp; } });
 Object.defineProperty(exports, "salesAgentSimulate", { enumerable: true, get: function () { return router_1.salesAgentSimulate; } });
 var push_1 = require("./salesAgent/push");
 Object.defineProperty(exports, "salesAgentRegisterPush", { enumerable: true, get: function () { return push_1.salesAgentRegisterPush; } });

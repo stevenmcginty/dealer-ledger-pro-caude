@@ -230,6 +230,42 @@ const ids = (items) => items.map(item => item.id);
         node_assert_1.strict.equal(hits[0].hiddenReason, 'owner_opted_out');
     });
 });
+(0, node_test_1.describe)('which ledger owns the enquiry', () => {
+    const STEVE = 'company-steve';
+    const CHRIS = 'company-chris';
+    const OWNED = STOCK.map(item => {
+        if (item.id === BOXSTER_07.id) {
+            return { ...item, ownerCompanyId: CHRIS, hiddenReason: 'owner_opted_out' };
+        }
+        if (item.id === 'focus-17')
+            return { ...item, ownerCompanyId: STEVE };
+        return item;
+    });
+    (0, node_test_1.it)('routes a registration to the company that holds that car, even when it is hidden from Dave', () => {
+        const item = (0, search_1.matchEnquiryStock)(OWNED, { reg: 'BC02 YDG' });
+        node_assert_1.strict.equal(item?.id, BOXSTER_07.id);
+        node_assert_1.strict.equal(item?.ownerCompanyId, CHRIS);
+    });
+    (0, node_test_1.it)('routes a stock id the same way', () => {
+        const item = (0, search_1.matchEnquiryStock)(OWNED, { stockId: BOXSTER_07.id });
+        node_assert_1.strict.equal(item?.ownerCompanyId, CHRIS);
+    });
+    (0, node_test_1.it)('routes a clear description to the owner', () => {
+        const item = (0, search_1.matchEnquiryStock)(OWNED, { title: 'black 2007 boxster' });
+        node_assert_1.strict.equal(item?.id, BOXSTER_07.id);
+        node_assert_1.strict.equal(item?.ownerCompanyId, CHRIS);
+    });
+    (0, node_test_1.it)('refuses a weak guess so the thread is not pinned to the wrong dealer', () => {
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(OWNED, { text: 'recaro' }), null);
+    });
+    (0, node_test_1.it)('refuses when two close hits belong to different dealers', () => {
+        const clash = [
+            { ...BOXSTER_07, ownerCompanyId: CHRIS },
+            { ...BOXSTER_01, ownerCompanyId: STEVE },
+        ];
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(clash, { title: 'porsche boxster' }), null);
+    });
+});
 (0, node_test_1.describe)('a car that has already gone', () => {
     /** The Boxsters as they really are on the site: the 2007 is reserved. */
     const BOXSTERS = [

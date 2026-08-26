@@ -19,6 +19,7 @@ import * as functions from 'firebase-functions/v1';
 
 import { getCompanyIds } from '../../utils/companyIds';
 import { BRAIN_SECRETS, db, readPrivate, routingPath } from '../conversations';
+import { isWhatsAppLiveFor, readSendPrivate } from '../inboxRouting';
 import { ChannelSender, InboundMessage, OutboxJob, toE164 } from '../types';
 import { handleInbound } from '../router';
 
@@ -54,7 +55,7 @@ interface GraphSendResponse {
 }
 
 const graphPost = async (companyId: string, body: Record<string, unknown>): Promise<GraphSendResponse> => {
-    const priv = await readPrivate(companyId);
+    const priv = await readSendPrivate(companyId);
     const wa = priv.whatsapp;
 
     if (!wa?.accessToken || !wa?.phoneNumberId) {
@@ -129,6 +130,11 @@ const markRead = async (companyId: string, messageId: string): Promise<void> => 
 
 export const whatsappSender: ChannelSender = {
     send: async (companyId, job) => {
+        // Every customer-facing WhatsApp passes through here: the agent's replies,
+        // approved drafts, the owner's REPLY, the app's reply box. One gate.
+        if (!(await isWhatsAppLiveFor(companyId))) {
+            throw new Error('WhatsApp is not live yet (Meta verification pending), so this message was not sent.');
+        }
         const providerId = job.templateName
             ? await sendWhatsAppTemplate(companyId, job.to, job.templateName, job.templateParams || [])
             : await sendWhatsAppText(companyId, job.to, job.text);
@@ -314,6 +320,10 @@ export const salesAgentWhatsAppWebhook = functions
  * stay in one file.
  */
 export const FALLBACK_TEMPLATE = 'enquiry_followup';
+
+/** The approved template's wording, for the thread record. */
+export const renderFallbackTemplate = (params: string[]): string =>
+    `Hi ${params[0] || 'there'}, thanks for enquiring about the ${params[1] || 'car'}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`;
 
 export const templateFallbackFor = (
     firstName?: string,

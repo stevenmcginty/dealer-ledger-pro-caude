@@ -25,7 +25,7 @@
  * company that owns the car. WhatsApp stays dark until SharedInbox.whatsappLive.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stripUndefined = exports.rtdbKey = exports.extractUkMobiles = exports.toE164 = exports.normaliseAddress = void 0;
+exports.stripUndefined = exports.rtdbKey = exports.extractUkMobiles = exports.parseOutboundPhone = exports.toE164 = exports.normaliseAddress = void 0;
 const normaliseAddress = (channel, address) => {
     if (channel === 'email')
         return `email:${address.trim().toLowerCase()}`;
@@ -46,6 +46,20 @@ const toE164 = (raw) => {
     return '+' + d;
 };
 exports.toE164 = toE164;
+/**
+ * A number we are willing to open a WhatsApp thread to. toE164 will happily
+ * turn "0" into "+44"; this will not.
+ */
+const parseOutboundPhone = (raw) => {
+    const trimmed = (raw || '').trim();
+    if (!trimmed)
+        return null;
+    if (trimmed.replace(/[^\d]/g, '').length < 10)
+        return null;
+    const e164 = (0, exports.toE164)(trimmed);
+    return /^\+[1-9]\d{9,14}$/.test(e164) ? e164 : null;
+};
+exports.parseOutboundPhone = parseOutboundPhone;
 const extractUkMobiles = (text) => {
     const re = /(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}/g;
     return Array.from(new Set((text.match(re) || []).map(exports.toE164)));
