@@ -180,6 +180,15 @@ interface TemplateVariant {
 }
 
 const ENQUIRY_FAMILY: TemplateVariant[] = [
+    // Cheapest first. Meta bills UTILITY well below MARKETING (and free inside the 24h
+    // window), and it reviews faster, so a strictly transactional wording is preferred
+    // over the promotional ones below.
+    {
+        name: 'enquiry_update',
+        params: ([name, car]) => [name || 'there', car || 'car', 'We have received it and the car is still available.'],
+        render: ([name, car]) =>
+            `Hi ${name || 'there'}, this is Radlett Cars replying to the enquiry you sent us about the ${car || 'car'}. We have received it and the car is still available. You can reply to this message with any questions about your enquiry.`,
+    },
     {
         name: 'enquiry_reply',
         params: ([name, car]) => [name || 'there', car || 'car', "It's still available and ready to view."],
@@ -195,6 +204,12 @@ const ENQUIRY_FAMILY: TemplateVariant[] = [
 ];
 
 const MISSED_CALL_FAMILY: TemplateVariant[] = [
+    {
+        name: 'missed_call_update',
+        params: ([dealer]) => [dealer || 'us'],
+        render: ([dealer]) =>
+            `Hi, this is ${dealer || 'us'}. We missed your call and are replying here instead. Please reply with the registration or name of the car you called about and we will send you the details.`,
+    },
     {
         name: 'missed_call_reply',
         params: ([dealer]) => [dealer || 'us'],
@@ -586,7 +601,7 @@ export const salesAgentWhatsAppWebhook = functions
  * by the time the outbox reaches it. Kept here so the rule and the API that enforces it
  * stay in one file.
  */
-export const FALLBACK_TEMPLATE = 'enquiry_reply';
+export const FALLBACK_TEMPLATE = 'enquiry_update';
 
 /** The approved template's wording, for the thread record. */
 export const renderFallbackTemplate = (params: string[]): string =>

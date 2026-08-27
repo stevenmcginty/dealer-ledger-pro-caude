@@ -72,7 +72,7 @@ import { gatherEmailContext } from './channels/gmailContext';
 export { BRAIN_SECRETS };
 
 /** Template used to answer a missed call or a phone lead. */
-const MISSED_CALL_TEMPLATE = 'missed_call_reply';
+const MISSED_CALL_TEMPLATE = 'missed_call_update';
 
 /** Human-feel delay, then the next office-hours window if that lands after close. */
 const queueSendAfter = (settings: SalesAgentSettings, extraDelayMs = 0): number => {
