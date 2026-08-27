@@ -25,6 +25,7 @@ import {
 } from './conversations';
 import { gmailSender } from './channels/gmail';
 import { renderFallbackTemplate, templateFallbackFor, whatsappSender, withinCustomerServiceWindow } from './channels/whatsapp';
+import { labelEmailThread } from './channels/gmail';
 import { twilioSender } from './channels/twilio';
 import { GMAIL_SECRETS } from './gmailAuth';
 import { Channel, ChannelSender, OutboxJob } from './types';
@@ -136,6 +137,19 @@ export const sendNow = async (
         });
 
         await updateConversation(prepared.companyId, conversation.id, { lastOutboundAt: Date.now() });
+
+        // Steve works out of Gmail as much as out of the app. If this customer also has
+        // an email thread, mark there that the conversation has moved to WhatsApp, so
+        // he does not sit waiting on a reply to an email nobody is going to answer.
+        if (prepared.channel === 'whatsapp' && conversation.emailThreadId) {
+            const settings = await readSettings(prepared.companyId);
+            await labelEmailThread(
+                prepared.companyId,
+                conversation.emailThreadId,
+                `${settings.agentName || 'Dave'} · WhatsApp`,
+                'whatsapp'
+            );
+        }
     }
 
     return { providerId };

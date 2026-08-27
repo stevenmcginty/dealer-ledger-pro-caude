@@ -133,6 +133,8 @@ export interface Conversation {
     /** The agent has stopped and is waiting for Steve to answer this. */
     pendingQuestion?: { id: string; question: string; askedAt: number; context?: string };
     ownerAnswer?: { question: string; answer: string; answeredAt: number };
+    /** The customer message you last binned a draft for; stops it coming back on re-open. */
+    draftDeclinedFor?: string;
     /** A reply the agent has written and is holding until you approve it. */
     pendingDraft?: {
         id: string;

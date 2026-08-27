@@ -89,3 +89,29 @@ describe('awaitingReply', () => {
         assert.equal(awaitingReply([out, cust, ownerNote]), true);
     });
 });
+
+/**
+ * Binning a draft has to stick. Steve hit discard, left the thread, came back and
+ * found the same unwanted draft waiting for him.
+ */
+describe('a discarded draft does not come back', () => {
+    /** Mirrors the veto in draftNow. */
+    const wouldDraft = (declinedFor: string | undefined, lastCustomerId: string, force = false): boolean =>
+        force || declinedFor !== lastCustomerId;
+
+    it('does not re-draft the message he just turned down', () => {
+        assert.equal(wouldDraft('m7', 'm7'), false);
+    });
+
+    it('drafts again once the customer says something new', () => {
+        assert.equal(wouldDraft('m7', 'm8'), true);
+    });
+
+    it('drafts when nothing has been declined', () => {
+        assert.equal(wouldDraft(undefined, 'm7'), true);
+    });
+
+    it('still obeys an explicit "have another go"', () => {
+        assert.equal(wouldDraft('m7', 'm7', true), true);
+    });
+});

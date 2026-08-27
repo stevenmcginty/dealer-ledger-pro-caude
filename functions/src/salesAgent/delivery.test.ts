@@ -6,6 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { DELIVERY_RANK, DeliveryState } from './types';
+import { ledgerColour } from './channels/gmail';
 
 /** Mirrors the guard in recordDelivery. */
 const advances = (current: DeliveryState | null, next: DeliveryState): boolean =>
@@ -34,5 +35,24 @@ describe('delivery state ordering', () => {
     it('lets a failure land on top of anything earlier', () => {
         assert.equal(advances('sent', 'failed'), true);
         assert.equal(advances('read', 'failed'), true);
+    });
+});
+
+/** Shared mailbox: each dealer's label keeps its own colour, from Gmail's palette. */
+describe('ledgerColour', () => {
+    const PALETTE = ['#4a86e8', '#a479e2', '#f691b3', '#ffad47', '#fad165', '#fb4c2f'];
+
+    it('always picks a colour Gmail will accept', () => {
+        for (const name of ['Lead: Steve', 'Lead: Chris', 'Lead: other ledger', '']) {
+            assert.ok(PALETTE.includes(ledgerColour(name)), `${name} -> ${ledgerColour(name)}`);
+        }
+    });
+
+    it('gives the same dealer the same colour every time', () => {
+        assert.equal(ledgerColour('Lead: Steve'), ledgerColour('Lead: Steve'));
+    });
+
+    it('does not put the two current dealers on the same colour', () => {
+        assert.notEqual(ledgerColour('Lead: Steve'), ledgerColour('Lead: Chris'));
     });
 });

@@ -40,6 +40,7 @@ import { NewOutboxJob, enqueue, randomDelayMs, sendNow } from './outbox';
 import { isWithinSendHours, morningJitterMs, resolveSendHours, scheduleSendAfter } from './sendHours';
 import { handleOwnerCommand } from './ownerCommands';
 import { registerWhatsAppRouting, renderFallbackTemplate, templateFallbackFor } from './channels/whatsapp';
+import { labelEmailThread } from './channels/gmail';
 import { registerTwilioRouting } from './channels/twilio';
 import { ParsedLead, crmLeadSource, messageOrDefault } from './channels/leadParsers';
 import {
@@ -169,6 +170,29 @@ const attachVehicle = async (companyId: string, conversation: Conversation, lead
  * alert either way; the WhatsApp only goes out if he has asked for it, or if the call
  * was short enough that it clearly never got answered.
  */
+/**
+ * Name the ledger a thread belongs to, for the shared mailbox.
+ *
+ * `ownerName` is what a dealer calls himself; the dealership name is the next best
+ * thing, and a ledger that has set neither still gets a label rather than nothing.
+ */
+export const ledgerLabelName = (settings: {
+    ownerName?: string;
+    dealershipName?: string;
+}): string => {
+    const name = (settings.ownerName || '').trim() || (settings.dealershipName || '').trim();
+    return name ? `Lead: ${name}` : 'Lead: other ledger';
+};
+
+const labelOwningLedger = async (companyId: string, emailThreadId: string): Promise<void> => {
+    try {
+        const settings = await readSettings(companyId);
+        await labelEmailThread(companyId, emailThreadId, ledgerLabelName(settings), 'ledger');
+    } catch (error) {
+        console.warn(`Could not label the owning ledger on ${emailThreadId}`, (error as Error).message);
+    }
+};
+
 /** The shade entry reads like the messaging app's own: the customer's name, then their words. */
 const customerPush = (conversation: Conversation, channel: Channel, text: string): OwnerAlert['push'] => {
     const via = channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'Email';
@@ -331,6 +355,13 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     });
 
     await mirrorConversationContacts(companyId, conversation, msg.channel, msg.address);
+
+    // One mailbox, two dealers. Whose car this is has just been decided above, so say
+    // so in Gmail itself — otherwise both of them read every lead to find out whether
+    // it is theirs. Fire and forget: a label must never hold up answering a customer.
+    if (msg.channel === 'email' && msg.emailThreadId && inbox) {
+        void labelOwningLedger(companyId, msg.emailThreadId);
+    }
 
     if (lead?.kind === 'bounce') {
         await handleEmailBounce(companyId, conversation, settings, msg, lead);
@@ -801,10 +832,18 @@ export const discardDraft = async (companyId: string, convId: string): Promise<{
     if (!conversation) throw new Error(`Conversation ${convId} not found`);
 
     const had = !!conversation.pendingDraft;
-    if (had) {
-        await updateConversation(companyId, convId, { pendingDraft: null });
-        delete conversation.pendingDraft;
-    }
+
+    // Binning a draft has to mean something the next time the thread is opened, or
+    // the inbox cheerfully writes the same unwanted words again. Pinned to the
+    // message it was a reply to, so the veto lifts when the customer says something new.
+    const history = await readHistory(companyId, convId);
+    const lastCustomer = [...history].reverse().find(m => m.from === 'customer');
+
+    await updateConversation(companyId, convId, {
+        ...(had ? { pendingDraft: null } : {}),
+        draftDeclinedFor: lastCustomer?.id || `none:${Date.now()}`,
+    });
+    if (had) delete conversation.pendingDraft;
 
     return { had };
 };
@@ -1216,6 +1255,11 @@ export const draftNow = async (
 
     const lastCustomer = [...history].reverse().find(m => m.from === 'customer');
     if (!lastCustomer) return { ok: true, drafted: false, reason: 'nothing-waiting' };
+
+    // He has already read Dave's answer to this one and thrown it away.
+    if (conversation.draftDeclinedFor === lastCustomer.id && !force) {
+        return { ok: true, drafted: false, reason: 'declined' };
+    }
 
     await runAgentTurn(
         companyId,

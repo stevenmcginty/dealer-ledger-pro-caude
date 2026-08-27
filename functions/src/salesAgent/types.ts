@@ -182,6 +182,12 @@ export interface Conversation {
     /** Steve's answer, consumed by the next brain run and then cleared. */
     ownerAnswer?: { question: string; answer: string; answeredAt: number };
     /** A reply the agent has written but not sent; waiting on SEND from Steve. See emailApprovalMode. */
+    /**
+     * The customer message Steve last binned a draft for. Stops the inbox writing
+     * the same unwanted draft again every time he re-opens the thread; a genuinely
+     * new message from the customer clears the veto by not matching it.
+     */
+    draftDeclinedFor?: string;
     pendingDraft?: {
         id: string;
         text: string;
