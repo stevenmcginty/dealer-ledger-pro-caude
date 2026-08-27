@@ -23,6 +23,7 @@ import { BRAIN_SECRETS, db, readPrivate, routingPath } from '../conversations';
 import { isWhatsAppLiveFor, readSendPrivate } from '../inboxRouting';
 import { ChannelSender, InboundMessage, MessageMedia, OutboxJob, WhatsAppMediaKind, toE164 } from '../types';
 import { handleInbound } from '../router';
+import { WHATSAPP_VIDEO_TARGET, compressVideoForWhatsApp } from './videoCompress';
 
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -108,11 +109,22 @@ const graphMediaId = async (companyId: string, media: MessageMedia): Promise<str
         throw new Error(`Could not read the attachment (${fileRes.status}).`);
     }
     const bytes = Buffer.from(await fileRes.arrayBuffer());
-    const mime = media.mime || fileRes.headers.get('content-type') || 'application/octet-stream';
+    let payload: Buffer = bytes;
+    let mime = media.mime || fileRes.headers.get('content-type') || 'application/octet-stream';
+    let filename = media.filename || 'file';
+
+    // Photos are squeezed in the browser before they are ever uploaded; video is
+    // too big for that, so the original goes to Storage and is re-encoded here.
+    if (media.kind === 'video' && bytes.length > WHATSAPP_VIDEO_TARGET) {
+        payload = await compressVideoForWhatsApp(bytes);
+        mime = 'video/mp4';
+        filename = `${(media.filename || 'video').replace(/\.[^.]+$/, '')}.mp4`;
+    }
+
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
     form.append('type', mime);
-    form.append('file', new Blob([new Uint8Array(bytes)], { type: mime }), media.filename || 'file');
+    form.append('file', new Blob([new Uint8Array(payload)], { type: mime }), filename);
 
     const uploaded = await fetch(`${GRAPH}/${wa.phoneNumberId}/media`, {
         method: 'POST',

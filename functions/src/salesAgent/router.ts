@@ -858,9 +858,18 @@ export const salesAgentSetMode = functions.https.onCall(async (data, context) =>
     return { ok: true, mode };
 });
 
-/** The reply box in the app. Sends immediately — somebody is sitting there watching. */
+/**
+ * The reply box in the app. Sends immediately — somebody is sitting there watching.
+ *
+ * The extra memory and time are for attachments: a video goes through ffmpeg on the
+ * way to Meta (see channels/videoCompress.ts), which the 256 MB default cannot do.
+ */
 export const salesAgentSendReply = functions
-    .runWith({ secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .runWith({
+        secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'],
+        timeoutSeconds: 300,
+        memory: '2GB',
+    })
     .https.onCall(async (data, context) => {
         const companyId = await requireInboxAccess(context, data?.companyId);
         const convId = String(data?.convId || '');
@@ -960,7 +969,11 @@ export const salesAgentInstruct = functions
  * this callable has to mount them the same way the reply box does.
  */
 export const salesAgentApproveDraft = functions
-    .runWith({ secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .runWith({
+        secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'],
+        timeoutSeconds: 300,
+        memory: '2GB',
+    })
     .https.onCall(async (data, context) => {
         const companyId = await requireInboxAccess(context, data?.companyId);
         const convId = String(data?.convId || '');

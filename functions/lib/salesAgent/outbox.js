@@ -193,7 +193,8 @@ const drainCompany = async (companyId) => {
  * minute-by-minute job is the natural place to trim it.
  */
 exports.salesAgentOutboxTick = functions
-    .runWith({ timeoutSeconds: 300, memory: '512MB', secrets: gmailAuth_1.GMAIL_SECRETS })
+    // 2 GB because a queued video attachment is re-encoded here (channels/videoCompress.ts).
+    .runWith({ timeoutSeconds: 300, memory: '2GB', secrets: gmailAuth_1.GMAIL_SECRETS })
     .pubsub.schedule('every 1 minutes')
     .onRun(async () => {
     const companyIds = await (0, companyIds_1.getCompanyIds)();

@@ -41,9 +41,12 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId && isUserInCompany();
     }
 
-    // WhatsApp attachments: Meta's caps (5 MB image, 16 MB video). Documents
-    // share the 16 MB cap. Overlapping matches are OR'd, so this is what
-    // lets a video through when the generic rule above would refuse it.
+    // WhatsApp attachments. Meta's own caps are 5 MB image / 16 MB video, but the
+    // raw file is what lands here: photos arrive already squeezed under 5 MB by
+    // utils/whatsappMedia.ts, while a video is uploaded untouched (up to 200 MB)
+    // and re-encoded by ffmpeg in the function on the way to Meta. Documents keep
+    // the 16 MB cap. Overlapping matches are OR'd, so this is what lets a video
+    // through when the generic rule above would refuse it.
     match /{companyId}/{userId}/whatsapp/{fileName} {
       function isUserInCompany() {
         return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
@@ -51,7 +54,7 @@ service firebase.storage {
 
       allow read: if request.auth != null && isUserInCompany();
       allow create, update: if request.auth != null && request.auth.uid == userId && isUserInCompany()
-        && request.resource.size < 16 * 1024 * 1024
+        && request.resource.size < 200 * 1024 * 1024
         && (request.resource.contentType == 'image/jpeg'
             || request.resource.contentType == 'image/png'
             || request.resource.contentType == 'image/webp'

@@ -60,7 +60,13 @@ import {
     groupHasChannel,
 } from '../../utils/agentInboxGroups';
 import { dismissConversationNotifications } from '../../utils/inboxNotify';
-import { WHATSAPP_ACCEPT, classifyWhatsAppFile, describeWhatsAppFileError } from '../../utils/whatsappMedia';
+import {
+    WHATSAPP_ACCEPT,
+    classifyWhatsAppFile,
+    describeWhatsAppFileError,
+    describeWhatsAppPickError,
+    prepareWhatsAppFile,
+} from '../../utils/whatsappMedia';
 import { uploadFile } from '../../services/dataService';
 import StartWhatsAppSheet from './StartWhatsAppSheet';
 
@@ -280,6 +286,7 @@ const AgentInboxPage = () => {
     const [deleting, setDeleting] = useState(false);
     const [composeOpen, setComposeOpen] = useState(false);
     const [attachment, setAttachment] = useState<File | null>(null);
+    const [sendStatus, setSendStatus] = useState<string | null>(null);
 
     const threadRef = useRef<HTMLDivElement>(null);
     const replyBoxRef = useRef<HTMLTextAreaElement>(null);
@@ -470,17 +477,24 @@ const AgentInboxPage = () => {
             let media: MessageMedia | undefined;
             if (attachment) {
                 const kind = classifyWhatsAppFile(attachment);
-                const problem = describeWhatsAppFileError(attachment);
-                if (!kind || problem) throw new Error(problem || 'That file cannot go on WhatsApp.');
-                const url = await uploadFile(companyId, userId, attachment, 'whatsapp');
-                media = { kind, url, mime: attachment.type, filename: attachment.name };
+                if (!kind) throw new Error('That file cannot go on WhatsApp.');
+                setSendStatus(kind === 'video' ? 'Uploading video…' : kind === 'image' ? 'Preparing photo…' : 'Uploading file…');
+                // Photos are squeezed here; a video is uploaded whole and re-encoded
+                // by the function, which is why this can take a moment.
+                const ready = await prepareWhatsAppFile(attachment);
+                const problem = describeWhatsAppFileError(ready);
+                if (problem) throw new Error(problem);
+                const url = await uploadFile(companyId, userId, ready, 'whatsapp');
+                media = { kind, url, mime: ready.type, filename: ready.name };
             }
+            setSendStatus(null);
             await sendAgentReply(homeOf(active, companyId), active.id, text, media);
             setReply('');
             setAttachment(null);
         } catch (err: any) {
             toast.error(err?.message || 'That message was not sent.');
         } finally {
+            setSendStatus(null);
             setSending(false);
         }
     }, [companyId, userId, active, reply, attachment, sending, toast]);
@@ -908,6 +922,13 @@ const AgentInboxPage = () => {
                                 </p>
                             )}
 
+                            {sendStatus && (
+                                <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
+                                    <Spinner className="h-3.5 w-3.5" />
+                                    {sendStatus}
+                                </p>
+                            )}
+
                             {attachment && (
                                 <div className="mb-2 flex items-center gap-2 rounded-lg bg-black/30 px-3 py-2 text-xs text-[#e9edef]">
                                     <PaperClipIcon className="h-4 w-4 text-[#25d366]" />
@@ -930,7 +951,7 @@ const AgentInboxPage = () => {
                                                 const file = e.target.files?.[0] || null;
                                                 e.target.value = '';
                                                 if (!file) return;
-                                                const problem = describeWhatsAppFileError(file);
+                                                const problem = describeWhatsAppPickError(file);
                                                 if (problem) {
                                                     toast.error(problem);
                                                     return;

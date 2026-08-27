@@ -145,7 +145,7 @@ const SETTINGS_DEFAULTS = {
     priceFlexMode: 'hint',
     negotiationMaxDiscount: 0,
     replyDelaySeconds: [5, 15],
-    channels: { whatsapp: false, sms: false, email: false },
+    channels: { whatsapp: true, sms: false, email: false },
     preferWhatsAppReply: true,
     followUpPhoneLeads: false,
     emailAddress: '',

@@ -149,6 +149,12 @@ const attachVehicle = async (companyId, conversation, lead) => {
  * alert either way; the WhatsApp only goes out if he has asked for it, or if the call
  * was short enough that it clearly never got answered.
  */
+/** The shade entry reads like the messaging app's own: the customer's name, then their words. */
+const customerPush = (conversation, channel, text) => {
+    const via = channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'Email';
+    const who = (0, alerts_1.describeCustomer)(conversation);
+    return { title: `${who} · ${via}`, body: text.trim() || (channel === 'email' ? '(no text)' : '(attachment)') };
+};
 const handlePhoneLead = async (companyId, conversation, settings, lead) => {
     const label = lead.kind === 'missed_call' ? 'Missed call' : 'Phone lead';
     const duration = lead.callDurationSeconds !== undefined ? ` after ${lead.callDurationSeconds}s` : '';
@@ -265,11 +271,11 @@ const handleInbound = async (msg, options = {}) => {
         const unmatched = inbox && home.reason === 'fallback'
             ? ' (not matched to a ledger car — in the shared fallback inbox)'
             : '';
-        await (0, alerts_1.sendOwnerAlert)(companyId, 'new_conversation', conversation, `#${conversation.shortId} New ${msg.channel} enquiry from ${(0, alerts_1.describeCustomer)(conversation)}${unmatched}: ${text.slice(0, 200)}`);
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'new_conversation', conversation, `#${conversation.shortId} New ${msg.channel} enquiry from ${(0, alerts_1.describeCustomer)(conversation)}${unmatched}: ${text.slice(0, 200)}`, customerPush(conversation, msg.channel, text));
     }
     else if (conversation.mode === 'agent') {
         // Follow-up on a live thread: shade + PWA badge, not another WhatsApp to Steve.
-        await (0, alerts_1.sendOwnerAlert)(companyId, 'inbound', conversation, `#${conversation.shortId} ${msg.channel} from ${(0, alerts_1.describeCustomer)(conversation)}: ${text.slice(0, 200)}`);
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'inbound', conversation, `#${conversation.shortId} ${msg.channel} from ${(0, alerts_1.describeCustomer)(conversation)}: ${text.slice(0, 200)}`, customerPush(conversation, msg.channel, text));
     }
     if (!settings.enabled)
         return;
@@ -659,9 +665,18 @@ exports.salesAgentSetMode = functions.https.onCall(async (data, context) => {
     await (0, conversations_1.updateConversation)(companyId, convId, { mode });
     return { ok: true, mode };
 });
-/** The reply box in the app. Sends immediately — somebody is sitting there watching. */
+/**
+ * The reply box in the app. Sends immediately — somebody is sitting there watching.
+ *
+ * The extra memory and time are for attachments: a video goes through ffmpeg on the
+ * way to Meta (see channels/videoCompress.ts), which the 256 MB default cannot do.
+ */
 exports.salesAgentSendReply = functions
-    .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .runWith({
+    secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'],
+    timeoutSeconds: 300,
+    memory: '2GB',
+})
     .https.onCall(async (data, context) => {
     const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
@@ -755,7 +770,11 @@ exports.salesAgentInstruct = functions
  * this callable has to mount them the same way the reply box does.
  */
 exports.salesAgentApproveDraft = functions
-    .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .runWith({
+    secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'],
+    timeoutSeconds: 300,
+    memory: '2GB',
+})
     .https.onCall(async (data, context) => {
     const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');

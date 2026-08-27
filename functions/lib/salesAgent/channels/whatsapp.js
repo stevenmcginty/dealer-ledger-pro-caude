@@ -56,6 +56,7 @@ const conversations_1 = require("../conversations");
 const inboxRouting_1 = require("../inboxRouting");
 const types_1 = require("../types");
 const router_1 = require("../router");
+const videoCompress_1 = require("./videoCompress");
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 /** Meta only accepts approved languages; Steve's templates are submitted as en_GB. */
@@ -123,11 +124,20 @@ const graphMediaId = async (companyId, media) => {
         throw new Error(`Could not read the attachment (${fileRes.status}).`);
     }
     const bytes = Buffer.from(await fileRes.arrayBuffer());
-    const mime = media.mime || fileRes.headers.get('content-type') || 'application/octet-stream';
+    let payload = bytes;
+    let mime = media.mime || fileRes.headers.get('content-type') || 'application/octet-stream';
+    let filename = media.filename || 'file';
+    // Photos are squeezed in the browser before they are ever uploaded; video is
+    // too big for that, so the original goes to Storage and is re-encoded here.
+    if (media.kind === 'video' && bytes.length > videoCompress_1.WHATSAPP_VIDEO_TARGET) {
+        payload = await (0, videoCompress_1.compressVideoForWhatsApp)(bytes);
+        mime = 'video/mp4';
+        filename = `${(media.filename || 'video').replace(/\.[^.]+$/, '')}.mp4`;
+    }
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
     form.append('type', mime);
-    form.append('file', new Blob([new Uint8Array(bytes)], { type: mime }), media.filename || 'file');
+    form.append('file', new Blob([new Uint8Array(payload)], { type: mime }), filename);
     const uploaded = await fetch(`${GRAPH}/${wa.phoneNumberId}/media`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${wa.accessToken}` },

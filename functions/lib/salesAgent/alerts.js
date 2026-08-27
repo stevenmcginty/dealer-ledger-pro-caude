@@ -58,7 +58,7 @@ const deliver = async (companyId, text, agentName) => {
  * even when the WhatsApp leg threw: the two channels fail for unrelated reasons, and
  * the whole point of the push is that it reaches the phone Steve is actually holding.
  */
-const sendOwnerAlert = async (companyId, kind, conversation, text) => {
+const sendOwnerAlert = async (companyId, kind, conversation, text, push) => {
     const ref = (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, 'ownerAlerts')).push();
     const alert = {
         id: ref.key,
@@ -66,6 +66,7 @@ const sendOwnerAlert = async (companyId, kind, conversation, text) => {
         convId: conversation?.id || '',
         shortId: conversation?.shortId || 0,
         text,
+        ...(push ? { push } : {}),
         sentAt: Date.now(),
     };
     let settings = null;
