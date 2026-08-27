@@ -1,8 +1,29 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildContents = exports.buildSystemPrompt = exports.londonDate = exports.OWNER_INSTRUCTION_PREFIX = exports.OWNER_INSTRUCTION_QUESTION = exports.HISTORY_TURNS = void 0;
+exports.buildContents = exports.buildSystemPrompt = exports.londonDate = exports.OWNER_INSTRUCTION_PREFIX = exports.OWNER_INSTRUCTION_QUESTION = exports.formatEmailContext = exports.HISTORY_TURNS = void 0;
 /** How many past messages get replayed to the model. */
 exports.HISTORY_TURNS = 20;
+const stamp = (at) => at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : '';
+/**
+ * Earlier inbox traffic with this customer, as one block of plain text. Empty when
+ * there is nothing the recorded history does not already have.
+ */
+const formatEmailContext = (ctx, owner) => {
+    if (!ctx || (!ctx.earlier.length && !ctx.thread.length))
+        return '';
+    const line = (item) => `[${stamp(item.at)} — ${item.from === 'owner' ? `${owner}, the owner, wrote` : 'the customer wrote'}${item.subject ? ` — "${item.subject}"` : ''}]
+${item.text}`;
+    const parts = [];
+    if (ctx.earlier.length) {
+        parts.push('[Earlier emails between this customer and the desk, from the inbox, other threads]', ...ctx.earlier.map(line));
+    }
+    if (ctx.thread.length) {
+        parts.push('[Earlier emails on this same thread that were not recorded here]', ...ctx.thread.map(line));
+    }
+    parts.push('[End of inbox history. The conversation continues below.]');
+    return parts.join('\n\n');
+};
+exports.formatEmailContext = formatEmailContext;
 /**
  * Steve can tell the agent what to say without being asked ("say the cambelt was done
  * at 80k"). It travels the same road as an answer to a pending question, so it arrives
@@ -86,7 +107,7 @@ const pricePolicy = (settings, conversation) => {
  * so it can be snapshotted in a test.
  */
 const buildSystemPrompt = (args) => {
-    const { conversation, settings } = args;
+    const { conversation, settings, emailContext } = args;
     const owner = ownerNameOf(settings);
     const agent = agentNameOf(settings);
     const team = teamNamesOf(settings);
@@ -277,6 +298,22 @@ const buildSystemPrompt = (args) => {
         `Times they have pushed on price: ${conversation.priceRequests || 0}`,
         `Where the conversation has got to: ${orUnknown(conversation.summary, 'this is the start of the conversation')}`,
     ].join('\n'));
+    if (emailContext?.ownerStyle.length) {
+        sections.push([
+            `HOW ${owner.toUpperCase()} WRITES`,
+            `These are recent emails ${owner} sent from this inbox. Match the tone, length, phrasing and sign-off; do NOT reuse the facts, prices or promises in them, they belong to other customers.`,
+            ...emailContext.ownerStyle.map((item, i) => `--- example ${i + 1} (${item.subject || 'no subject'}) ---\n${item.text}`),
+        ].join('\n'));
+    }
+    if (emailContext && (emailContext.thread.length || emailContext.earlier.length)) {
+        sections.push([
+            'INBOX HISTORY WITH THIS CUSTOMER',
+            'The transcript below starts with earlier emails between this customer and the desk that were pulled from the inbox. Read them before answering.',
+            '- If they show the customer has already reserved, paid a deposit on, or agreed to buy a car, they ARE the buyer of that car. Talk to them as the buyer: never tell them it is reserved or sold, never offer them alternatives, and carry on from where the desk left off.',
+            `- Treat what ${owner} wrote in those emails as agreed. Do not contradict it or re-ask what they already answered.`,
+            '- They are context, not messages to reply to. Only the final message is the one you are answering.',
+        ].join('\n'));
+    }
     sections.push([
         'OUTPUT',
         'Reply with one JSON object and nothing else. No code fence, no commentary around it.',
@@ -298,9 +335,14 @@ exports.buildSystemPrompt = buildSystemPrompt;
  * you get it copying Steve's voice and promising things he did not.
  */
 const buildContents = (args) => {
-    const { conversation, history, inbound, settings } = args;
+    const { conversation, history, inbound, settings, emailContext } = args;
     const owner = ownerNameOf(settings);
     const contents = [];
+    // Earlier inbox traffic goes in as one user turn ahead of the recorded history: it
+    // is background the model reads, not a conversation it took part in.
+    const inboxBlock = (0, exports.formatEmailContext)(emailContext, owner);
+    if (inboxBlock)
+        contents.push({ role: 'user', parts: [{ text: inboxBlock }] });
     for (const message of history.slice(-exports.HISTORY_TURNS)) {
         const text = (message.text || '').trim();
         if (!text)

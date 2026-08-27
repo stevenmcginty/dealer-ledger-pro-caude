@@ -179,6 +179,8 @@ const SETTINGS_DEFAULTS: SalesAgentSettings = {
     followUpPhoneLeads: false,
     emailAddress: '',
     signature: '',
+    emailApprovalMode: true,
+    maxAgentTurns: 0,
     sendHours: {
         enabled: true,
         start: '08:00',

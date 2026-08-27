@@ -65,6 +65,8 @@ const leadParsers_1 = require("./channels/leadParsers");
 const inboxRouting_1 = require("./inboxRouting");
 const startWhatsApp_1 = require("./startWhatsApp");
 const types_1 = require("./types");
+const approval_1 = require("./approval");
+const gmailContext_1 = require("./channels/gmailContext");
 /** Opening template for a lead that came in by email but left us a mobile. */
 const FOLLOW_UP_TEMPLATE = 'enquiry_followup';
 /** Template used to answer a missed call or a phone lead. */
@@ -323,7 +325,34 @@ exports.handleInbound = handleInbound;
  */
 const runAgentTurn = async (companyId, conversation, inbound, settings, options = {}) => {
     const history = await (0, conversations_1.readHistory)(companyId, conversation.id);
-    const result = await (0, brain_1.runBrain)({ companyId, conversation, history, inbound, settings });
+    if ((0, approval_1.agentTurnLimitReached)(history.filter(m => m.from === 'agent').length, settings.maxAgentTurns)) {
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, {
+            mode: 'human',
+            escalated: true,
+            escalationReason: `Reached the ${settings.maxAgentTurns}-reply limit`,
+        });
+        conversation.mode = 'human';
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'escalation', conversation, `#${conversation.shortId} ${settings.agentName || 'Dave'} has had ${settings.maxAgentTurns} back-and-forths with ${(0, alerts_1.describeCustomer)(conversation)} — this one is yours.`);
+        if (options.simulate)
+            return { reply: approval_1.TURN_LIMIT_HANDOFF };
+        if (!(0, approval_1.needsApproval)(conversation, settings)) {
+            await deliverReply(companyId, conversation, settings, approval_1.TURN_LIMIT_HANDOFF, inbound);
+            return { reply: approval_1.TURN_LIMIT_HANDOFF };
+        }
+        return { reply: '' };
+    }
+    // Email turns also get what the inbox knows: the rest of the thread, this sender's
+    // earlier emails, and how the owner writes. Best-effort; never delays a reply for long.
+    const emailContext = (!options.simulate && (inbound.channel === 'email' || conversation.emailThreadId))
+        ? await (0, gmailContext_1.gatherEmailContext)({
+            companyId,
+            address: inbound.channel === 'email' ? inbound.address : conversation.contact?.email || '',
+            threadId: inbound.emailThreadId || conversation.emailThreadId,
+            history,
+            inboundProviderId: inbound.providerId,
+        })
+        : undefined;
+    const result = await (0, brain_1.runBrain)({ companyId, conversation, history, inbound, settings, emailContext });
     // Silence guard (Steve, 26 Aug): in agent mode a customer message must never go unanswered.
     // If the brain came back empty without asking Steve or handing off, send a holding line and
     // flag it so a human sees it.
@@ -394,7 +423,7 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
         return { reply };
     // Draft & Approve (Steve, 26 Aug): nothing goes out under the dealership's name
     // until Steve has read it. WhatsApp uses the same hold once that channel is sending.
-    if ((0, exports.needsApproval)(conversation, settings)) {
+    if ((0, approval_1.needsApproval)(conversation, settings)) {
         const source = options.draftSource || 'agent';
         const customerText = (source === 'instruction'
             ? conversation.pendingDraft?.customerText
@@ -408,12 +437,12 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
 exports.runAgentTurn = runAgentTurn;
 // --- Draft & Approve --------------------------------------------------------
 /**
- * Held for approval unless this ledger ticked Automatic reply.
+ * Held for approval unless this ledger ticked automatic reply on that channel.
  * The home company of the thread is what counts, so Steve's tick does not
  * send Chris's cars and the other way around.
  */
-const needsApproval = (_conversation, settings) => settings.emailApprovalMode !== false;
-exports.needsApproval = needsApproval;
+var approval_2 = require("./approval");
+Object.defineProperty(exports, "needsApproval", { enumerable: true, get: function () { return approval_2.needsApproval; } });
 /** A draft in an alert is a glance, not the whole email. */
 const trimForAlert = (text, limit = 300) => text.length > limit ? `${text.slice(0, limit).trimEnd()}…` : text;
 const draftAlertText = (conversation, settings, text) => {

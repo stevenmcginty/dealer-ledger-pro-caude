@@ -124,7 +124,11 @@ function createMocks() {
         ref: () => ({
             put: () => Promise.resolve({ ref: { getDownloadURL: () => Promise.resolve("http://mock.url/img.png") } }),
             child: () => storageInstance.ref(),
-            getDownloadURL: () => Promise.resolve("http://mock.url/img.png")
+            getDownloadURL: () => Promise.resolve("http://mock.url/img.png"),
+            delete: () => Promise.resolve()
+        }),
+        refFromURL: () => ({
+            delete: () => Promise.resolve()
         })
     };
 }

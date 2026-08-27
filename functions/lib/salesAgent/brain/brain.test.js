@@ -123,5 +123,32 @@ const prompt_1 = require("./prompt");
         node_assert_1.strict.ok(prompt.includes('STRICLY BY APPOINTMENT') || prompt.includes('STRICLY') || prompt.includes('STRICTLY BY APPOINTMENT') || prompt.includes('strictly by appointment'));
         node_assert_1.strict.ok(prompt.includes('give us a call before coming down') || prompt.includes('give us a call'));
     });
+    (0, node_test_1.describe)('inbox context', () => {
+        const ctx = {
+            thread: [],
+            earlier: [
+                { from: 'customer', at: 1756100000000, subject: 'DD07BOX', text: 'Hi, I would like to reserve the Golf please.' },
+                { from: 'owner', at: 1756110000000, subject: 'Re: DD07BOX', text: 'Deposit received, thanks. It is yours.' },
+            ],
+            ownerStyle: [{ from: 'owner', at: 1756000000000, subject: 'Re: Audi A3', text: 'Hi John, thanks for getting in touch. The A3 is still available and I can hold it for you until Saturday. Cheers, Steve' }],
+        };
+        (0, node_test_1.it)('feeds earlier emails and the buyer rule into the prompt', () => {
+            const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: baseConv, settings: settings, emailContext: ctx });
+            node_assert_1.strict.ok(prompt.includes('HOW STEVE WRITES'));
+            node_assert_1.strict.ok(prompt.includes('hold it for you until Saturday'));
+            node_assert_1.strict.ok(prompt.includes('they ARE the buyer of that car'));
+            const contents = (0, prompt_1.buildContents)({ conversation: baseConv, history: [], inbound: { companyId: 'company-1', channel: 'email', address: 'harriet@example.com', text: 'Is the Golf still available?', providerId: 'm1', receivedAt: Date.now() }, settings: settings, emailContext: ctx });
+            const first = contents[0].parts?.[0]?.text || '';
+            node_assert_1.strict.ok(first.startsWith('[Earlier emails between this customer and the desk'));
+            node_assert_1.strict.ok(first.includes('Steve, the owner, wrote'));
+            node_assert_1.strict.ok(first.includes('Deposit received'));
+        });
+        (0, node_test_1.it)('adds nothing when the inbox has nothing extra', () => {
+            const empty = { thread: [], earlier: [], ownerStyle: [] };
+            const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: baseConv, settings: settings, emailContext: empty });
+            node_assert_1.strict.ok(!prompt.includes('INBOX HISTORY'));
+            node_assert_1.strict.ok(!prompt.includes('HOW STEVE WRITES'));
+        });
+    });
 });
 //# sourceMappingURL=brain.test.js.map

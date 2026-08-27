@@ -8,7 +8,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { capReply, softenDashes } from './index';
-import { buildSystemPrompt } from './prompt';
+import { buildContents, buildSystemPrompt } from './prompt';
 import type { Conversation, SalesAgentSettings } from '../types';
 
 describe('Brain reply formatting', () => {
@@ -134,4 +134,35 @@ describe('System prompt generation', () => {
         assert.ok(prompt.includes('STRICLY BY APPOINTMENT') || prompt.includes('STRICLY') || prompt.includes('STRICTLY BY APPOINTMENT') || prompt.includes('strictly by appointment'));
         assert.ok(prompt.includes('give us a call before coming down') || prompt.includes('give us a call'));
     });
+
+describe('inbox context', () => {
+    const ctx = {
+        thread: [],
+        earlier: [
+            { from: 'customer' as const, at: 1756100000000, subject: 'DD07BOX', text: 'Hi, I would like to reserve the Golf please.' },
+            { from: 'owner' as const, at: 1756110000000, subject: 'Re: DD07BOX', text: 'Deposit received, thanks. It is yours.' },
+        ],
+        ownerStyle: [{ from: 'owner' as const, at: 1756000000000, subject: 'Re: Audi A3', text: 'Hi John, thanks for getting in touch. The A3 is still available and I can hold it for you until Saturday. Cheers, Steve' }],
+    };
+
+    it('feeds earlier emails and the buyer rule into the prompt', () => {
+        const prompt = buildSystemPrompt({ conversation: baseConv, settings: settings, emailContext: ctx });
+        assert.ok(prompt.includes('HOW STEVE WRITES'));
+        assert.ok(prompt.includes('hold it for you until Saturday'));
+        assert.ok(prompt.includes('they ARE the buyer of that car'));
+
+        const contents = buildContents({ conversation: baseConv, history: [], inbound: { companyId: 'company-1', channel: 'email', address: 'harriet@example.com', text: 'Is the Golf still available?', providerId: 'm1', receivedAt: Date.now() }, settings: settings, emailContext: ctx });
+        const first = contents[0].parts?.[0]?.text || '';
+        assert.ok(first.startsWith('[Earlier emails between this customer and the desk'));
+        assert.ok(first.includes('Steve, the owner, wrote'));
+        assert.ok(first.includes('Deposit received'));
+    });
+
+    it('adds nothing when the inbox has nothing extra', () => {
+        const empty = { thread: [], earlier: [], ownerStyle: [] };
+        const prompt = buildSystemPrompt({ conversation: baseConv, settings: settings, emailContext: empty });
+        assert.ok(!prompt.includes('INBOX HISTORY'));
+        assert.ok(!prompt.includes('HOW STEVE WRITES'));
+    });
+});
 });

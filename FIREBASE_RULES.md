@@ -118,7 +118,9 @@ These rules ensure that a user can only access their own company's data, that a 
 
 **Source of truth:** `storage.rules`
 
-These rules protect your file uploads. They ensure a user can only upload files into their own folder and can only view files that belong to their company, and they cap ordinary uploads at 25 MB of image or PDF content. WhatsApp attachments live under `{companyId}/{userId}/whatsapp/` and also allow MP4 video and office documents, capped at 16 MB.
+These rules protect your file uploads. They ensure a user can only upload files into their own folder and can only view files that belong to their company, and they cap ordinary uploads at 25 MB of image or PDF content.
+
+**Always deploy from `storage.rules`, not from the snippet below.** WhatsApp attachments now live under `{companyId}/whatsapp/` (inbound and owner uploads, up to 200 MB). Legacy objects may still sit at `{companyId}/{userId}/whatsapp/` and `{companyId}/salesAgent/whatsapp/`. Shared-inbox peers may read and delete WhatsApp files on each other's ledgers; only a member of that company may create. A nightly prune caps WhatsApp media at 500 MB per company. The pasted rules below are the generic company-file rules only.
 
 The `{companyId}` path segment can be trusted because the Realtime Database rules above pin `users/{uid}/companyId` — a signed-in user cannot repoint it at another company to reach that company's files.
 

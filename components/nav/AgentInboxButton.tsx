@@ -82,10 +82,10 @@ const AgentInboxButton: React.FC = () => {
     return (
         <button
             type="button"
-            onClick={() => setView('agentInbox')}
+            onClick={() => setView(active ? 'dashboard' : 'agentInbox')}
             className={`relative p-2 rounded-full hover:bg-gray-700 ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-            aria-label={count > 0 ? `Agent Inbox, ${count} waiting` : 'Agent Inbox'}
-            title="Agent Inbox"
+            aria-label={active ? 'Close Agent Inbox' : count > 0 ? `Agent Inbox, ${count} waiting` : 'Agent Inbox'}
+            title={active ? 'Close Agent Inbox' : 'Agent Inbox'}
         >
             <InboxIcon className="h-6 w-6" />
             {count > 0 && (

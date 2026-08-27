@@ -12,9 +12,33 @@
  */
 import type { Content, Part } from '@google/genai';
 import type { AgentMessage, Conversation, InboundMessage, SalesAgentSettings } from '../types';
+import type { EmailContext, EmailContextItem } from '../channels/gmailContext';
 
 /** How many past messages get replayed to the model. */
 export const HISTORY_TURNS = 20;
+
+const stamp = (at: number): string =>
+    at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : '';
+
+/**
+ * Earlier inbox traffic with this customer, as one block of plain text. Empty when
+ * there is nothing the recorded history does not already have.
+ */
+export const formatEmailContext = (ctx: EmailContext | undefined, owner: string): string => {
+    if (!ctx || (!ctx.earlier.length && !ctx.thread.length)) return '';
+    const line = (item: EmailContextItem) =>
+        `[${stamp(item.at)} — ${item.from === 'owner' ? `${owner}, the owner, wrote` : 'the customer wrote'}${item.subject ? ` — "${item.subject}"` : ''}]
+${item.text}`;
+    const parts: string[] = [];
+    if (ctx.earlier.length) {
+        parts.push('[Earlier emails between this customer and the desk, from the inbox, other threads]', ...ctx.earlier.map(line));
+    }
+    if (ctx.thread.length) {
+        parts.push('[Earlier emails on this same thread that were not recorded here]', ...ctx.thread.map(line));
+    }
+    parts.push('[End of inbox history. The conversation continues below.]');
+    return parts.join('\n\n');
+};
 
 /**
  * Steve can tell the agent what to say without being asked ("say the cambelt was done
@@ -108,8 +132,9 @@ export const buildSystemPrompt = (args: {
     conversation: Conversation;
     settings: SalesAgentSettings;
     now?: Date;
+    emailContext?: EmailContext;
 }): string => {
-    const { conversation, settings } = args;
+    const { conversation, settings, emailContext } = args;
     const owner = ownerNameOf(settings);
     const agent = agentNameOf(settings);
     const team = teamNamesOf(settings);
@@ -345,6 +370,28 @@ export const buildSystemPrompt = (args: {
         ].join('\n'),
     );
 
+    if (emailContext?.ownerStyle.length) {
+        sections.push(
+            [
+                `HOW ${owner.toUpperCase()} WRITES`,
+                `These are recent emails ${owner} sent from this inbox. Match the tone, length, phrasing and sign-off; do NOT reuse the facts, prices or promises in them, they belong to other customers.`,
+                ...emailContext.ownerStyle.map((item, i) => `--- example ${i + 1} (${item.subject || 'no subject'}) ---\n${item.text}`),
+            ].join('\n'),
+        );
+    }
+
+    if (emailContext && (emailContext.thread.length || emailContext.earlier.length)) {
+        sections.push(
+            [
+                'INBOX HISTORY WITH THIS CUSTOMER',
+                'The transcript below starts with earlier emails between this customer and the desk that were pulled from the inbox. Read them before answering.',
+                '- If they show the customer has already reserved, paid a deposit on, or agreed to buy a car, they ARE the buyer of that car. Talk to them as the buyer: never tell them it is reserved or sold, never offer them alternatives, and carry on from where the desk left off.',
+                `- Treat what ${owner} wrote in those emails as agreed. Do not contradict it or re-ask what they already answered.`,
+                '- They are context, not messages to reply to. Only the final message is the one you are answering.',
+            ].join('\n'),
+        );
+    }
+
     sections.push(
         [
             'OUTPUT',
@@ -373,10 +420,16 @@ export const buildContents = (args: {
     history: AgentMessage[];
     inbound: InboundMessage;
     settings: SalesAgentSettings;
+    emailContext?: EmailContext;
 }): Content[] => {
-    const { conversation, history, inbound, settings } = args;
+    const { conversation, history, inbound, settings, emailContext } = args;
     const owner = ownerNameOf(settings);
     const contents: Content[] = [];
+
+    // Earlier inbox traffic goes in as one user turn ahead of the recorded history: it
+    // is background the model reads, not a conversation it took part in.
+    const inboxBlock = formatEmailContext(emailContext, owner);
+    if (inboxBlock) contents.push({ role: 'user', parts: [{ text: inboxBlock }] });
 
     for (const message of history.slice(-HISTORY_TURNS)) {
         const text = (message.text || '').trim();

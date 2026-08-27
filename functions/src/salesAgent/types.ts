@@ -54,11 +54,22 @@ export interface SalesAgentSettings {
     /** Push notifications to this company's phones as well as WhatsApp alerts (default true). */
     pushNotifications?: boolean;
     /**
-     * Hold Dave's replies for approval in this ledger's Agent Inbox (default true).
-     * `false` is automatic reply: the first contact (and later turns) go out
-     * without waiting. Per company, so Steve and Chris can choose differently.
+     * Hold Dave's *email* replies for approval in this ledger's Agent Inbox
+     * (default true). `false` is automatic reply on email. Also the fallback
+     * for WhatsApp until `whatsappApprovalMode` is set, so an existing tick
+     * keeps covering both channels.
      */
     emailApprovalMode?: boolean;
+    /**
+     * Hold Dave's WhatsApp replies for approval. Undefined inherits
+     * `emailApprovalMode` (the original single switch).
+     */
+    whatsappApprovalMode?: boolean;
+    /**
+     * How many customer-facing Dave replies in a thread before the next inbound
+     * is handed to a human. 0 / missing = no cap.
+     */
+    maxAgentTurns?: number;
     /**
      * When Dave is allowed to send to the customer. Drafting and owner alerts
      * still happen around the clock; an approved reply outside this window waits

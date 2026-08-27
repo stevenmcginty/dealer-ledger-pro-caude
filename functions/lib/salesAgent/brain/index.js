@@ -327,7 +327,7 @@ const deriveSummary = (conversation, inbound) => {
  * Throws only if the model call itself fails; the router owns error alerts.
  */
 const runBrain = async (input, deps = {}) => {
-    const { companyId, conversation, history, inbound, settings } = input;
+    const { companyId, conversation, history, inbound, settings, emailContext } = input;
     // The bot is silent the moment it stops owning the conversation. No API call,
     // no tokens, no chance of the model talking over Steve.
     if (conversation.mode !== 'agent') {
@@ -345,9 +345,9 @@ const runBrain = async (input, deps = {}) => {
         stock: deps.stock || tools_1.liveStockApi,
         effects,
     };
-    const contents = (0, prompt_1.buildContents)({ conversation, history, inbound, settings });
+    const contents = (0, prompt_1.buildContents)({ conversation, history, inbound, settings, emailContext });
     const config = {
-        systemInstruction: (0, prompt_1.buildSystemPrompt)({ conversation, settings, now: deps.now }),
+        systemInstruction: (0, prompt_1.buildSystemPrompt)({ conversation, settings, now: deps.now, emailContext }),
         temperature: 0.6,
         maxOutputTokens: 1200,
         tools: [{ functionDeclarations: tools_1.toolDeclarations }],

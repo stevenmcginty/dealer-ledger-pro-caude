@@ -15,7 +15,6 @@
 
 import * as crypto from 'crypto';
 
-import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions/v1';
 
 import { getCompanyIds } from '../../utils/companyIds';
@@ -24,6 +23,7 @@ import { isWhatsAppLiveFor, readSendPrivate } from '../inboxRouting';
 import { ChannelSender, InboundMessage, MessageMedia, OutboxJob, WhatsAppMediaKind, toE164 } from '../types';
 import { handleInbound } from '../router';
 import { WHATSAPP_VIDEO_TARGET, compressVideoForWhatsApp } from './videoCompress';
+import { pruneCompanyWhatsApp, saveInboundWhatsAppFile } from '../whatsappStorage';
 
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -326,19 +326,11 @@ const storeInboundMedia = async (
         const bytes = Buffer.from(await fileRes.arrayBuffer());
         const mime = meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || 'application/octet-stream';
         const filename = (meta.filename || `${kind}-${providerId}`).replace(/[^\w.\-]+/g, '_');
-        const tokenId = crypto.randomUUID();
-        const path = `${companyId}/salesAgent/whatsapp/${providerId}_${filename}`;
-        const file = admin.storage().bucket().file(path);
-        await file.save(bytes, {
-            resumable: false,
-            metadata: {
-                contentType: mime,
-                metadata: { firebaseStorageDownloadTokens: tokenId },
-            },
+        const saved = await saveInboundWhatsAppFile(companyId, `${providerId}_${filename}`, bytes, mime);
+        void pruneCompanyWhatsApp(companyId).catch(error => {
+            console.warn(`WhatsApp: prune after inbound ${providerId} failed`, error);
         });
-        const bucket = admin.storage().bucket().name;
-        const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=${tokenId}`;
-        return { kind, url, mime, filename };
+        return { kind, url: saved.url, mime, filename };
     } catch (error) {
         console.warn(`WhatsApp: could not store inbound ${kind} ${providerId}`, error);
         return undefined;

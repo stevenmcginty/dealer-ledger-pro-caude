@@ -27,6 +27,7 @@ import type {
     SalesAgentSettings,
 } from '../types';
 import { buildContents, buildSystemPrompt } from './prompt';
+import type { EmailContext } from '../channels/gmailContext';
 import { liveStockApi, newToolEffects, runTool, toolDeclarations } from './tools';
 import type { StockApi, ToolContext, ToolEffects } from './tools';
 
@@ -50,6 +51,8 @@ export interface RunBrainInput {
     history: AgentMessage[];
     inbound: InboundMessage;
     settings: SalesAgentSettings;
+    /** What the Gmail inbox knows about this sender and how the owner writes. Email turns only. */
+    emailContext?: EmailContext;
 }
 
 export interface BrainDeps {
@@ -394,7 +397,7 @@ const deriveSummary = (conversation: Conversation, inbound: InboundMessage): str
  * Throws only if the model call itself fails; the router owns error alerts.
  */
 export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Promise<BrainResult> => {
-    const { companyId, conversation, history, inbound, settings } = input;
+    const { companyId, conversation, history, inbound, settings, emailContext } = input;
 
     // The bot is silent the moment it stops owning the conversation. No API call,
     // no tokens, no chance of the model talking over Steve.
@@ -415,9 +418,9 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
         effects,
     };
 
-    const contents: Content[] = buildContents({ conversation, history, inbound, settings });
+    const contents: Content[] = buildContents({ conversation, history, inbound, settings, emailContext });
     const config: GenerateContentConfig = {
-        systemInstruction: buildSystemPrompt({ conversation, settings, now: deps.now }),
+        systemInstruction: buildSystemPrompt({ conversation, settings, now: deps.now, emailContext }),
         temperature: 0.6,
         maxOutputTokens: 1200,
         tools: [{ functionDeclarations: toolDeclarations }],

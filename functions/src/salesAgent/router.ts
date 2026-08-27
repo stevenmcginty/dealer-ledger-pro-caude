@@ -62,6 +62,8 @@ import {
     SalesAgentSettings,
     StockItem,
     toE164, stripUndefined } from './types';
+import { TURN_LIMIT_HANDOFF, agentTurnLimitReached, needsApproval } from './approval';
+import { gatherEmailContext } from './channels/gmailContext';
 
 // BRAIN_SECRETS lives in conversations.ts: the channel adapters read it at module-load
 // time and this file is inside an import cycle with them. Re-exported for callers that
@@ -415,7 +417,44 @@ export const runAgentTurn = async (
     options: AgentTurnOptions = {}
 ): Promise<{ reply: string }> => {
     const history = await readHistory(companyId, conversation.id);
-    const result = await runBrain({ companyId, conversation, history, inbound, settings });
+
+    if (agentTurnLimitReached(
+        history.filter(m => m.from === 'agent').length,
+        settings.maxAgentTurns
+    )) {
+        await updateConversation(companyId, conversation.id, {
+            mode: 'human',
+            escalated: true,
+            escalationReason: `Reached the ${settings.maxAgentTurns}-reply limit`,
+        });
+        conversation.mode = 'human';
+        await sendOwnerAlert(
+            companyId,
+            'escalation',
+            conversation,
+            `#${conversation.shortId} ${settings.agentName || 'Dave'} has had ${settings.maxAgentTurns} back-and-forths with ${describeCustomer(conversation)} — this one is yours.`
+        );
+        if (options.simulate) return { reply: TURN_LIMIT_HANDOFF };
+        if (!needsApproval(conversation, settings)) {
+            await deliverReply(companyId, conversation, settings, TURN_LIMIT_HANDOFF, inbound);
+            return { reply: TURN_LIMIT_HANDOFF };
+        }
+        return { reply: '' };
+    }
+
+    // Email turns also get what the inbox knows: the rest of the thread, this sender's
+    // earlier emails, and how the owner writes. Best-effort; never delays a reply for long.
+    const emailContext = (!options.simulate && (inbound.channel === 'email' || conversation.emailThreadId))
+        ? await gatherEmailContext({
+            companyId,
+            address: inbound.channel === 'email' ? inbound.address : conversation.contact?.email || '',
+            threadId: inbound.emailThreadId || conversation.emailThreadId,
+            history,
+            inboundProviderId: inbound.providerId,
+        })
+        : undefined;
+
+    const result = await runBrain({ companyId, conversation, history, inbound, settings, emailContext });
 
     // Silence guard (Steve, 26 Aug): in agent mode a customer message must never go unanswered.
     // If the brain came back empty without asking Steve or handing off, send a holding line and
@@ -535,12 +574,11 @@ export const runAgentTurn = async (
 // --- Draft & Approve --------------------------------------------------------
 
 /**
- * Held for approval unless this ledger ticked Automatic reply.
+ * Held for approval unless this ledger ticked automatic reply on that channel.
  * The home company of the thread is what counts, so Steve's tick does not
  * send Chris's cars and the other way around.
  */
-export const needsApproval = (_conversation: Conversation, settings: SalesAgentSettings): boolean =>
-    settings.emailApprovalMode !== false;
+export { needsApproval } from './approval';
 
 /** A draft in an alert is a glance, not the whole email. */
 const trimForAlert = (text: string, limit = 300): string =>

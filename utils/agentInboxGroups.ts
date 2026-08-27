@@ -143,6 +143,18 @@ export const groupHasChannel = (group: CustomerGroup, filter: InboxFilter): bool
     return group.channels.includes(filter);
 };
 
+/**
+ * Threads to show inside a group for the WhatsApp / Email tabs.
+ * Prefer the conversation that actually sends on that channel; fall back to
+ * origin so a WhatsApp that started from an email is not a blank screen.
+ */
+export const conversationsForFilter = (group: CustomerGroup, filter: InboxFilter): Conversation[] => {
+    if (filter === 'all') return group.conversations;
+    const exact = group.conversations.filter(conv => conv.channel === filter);
+    if (exact.length) return exact;
+    return group.conversations.filter(conv => conversationChannels(conv).includes(filter));
+};
+
 export const inboxWaitingCount = (conversations: Conversation[]): { pending: number; unread: number } => {
     let pending = 0;
     let unread = 0;

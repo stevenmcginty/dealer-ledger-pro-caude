@@ -302,7 +302,7 @@ const LedgerCore = () => {
           scroll to it (the "screen is cut off on mobile" bug). */}
       <main className="flex-1 flex flex-col min-h-0 min-w-0">
          <UpdateBanner />
-         <header className="md:hidden p-4 flex items-center justify-between border-b border-gray-700/50">
+         <header className={`md:hidden p-4 flex items-center justify-between border-b border-gray-700/50 ${view === 'agentInbox' ? 'hidden' : ''}`}>
              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <CarIcon className={`h-8 w-8 text-brand-400 flex-shrink-0`} />
                 <div className="min-w-0">
@@ -422,7 +422,7 @@ const LedgerCore = () => {
         </header>
 
          <div className={view === 'agentInbox'
-            ? 'flex-1 min-h-0 overflow-hidden pb-[4.75rem] md:pb-0'
+            ? 'flex-1 min-h-0 overflow-hidden'
             : 'flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-6'}>
             <div className={view === 'agentInbox' ? 'h-full min-h-0' : 'max-w-7xl mx-auto'}>
                 <Suspense fallback={<div className="flex items-center justify-center py-24"><Spinner className="h-8 w-8 text-brand-500" /></div>}>
@@ -432,7 +432,7 @@ const LedgerCore = () => {
         </div>
       </main>
       
-      {isMobile && <MobileNav onLogout={handleLogout} />}
+      {isMobile && view !== 'agentInbox' && <MobileNav onLogout={handleLogout} />}
 
       <ModalManager />
     </div>

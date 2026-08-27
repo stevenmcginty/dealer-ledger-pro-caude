@@ -778,7 +778,7 @@ export const deleteCanvasItem = async (companyId: string, item: CanvasItem) => {
 // --- File Storage ---
 export const uploadFile = async (companyId: string, userId: string, file: File, path: string): Promise<string> => {
     const fileRef = storage.ref(`${companyId}/${userId}/${path}/${Date.now()}_${file.name}`);
-    const snapshot = await fileRef.put(file);
+    const snapshot = await fileRef.put(file, file.type ? { contentType: file.type } : undefined);
     return snapshot.ref.getDownloadURL();
 };
 export const uploadBlob = async (companyId: string, userId: string, blob: Blob, path: string, name: string): Promise<string> => {

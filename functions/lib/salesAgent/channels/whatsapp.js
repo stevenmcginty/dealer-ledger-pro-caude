@@ -49,7 +49,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.templateFallbackFor = exports.renderFallbackTemplate = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplate = exports.sendWhatsAppMedia = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
 const crypto = __importStar(require("crypto"));
-const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
 const conversations_1 = require("../conversations");
@@ -57,6 +56,7 @@ const inboxRouting_1 = require("../inboxRouting");
 const types_1 = require("../types");
 const router_1 = require("../router");
 const videoCompress_1 = require("./videoCompress");
+const whatsappStorage_1 = require("../whatsappStorage");
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 /** Meta only accepts approved languages; Steve's templates are submitted as en_GB. */
@@ -283,19 +283,11 @@ const storeInboundMedia = async (companyId, providerId, message) => {
         const bytes = Buffer.from(await fileRes.arrayBuffer());
         const mime = meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || 'application/octet-stream';
         const filename = (meta.filename || `${kind}-${providerId}`).replace(/[^\w.\-]+/g, '_');
-        const tokenId = crypto.randomUUID();
-        const path = `${companyId}/salesAgent/whatsapp/${providerId}_${filename}`;
-        const file = admin.storage().bucket().file(path);
-        await file.save(bytes, {
-            resumable: false,
-            metadata: {
-                contentType: mime,
-                metadata: { firebaseStorageDownloadTokens: tokenId },
-            },
+        const saved = await (0, whatsappStorage_1.saveInboundWhatsAppFile)(companyId, `${providerId}_${filename}`, bytes, mime);
+        void (0, whatsappStorage_1.pruneCompanyWhatsApp)(companyId).catch(error => {
+            console.warn(`WhatsApp: prune after inbound ${providerId} failed`, error);
         });
-        const bucket = admin.storage().bucket().name;
-        const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=${tokenId}`;
-        return { kind, url, mime, filename };
+        return { kind, url: saved.url, mime, filename };
     }
     catch (error) {
         console.warn(`WhatsApp: could not store inbound ${kind} ${providerId}`, error);

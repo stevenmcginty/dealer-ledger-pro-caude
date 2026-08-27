@@ -41,31 +41,113 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId && isUserInCompany();
     }
 
+    // Dedicated WhatsApp folder: {companyId}/whatsapp/{fileName}. Inbound
+    // customer media and owner uploads both land here. Shared-inbox peers may
+    // read and delete (Steve and Chris on one number); only a member of this
+    // company may create. The generic match treats "whatsapp" as a userId, so
+    // this rule is what actually lets a video through.
+    match /{companyId}/whatsapp/{fileName} {
+      function isUserInCompany() {
+        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
+      }
+      function userCompanyId() {
+        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data;
+      }
+      function sharesInbox() {
+        return request.auth != null
+          && userCompanyId() != null
+          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId()))
+          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId))
+          && get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId())).data
+             == get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId)).data;
+      }
+      function allowedWhatsAppType() {
+        return request.resource.contentType == ''
+            || request.resource.contentType == 'application/octet-stream'
+            || request.resource.contentType.matches('image/.*')
+            || request.resource.contentType.matches('video/.*')
+            || request.resource.contentType == 'application/pdf'
+            || request.resource.contentType == 'text/plain'
+            || request.resource.contentType.matches('application/msword')
+            || request.resource.contentType.matches('application/vnd.ms-.*')
+            || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.*');
+      }
+
+      allow read: if request.auth != null && (isUserInCompany() || sharesInbox());
+      allow create, update: if request.auth != null && isUserInCompany()
+        && request.resource.size < 200 * 1024 * 1024
+        && allowedWhatsAppType();
+      allow delete: if request.auth != null && (isUserInCompany() || sharesInbox());
+    }
+
     // WhatsApp attachments. Meta's own caps are 5 MB image / 16 MB video, but the
     // raw file is what lands here: photos arrive already squeezed under 5 MB by
     // utils/whatsappMedia.ts, while a video is uploaded untouched (up to 200 MB)
     // and re-encoded by ffmpeg in the function on the way to Meta. Documents keep
     // the 16 MB cap. Overlapping matches are OR'd, so this is what lets a video
     // through when the generic rule above would refuse it.
+    //
+    // Phones often send an empty MIME, video/quicktime, or application/octet-stream
+    // for a WhatsApp-saved MP4 — those have to be allowed here or the client SDK
+    // returns storage/unauthorized. Shared-inbox peers (Steve and Chris on the
+    // same number) may read each other's WhatsApp files; they still cannot write
+    // into the other person's user folder.
     match /{companyId}/{userId}/whatsapp/{fileName} {
       function isUserInCompany() {
         return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
       }
-
-      allow read: if request.auth != null && isUserInCompany();
-      allow create, update: if request.auth != null && request.auth.uid == userId && isUserInCompany()
-        && request.resource.size < 200 * 1024 * 1024
-        && (request.resource.contentType == 'image/jpeg'
-            || request.resource.contentType == 'image/png'
-            || request.resource.contentType == 'image/webp'
-            || request.resource.contentType == 'video/mp4'
-            || request.resource.contentType == 'video/3gpp'
+      function userCompanyId() {
+        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data;
+      }
+      function sharesInbox() {
+        return request.auth != null
+          && userCompanyId() != null
+          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId()))
+          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId))
+          && get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId())).data
+             == get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId)).data;
+      }
+      function allowedWhatsAppType() {
+        return request.resource.contentType == ''
+            || request.resource.contentType == 'application/octet-stream'
+            || request.resource.contentType.matches('image/.*')
+            || request.resource.contentType.matches('video/.*')
             || request.resource.contentType == 'application/pdf'
             || request.resource.contentType == 'text/plain'
             || request.resource.contentType.matches('application/msword')
             || request.resource.contentType.matches('application/vnd.ms-.*')
-            || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.*'));
+            || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.*');
+      }
+
+      allow read: if request.auth != null && (isUserInCompany() || sharesInbox());
+      allow create, update: if request.auth != null && request.auth.uid == userId && isUserInCompany()
+        && request.resource.size < 200 * 1024 * 1024
+        && allowedWhatsAppType();
       allow delete: if request.auth != null && request.auth.uid == userId && isUserInCompany();
+    }
+
+    // Inbound customer media, stored by the WhatsApp webhook (Admin SDK) at
+    // {companyId}/salesAgent/whatsapp/{file}. The generic match above treats
+    // "salesAgent" as a userId, which is fine for company members; this extra
+    // match lets a shared-inbox peer read it too.
+    match /{companyId}/salesAgent/whatsapp/{fileName} {
+      function isUserInCompany() {
+        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
+      }
+      function userCompanyId() {
+        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data;
+      }
+      function sharesInbox() {
+        return request.auth != null
+          && userCompanyId() != null
+          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId()))
+          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId))
+          && get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId())).data
+             == get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId)).data;
+      }
+
+      allow read: if request.auth != null && (isUserInCompany() || sharesInbox());
+      allow write: if false;
     }
   }
 }

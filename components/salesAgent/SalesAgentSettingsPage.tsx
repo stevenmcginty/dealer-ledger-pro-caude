@@ -213,23 +213,28 @@ const SalesAgentSettingsPage = () => {
     };
 
     /**
-     * Automatic reply saves on its own, same as the master switch: ticking it
+     * Approval ticks save on their own, same as the master switch: changing one
      * and walking away should actually change what Dave does on the next message.
      */
-    const handleToggleAutoReply = async (auto: boolean) => {
+    const handleToggleApproval = async (channel: 'email' | 'whatsapp', hold: boolean) => {
         if (!companyId) return;
-        const holdForApproval = !auto;
-        setDraft(prev => ({ ...prev, emailApprovalMode: holdForApproval }));
+        const key = channel === 'whatsapp' ? 'whatsappApprovalMode' : 'emailApprovalMode';
+        const previous = channel === 'whatsapp'
+            ? draft.whatsappApprovalMode
+            : draft.emailApprovalMode;
+        setDraft(prev => ({ ...prev, [key]: hold }));
         try {
-            await saveSalesAgentSettings(companyId, { emailApprovalMode: holdForApproval });
+            await saveSalesAgentSettings(companyId, { [key]: hold });
+            const who = draft.agentName || 'Dave';
+            const label = channel === 'whatsapp' ? 'WhatsApp' : 'email';
             toast.success(
-                auto
-                    ? `${draft.agentName || 'Dave'} will reply to new contacts himself.`
-                    : `${draft.agentName || 'Dave'} will draft replies for you to approve.`
+                hold
+                    ? `${who} will draft ${label} replies for you to approve.`
+                    : `${who} will send ${label} replies himself.`
             );
         } catch (err: any) {
-            setDraft(prev => ({ ...prev, emailApprovalMode: !holdForApproval }));
-            toast.error(err?.message || 'Could not change automatic reply.');
+            setDraft(prev => ({ ...prev, [key]: previous }));
+            toast.error(err?.message || 'Could not change that.');
         }
     };
 
@@ -564,22 +569,31 @@ const SalesAgentSettingsPage = () => {
                             onChange={next => edit('preferWhatsAppReply', next)}
                         />
 
-                        <label className="flex items-start gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                className="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-600 focus:ring-brand-500/40"
-                                checked={draft.emailApprovalMode === false}
-                                onChange={e => handleToggleAutoReply(e.target.checked)}
+                        <div className="space-y-3">
+                            <p className="block text-sm font-medium text-gray-300">Before {draft.agentName || 'Dave'} sends</p>
+                            <Toggle
+                                label="Hold WhatsApp replies for approval"
+                                hint={`On: you read the draft first. Off: ${draft.agentName || 'Dave'} sends WhatsApp himself. Steve and Chris each have their own copy.`}
+                                checked={(draft.whatsappApprovalMode ?? draft.emailApprovalMode) !== false}
+                                onChange={next => handleToggleApproval('whatsapp', next)}
                             />
-                            <span className="min-w-0">
-                                <span className="block text-sm font-medium text-gray-200">Automatic reply</span>
-                                <span className="block text-xs text-gray-500 mt-0.5">
-                                    When someone first writes in, {draft.agentName || 'Dave'} sends the reply himself
-                                    on this ledger. Untick and he still writes it, but it waits in the Agent Inbox
-                                    for you to approve. Steve and Chris each have their own copy of this.
-                                </span>
-                            </span>
-                        </label>
+                            <Toggle
+                                label="Hold email replies for approval"
+                                hint={`On: you read the draft first. Off: ${draft.agentName || 'Dave'} sends the email himself.`}
+                                checked={draft.emailApprovalMode !== false}
+                                onChange={next => handleToggleApproval('email', next)}
+                            />
+                            <div className="w-full md:w-64">
+                                <Input
+                                    label="Hand over after this many Dave replies"
+                                    type="number"
+                                    min={0}
+                                    value={String(draft.maxAgentTurns ?? 0)}
+                                    onChange={e => edit('maxAgentTurns', Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                                    hint="0 = no limit. Once he hits the number, the next customer message is yours — he stops drafting and alerts you."
+                                />
+                            </div>
+                        </div>
 
                         <div className="space-y-3">
                             <Toggle

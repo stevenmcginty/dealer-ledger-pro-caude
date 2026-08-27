@@ -36,6 +36,7 @@ export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRe
 export { salesAgentOutboxTick } from './salesAgent/outbox';
 export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSaveSharedInbox, salesAgentStartWhatsApp, salesAgentSimulate } from './salesAgent/router';
 export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush, salesAgentPushDebug } from './salesAgent/push';
+export { pruneWhatsAppStorage } from './salesAgent/whatsappStorage';
 
 // Health check function
 export const healthCheck = functions.https.onRequest((req, res) => {

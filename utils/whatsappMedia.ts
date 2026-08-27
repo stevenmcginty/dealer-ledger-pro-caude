@@ -16,7 +16,7 @@ import type { WhatsAppMediaKind } from '../services/salesAgentService';
 import { compressImage } from './helpers';
 
 export const WHATSAPP_ACCEPT =
-    'image/jpeg,image/png,image/webp,video/mp4,video/3gpp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt';
+    'image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/3gpp,.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.3gp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt';
 
 /** What Meta accepts, checked after any compression has happened. */
 const MAX: Record<WhatsAppMediaKind, number> = {
@@ -44,8 +44,11 @@ const IMAGE_QUALITY_LADDER = [0.8, 0.6, 0.45];
 
 export const classifyWhatsAppFile = (file: File): WhatsAppMediaKind | null => {
     const mime = (file.type || '').toLowerCase();
-    if (mime === 'image/jpeg' || mime === 'image/jpg' || mime === 'image/png' || mime === 'image/webp') return 'image';
-    if (mime === 'video/mp4' || mime === 'video/3gpp') return 'video';
+    if (
+        mime === 'image/jpeg' || mime === 'image/jpg' || mime === 'image/png' || mime === 'image/webp'
+        || mime === 'image/heic' || mime === 'image/heif'
+    ) return 'image';
+    if (mime === 'video/mp4' || mime === 'video/3gpp' || mime === 'video/quicktime' || mime.startsWith('video/')) return 'video';
     if (
         mime === 'application/pdf'
         || mime === 'text/plain'
@@ -59,10 +62,59 @@ export const classifyWhatsAppFile = (file: File): WhatsAppMediaKind | null => {
     ) return 'document';
 
     const name = file.name.toLowerCase();
-    if (/\.(jpe?g|png|webp)$/.test(name)) return 'image';
-    if (/\.(mp4|3gp)$/.test(name)) return 'video';
+    if (/\.(jpe?g|png|webp|heic|heif)$/.test(name)) return 'image';
+    if (/\.(mp4|3gp|mov|qt)$/.test(name)) return 'video';
     if (/\.(pdf|docx?|xlsx?|pptx?|txt)$/.test(name)) return 'document';
     return null;
+};
+
+/** Phones often hand us an empty MIME. Storage rules need a real one. */
+export const mimeForWhatsAppFile = (file: File): string => {
+    const existing = (file.type || '').toLowerCase();
+    if (existing === 'image/jpg') return 'image/jpeg';
+    if (existing) return existing;
+
+    const name = file.name.toLowerCase();
+    if (/\.jpe?g$/.test(name)) return 'image/jpeg';
+    if (/\.png$/.test(name)) return 'image/png';
+    if (/\.webp$/.test(name)) return 'image/webp';
+    if (/\.(heic|heif)$/.test(name)) return 'image/heic';
+    if (/\.mp4$/.test(name)) return 'video/mp4';
+    if (/\.(mov|qt)$/.test(name)) return 'video/quicktime';
+    if (/\.3gp$/.test(name)) return 'video/3gpp';
+    if (/\.pdf$/.test(name)) return 'application/pdf';
+    if (/\.txt$/.test(name)) return 'text/plain';
+    if (/\.docx$/.test(name)) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (/\.xlsx$/.test(name)) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (/\.pptx$/.test(name)) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (/\.doc$/.test(name)) return 'application/msword';
+    return existing;
+};
+
+export const coerceWhatsAppFile = (file: File): File => {
+    const mime = mimeForWhatsAppFile(file);
+    if (!mime || mime === file.type) return file;
+    return new File([file], file.name, { type: mime, lastModified: file.lastModified });
+};
+
+/** Path inside the bucket, from a Firebase download URL. */
+export const storagePathFromUrl = (url: string): string | null => {
+    try {
+        const parsed = new URL(url);
+        const match = parsed.pathname.match(/\/o\/(.+)$/);
+        if (match) return decodeURIComponent(match[1]);
+    } catch {
+        // Not a URL we can read.
+    }
+    return null;
+};
+
+export const isWhatsAppStoragePath = (path: string): boolean => {
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length >= 3 && parts[1] === 'whatsapp') return true;
+    if (parts.length >= 4 && parts[1] === 'salesAgent' && parts[2] === 'whatsapp') return true;
+    if (parts.length >= 4 && parts[2] === 'whatsapp') return true;
+    return false;
 };
 
 const describeAgainst = (file: File, caps: Record<WhatsAppMediaKind, number>): string | null => {
@@ -114,17 +166,22 @@ const asJpeg = (blob: Blob, name: string): File =>
  * Video and documents are passed straight through — the function handles video.
  */
 export const prepareWhatsAppFile = async (file: File): Promise<File> => {
-    if (classifyWhatsAppFile(file) !== 'image') return file;
-    if (file.size <= IMAGE_COMPRESS_ABOVE && (await imageLongEdge(file)) <= IMAGE_LONG_EDGE) return file;
+    const ready = coerceWhatsAppFile(file);
+    if (classifyWhatsAppFile(ready) !== 'image') return ready;
+    if (ready.size <= IMAGE_COMPRESS_ABOVE && (await imageLongEdge(ready)) <= IMAGE_LONG_EDGE) {
+        // HEIC cannot go to WhatsApp as-is; the canvas pass turns it into JPEG.
+        const mime = (ready.type || '').toLowerCase();
+        if (mime !== 'image/heic' && mime !== 'image/heif') return ready;
+    }
 
     let smallest: File | null = null;
 
     for (const quality of IMAGE_QUALITY_LADDER) {
-        const shrunk = asJpeg(await compressImage(file, { maxWidth: IMAGE_LONG_EDGE, quality }), file.name);
+        const shrunk = asJpeg(await compressImage(ready, { maxWidth: IMAGE_LONG_EDGE, quality }), ready.name);
         if (!smallest || shrunk.size < smallest.size) smallest = shrunk;
         if (shrunk.size <= MAX.image) return shrunk;
     }
 
     // Nothing helped — hand back whichever is smaller and let the size check refuse it.
-    return smallest && smallest.size < file.size ? smallest : file;
+    return smallest && smallest.size < ready.size ? smallest : ready;
 };

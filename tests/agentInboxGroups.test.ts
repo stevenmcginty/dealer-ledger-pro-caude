@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Conversation } from '../services/salesAgentService';
 import {
     conversationKeys,
+    conversationsForFilter,
     groupConversations,
     groupHasChannel,
     phoneKey,
@@ -118,5 +119,26 @@ describe('groupConversations', () => {
         ]);
         expect(groups.filter(g => groupHasChannel(g, 'whatsapp'))).toHaveLength(1);
         expect(groups.filter(g => groupHasChannel(g, 'email'))).toHaveLength(2);
+    });
+
+    it('shows only that channel inside a mixed group', () => {
+        const groups = groupConversations([
+            conv({
+                id: 'wa',
+                channel: 'whatsapp',
+                address: '+447700900555',
+                contact: { phone: '+447700900555', email: 'mix@b.c' },
+            }),
+            conv({
+                id: 'em',
+                channel: 'email',
+                originChannel: 'email',
+                address: 'mix@b.c',
+                contact: { email: 'mix@b.c', phone: '+447700900555' },
+            }),
+        ]);
+        expect(conversationsForFilter(groups[0], 'whatsapp').map(c => c.id)).toEqual(['wa']);
+        expect(conversationsForFilter(groups[0], 'email').map(c => c.id)).toEqual(['em']);
+        expect(conversationsForFilter(groups[0], 'all')).toHaveLength(2);
     });
 });

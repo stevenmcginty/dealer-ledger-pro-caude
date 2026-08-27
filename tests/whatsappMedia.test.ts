@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
     classifyWhatsAppFile,
+    coerceWhatsAppFile,
     describeWhatsAppFileError,
     describeWhatsAppPickError,
+    isWhatsAppStoragePath,
+    mimeForWhatsAppFile,
     prepareWhatsAppFile,
+    storagePathFromUrl,
 } from '../utils/whatsappMedia';
 
 /**
@@ -27,6 +31,17 @@ describe('classifyWhatsAppFile', () => {
         expect(classifyWhatsAppFile(file('x.gif', 'image/gif'))).toBeNull();
         expect(describeWhatsAppFileError(file('x.gif', 'image/gif'))).toMatch(/JPEG/);
         expect(describeWhatsAppPickError(file('x.gif', 'image/gif'))).toMatch(/JPEG/);
+    });
+
+    it('treats a WhatsApp-saved MP4 with no MIME as video', () => {
+        expect(classifyWhatsAppFile(file('VID-20260821-WA0028.mp4', ''))).toBe('video');
+        expect(mimeForWhatsAppFile(file('VID-20260821-WA0028.mp4', ''))).toBe('video/mp4');
+        expect(coerceWhatsAppFile(file('VID-20260821-WA0028.mp4', '')).type).toBe('video/mp4');
+    });
+
+    it('treats a phone .mov as video', () => {
+        expect(classifyWhatsAppFile(file('clip.mov', 'video/quicktime'))).toBe('video');
+        expect(classifyWhatsAppFile(file('clip.mov', ''))).toBe('video');
     });
 });
 
@@ -57,6 +72,15 @@ describe('describeWhatsAppFileError', () => {
     it('lets the uploaded video through up to 200 MB', () => {
         expect(describeWhatsAppFileError(file('clip.mp4', 'video/mp4', 90 * 1024 * 1024))).toBeNull();
         expect(describeWhatsAppFileError(file('clip.mp4', 'video/mp4', 250 * 1024 * 1024))).toMatch(/200 MB/);
+    });
+});
+
+describe('storagePathFromUrl', () => {
+    it('reads the object path out of a download URL', () => {
+        const url = 'https://firebasestorage.googleapis.com/v0/b/motor-ledger-pro.firebasestorage.app/o/co-a%2Fwhatsapp%2Fclip.mp4?alt=media&token=abc';
+        expect(storagePathFromUrl(url)).toBe('co-a/whatsapp/clip.mp4');
+        expect(isWhatsAppStoragePath('co-a/whatsapp/clip.mp4')).toBe(true);
+        expect(isWhatsAppStoragePath('co-a/uid/receipts/scan.jpg')).toBe(false);
     });
 });
 

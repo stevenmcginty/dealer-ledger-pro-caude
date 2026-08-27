@@ -70,7 +70,7 @@ System prompt structure:
    - FAQs from settings (address, phone, warranty, finance partners, test-drive licence rule, delivery).
 8. Booking closure: capture full name + phone + window, then `ask_owner` (see Ask-Steve loop) → holding line is "Let me check the diary" (never "check with Steve") → once the desk confirms, `book_viewing` → "That's fine, I've logged that with the sales team... please give us a call before you leave so we have the car ready out front" → owner alert. Whenever a customer agrees a time to come, Dave always confirms with them to call before they leave.
 9. Stock facts ONLY from tool results. Never invent owners/history/price/mileage. Reserved/sold vehicles: say it's reserved, offer up to 2 similar available cars.
-10. Handoff (mode=human): complaints, legal, finance approvals, customer asks for a human, or owner command.
+10. Handoff (mode=human): complaints, legal, finance approvals, customer asks for a human, owner command, or `settings.maxAgentTurns` (when set) after that many Dave replies.
 
 Opening move for an email lead with a mobile number: WhatsApp template `enquiry_followup` {first_name, vehicle}: "Hi {1}, thanks for enquiring about the {2}. It's still available. Would you like any more details, or to arrange a viewing or test drive?" Email reply is also sent so the customer isn't left cold if WhatsApp fails.
 
@@ -80,14 +80,31 @@ The agent must NOT confirm a viewing/test-drive time on its own. When a customer
 ## Instructing Dave (Steve, 26 Aug)
 At any point the owner can tell Dave what to communicate — in the notification bell rewrite box, in the Agent Inbox ("Tell Dave what to say"), or on WhatsApp `TELL <n> <text>` — and Dave rephrases it in his own voice and carries on the qualification flow. Same mechanism as ANSWER (ownerAnswer injection) but does not require a pending question. Instructions show in the thread as a grey "You told Dave: …" line and are never fed to the model as customer turns. A rewrite while a draft is held comes back as a new draft to approve, not as a send.
 
+## Inbox context (Steve, 27 Aug)
+On every email turn (`channels/gmailContext.ts`) the brain is also handed, best-effort and capped:
+- the rest of the Gmail thread the app never recorded (up to 12 messages);
+- the sender's emails to/from the inbox on other threads, last 180 days (up to 8);
+- up to 4 recent emails the owner wrote themselves (SENT minus the "Dave replied" label), cached 24h in `private/gmail/styleSamples`, as tone examples only.
+Prompt rule: if that history shows the customer already reserved / paid a deposit, they are the buyer — never "sorry, that one's reserved" (the DD07BOX incident). A Gmail failure yields an empty context; it never blocks a reply.
+
 ## Owner control (messages from ownerAlertNumber on WhatsApp are commands)
 `TAKE OVER <n>` · `RESUME <n>` · `REPLY <n> <text>` (sent to customer as Steve, stays in human mode) · `ANSWER <n> <text>` (answers Dave's question) · `TELL <n> <text>` (instruct Dave; he rephrases) · `SEND <n>` (approve the drafted reply; aliases `APPROVE <n>`, `OK <n>`) · `STATUS` · `PAUSE ALL` · `RESUME ALL` · `STOCK` (re-index now). Unknown text → help message.
 
-## Draft & Approve (Steve, 26 Aug)
-Dave never sends a customer-facing reply on his own while `settings.emailApprovalMode` is on (the default; undefined counts as on). Instead of queuing, the router stores `conversation.pendingDraft` (wording + the customer text he is answering) and alerts the owner with kind 'draft': `#14 Dave drafted reply to Barry (Ford Focus ST-3): "..." Reply: SEND 14 to approve, TELL 14 <changes>, or TAKE OVER 14`. A tap on that alert opens the **notification bell**, not a page change: approve, edit the box and send, or tell Dave how it should sound so he writes a fresh draft. `SEND 14` / Approve sends immediately **during office hours** and clears the draft; after hours it joins the outbox until the next opening (default 08:00–17:00 Europe/London, Mon–Sat, `settings.sendHours`). `TELL 14 <changes>` runs the usual instruction path and the rewrite comes back as a new draft rather than going out; `TAKE OVER 14` throws it away. A bare owner reply counts as `TELL` when exactly one conversation has a draft and none has a pending question. The same holds for the ANSWER path. In the app, the Agent Inbox has the same box over `salesAgentApproveDraft` / `salesAgentDiscardDraft`. WhatsApp uses the same hold once that channel is sending. Owner "send as me" still goes out immediately.
+## Draft & Approve (Steve, 26 Aug; split per channel 27 Aug)
+Dave never sends a customer-facing reply on his own while that channel's approval flag is on (the default; undefined counts as on).
+
+- `settings.emailApprovalMode` holds **email** drafts. It is also the fallback for WhatsApp until `whatsappApprovalMode` is set, so an existing tick still covers both.
+- `settings.whatsappApprovalMode` holds **WhatsApp** drafts independently once set. Steve and Chris each have their own copy.
+
+Instead of queuing, the router stores `conversation.pendingDraft` (wording + the customer text he is answering) and alerts the owner with kind 'draft': `#14 Dave drafted reply to Barry (Ford Focus ST-3): "..." Reply: SEND 14 to approve, TELL 14 <changes>, or TAKE OVER 14`. A tap on that alert opens the **notification bell**, not a page change: approve, edit the box and send, or tell Dave how it should sound so he writes a fresh draft. `SEND 14` / Approve sends immediately **during office hours** and clears the draft; after hours it joins the outbox until the next opening (default 08:00–17:00 Europe/London, Mon–Sat, `settings.sendHours`). `TELL 14 <changes>` runs the usual instruction path and the rewrite comes back as a new draft rather than going out; `TAKE OVER 14` throws it away. A bare owner reply counts as `TELL` when exactly one conversation has a draft and none has a pending question. The same holds for the ANSWER path. In the app, the Agent Inbox has the same box over `salesAgentApproveDraft` / `salesAgentDiscardDraft`. Owner "send as me" still goes out immediately.
+
+`settings.maxAgentTurns` (0 = off) is how many customer-facing Dave replies a thread may have before the next inbound is handed to a human. He stops drafting, alerts you, and (only if that channel is on automatic reply) sends a short "I'll get someone from the sales team to pick this up with you."
 
 ## Visibility
 Steve sees everything three ways: Agent Inbox in the app (live), WhatsApp alerts (new / escalation / question / booking), and Gmail (agent replies sent from radlettcars@gmail.com sit in Sent). Email lead with a mobile → BOTH a polite email reply AND the WhatsApp `enquiry_followup` template; conversation continues on WhatsApp. Lead-email parsing rules: `EMAIL_FORMATS.md`.
+
+## WhatsApp media storage
+All WhatsApp photos, videos and files (inbound and owner uploads) go to Firebase Storage `{companyId}/whatsapp/{file}`. Older objects may still sit under `{companyId}/{userId}/whatsapp/` or `{companyId}/salesAgent/whatsapp/`. A nightly job (`pruneWhatsAppStorage`, 03:15 Europe/London) lists all three prefixes per company and deletes the oldest files until that company's WhatsApp folder is under **500 MB**. Trashing a bubble in the Agent Inbox also deletes the Storage object when the signed-in user is allowed to. Receipts and invoices are a different folder and are not touched.
 
 ## Security
 - Tokens in top-level `salesAgentPrivate/{cid}` (default-denied in rules; functions use admin SDK). NOT under companies/ — members can read that whole subtree and functions secrets. Existing `crmSettings.twilio*/whatsapp*` are read as a fallback only.

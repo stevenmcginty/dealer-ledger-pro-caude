@@ -150,6 +150,8 @@ const SETTINGS_DEFAULTS = {
     followUpPhoneLeads: false,
     emailAddress: '',
     signature: '',
+    emailApprovalMode: true,
+    maxAgentTurns: 0,
     sendHours: {
         enabled: true,
         start: '08:00',

@@ -14,7 +14,8 @@
 
 import firebase from 'firebase/compat/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db } from './firebase';
+import { db, storage } from './firebase';
+import { isWhatsAppStoragePath, storagePathFromUrl } from '../utils/whatsappMedia';
 
 // --- Contract (mirror of functions/src/salesAgent/types.ts) -----------------
 
@@ -58,12 +59,21 @@ export interface SalesAgentSettings {
     /** Web push to this company's registered devices, alongside the WhatsApp alert. */
     pushNotifications?: boolean;
     /**
-     * Hold Dave's replies for approval in this ledger's Agent Inbox.
-     * `true` / undefined: he drafts, you send. `false`: he replies to the
-     * customer himself (automatic reply). Per company, so Steve and Chris
-     * can choose differently.
+     * Hold Dave's email replies for approval in this ledger's Agent Inbox.
+     * `true` / undefined: he drafts, you send. `false`: he replies himself.
+     * Also the fallback for WhatsApp until `whatsappApprovalMode` is set.
      */
     emailApprovalMode?: boolean;
+    /**
+     * Hold Dave's WhatsApp replies for approval. Undefined inherits
+     * `emailApprovalMode` (the original single switch).
+     */
+    whatsappApprovalMode?: boolean;
+    /**
+     * How many customer-facing Dave replies before the next inbound is handed
+     * to a human. 0 / missing = no cap.
+     */
+    maxAgentTurns?: number;
     /**
      * When Dave may send to the customer. Drafts and notifications still happen
      * at night; an approved reply outside this window waits until the next opening.
@@ -233,6 +243,7 @@ export const DEFAULT_SALES_AGENT_SETTINGS: SalesAgentSettings = {
     followUpPhoneLeads: false,
     pushNotifications: true,
     emailApprovalMode: true,
+    maxAgentTurns: 0,
     sendHours: {
         enabled: true,
         start: '08:00',
@@ -477,9 +488,35 @@ const contactIndexKeys = (conv: Conversation): string[] => {
     return [...new Set(keys)];
 };
 
-/** One bubble out of the thread. Does not touch the conversation itself. */
-export const deleteAgentMessage = (companyId: string, convId: string, messageId: string) =>
-    db.ref(`${agentRoot(companyId)}/conversations/${convId}/messages/${messageId}`).remove();
+/** Owner upload of a WhatsApp photo/video/file. Dedicated folder, not receipts. */
+export const uploadWhatsAppFile = async (companyId: string, file: File): Promise<string> => {
+    const safe = (file.name || 'file').replace(/[^\w.\-]+/g, '_');
+    const fileRef = storage.ref(`${companyId}/whatsapp/${Date.now()}_${safe}`);
+    const snapshot = await fileRef.put(file, file.type ? { contentType: file.type } : undefined);
+    return snapshot.ref.getDownloadURL();
+};
+
+const deleteWhatsAppFile = async (url?: string): Promise<void> => {
+    if (!url) return;
+    const path = storagePathFromUrl(url);
+    if (!path || !isWhatsAppStoragePath(path)) return;
+    try {
+        await storage.refFromURL(url).delete();
+    } catch {
+        // Nightly prune will get it if this user cannot delete the object.
+    }
+};
+
+/** One bubble out of the thread. Also drops the Storage file if it is ours. */
+export const deleteAgentMessage = async (
+    companyId: string,
+    convId: string,
+    messageId: string,
+    mediaUrl?: string
+) => {
+    await db.ref(`${agentRoot(companyId)}/conversations/${convId}/messages/${messageId}`).remove();
+    await deleteWhatsAppFile(mediaUrl);
+};
 
 /**
  * Remove a conversation and the indexes that would send the next inbound back
