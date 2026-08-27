@@ -70,7 +70,8 @@ export const sendOwnerAlert = async (
     companyId: string,
     kind: OwnerAlertKind,
     conversation: Conversation | null,
-    text: string
+    text: string,
+    push?: OwnerAlert['push']
 ): Promise<void> => {
     const ref = db().ref(agentPath(companyId, 'ownerAlerts')).push();
 
@@ -80,6 +81,7 @@ export const sendOwnerAlert = async (
         convId: conversation?.id || '',
         shortId: conversation?.shortId || 0,
         text,
+        ...(push ? { push } : {}),
         sentAt: Date.now(),
     };
 

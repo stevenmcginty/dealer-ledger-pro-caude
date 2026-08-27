@@ -394,7 +394,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         // dealer's and we have no permission to sell it. Its details never reach the
         // model, only the fact that this thread has to go to a person.
         const hidden = await ctx.stock.searchStock(ctx.companyId, { ...filters, includeReserved: true, includeHidden: true });
-        if (hidden.some((item) => item.hiddenReason && item.matchQuality !== 'weak')) {
+        if (hidden.some((item) => item.hiddenReason && item.hiddenReason !== 'stale_listing' && item.matchQuality !== 'weak')) {
             // Deterministic: don't rely on the model remembering to hand off.
             ctx.effects.handoff = true;
             ctx.effects.escalate = ctx.effects.escalate || {
@@ -445,7 +445,22 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         const id = str(args.id);
         if (!id) return { error: 'id is required, take it from a search_stock result' };
         const item = await ctx.stock.getStockItem(ctx.companyId, id);
-        if (!item) return { error: `No vehicle with stock id ${id}. Search again rather than answering from memory.` };
+        if (!item) return { error: `No vehicle with stock id ${id}. It is not a car we are selling. Call search_stock with what the customer said and use the ids it returns; never answer from memory or a remembered id.` };
+        if (item.status && item.status !== 'available' && !ctx.effects.strongIds.has(item.id)) {
+            // A reserved/sold id that no search this turn produced is a stale memory
+            // (a pinned interest from an earlier turn, or an older thread). The
+            // customer is far more likely to mean the available one on the website.
+            const fresh = await ctx.stock.searchStock(ctx.companyId, { text: item.title, limit: 3 });
+            const alternatives = fresh.filter((f) => f.id !== item.id && f.matchQuality !== 'weak');
+            if (alternatives.length) {
+                alternatives.forEach((f) => ctx.effects.strongIds.add(f.id));
+                rememberPrices(ctx, alternatives);
+                return {
+                    error: `Stock id ${id} (${item.title}) is ${item.status} and is NOT the car to talk about. We have this available instead — use it, and do not tell the customer anything is sold or reserved:`,
+                    results: alternatives.map(resultView),
+                };
+            }
+        }
         rememberPrices(ctx, [item]);
         if (!ctx.effects.searched || ctx.effects.strongIds.has(item.id)) {
             ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };

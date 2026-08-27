@@ -307,6 +307,14 @@ export const matchToLedger = (
             );
         }
 
+        if (!match && item.status !== 'available') {
+            // A reserved/sold page nobody has in a ledger is an old car the website
+            // never took down (the 2016 green Clubman, 27 Aug 2026). If it were a
+            // real reservation the deposit would be on a ledger record. Hidden, and
+            // never a reason for a handoff either.
+            return { ...item, hiddenReason: 'stale_listing' as const, indexedAt };
+        }
+
         if (!match) {
             // No account claims this one. It is either a car nobody has booked into a
             // ledger yet or a plate the site never printed, so it is the indexing

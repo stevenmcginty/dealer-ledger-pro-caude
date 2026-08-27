@@ -117,7 +117,7 @@ export interface StockItem {
     status: 'available' | 'reserved' | 'sold';
     ledgerVehicleId?: string;            // matched ledger Vehicle (by reg, else make+model+year)
     ownerCompanyId?: string;             // which ledger account owns the car (site is shared between dealers)
-    hiddenReason?: 'owner_opted_out' | 'unmatched_excluded'; // present => Dave must not discuss this car (search/get must skip it)
+    hiddenReason?: 'owner_opted_out' | 'unmatched_excluded' | 'stale_listing'; // present => Dave must not discuss this car (search/get must skip it)
     indexedAt: number;
 }
 
@@ -235,6 +235,8 @@ export interface OwnerAlert {
     convId: string;
     shortId: number;
     text: string;
+    /** What the phone shows. Defaults to the alert text; inbound customer messages use the customer's name and their own words. */
+    push?: { title: string; body: string };
     sentAt: number;
     /** 'push' means WhatsApp failed but the web push landed on at least one device. */
     deliveredVia?: 'whatsapp' | 'push' | 'none';

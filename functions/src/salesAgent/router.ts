@@ -53,10 +53,12 @@ import {
 } from './inboxRouting';
 import { startOutboundWhatsApp } from './startWhatsApp';
 import {
+    Channel,
     Contact,
     Conversation,
     InboundMessage,
     OutboxJob,
+    OwnerAlert,
     SalesAgentSettings,
     StockItem,
     toE164, stripUndefined } from './types';
@@ -166,6 +168,13 @@ const attachVehicle = async (companyId: string, conversation: Conversation, lead
  * alert either way; the WhatsApp only goes out if he has asked for it, or if the call
  * was short enough that it clearly never got answered.
  */
+/** The shade entry reads like the messaging app's own: the customer's name, then their words. */
+const customerPush = (conversation: Conversation, channel: Channel, text: string): OwnerAlert['push'] => {
+    const via = channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'Email';
+    const who = describeCustomer(conversation);
+    return { title: `${who} · ${via}`, body: text.trim() || (channel === 'email' ? '(no text)' : '(attachment)') };
+};
+
 const handlePhoneLead = async (
     companyId: string,
     conversation: Conversation,
@@ -308,7 +317,8 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
             companyId,
             'new_conversation',
             conversation,
-            `#${conversation.shortId} New ${msg.channel} enquiry from ${describeCustomer(conversation)}${unmatched}: ${text.slice(0, 200)}`
+            `#${conversation.shortId} New ${msg.channel} enquiry from ${describeCustomer(conversation)}${unmatched}: ${text.slice(0, 200)}`,
+            customerPush(conversation, msg.channel, text)
         );
     } else if (conversation.mode === 'agent') {
         // Follow-up on a live thread: shade + PWA badge, not another WhatsApp to Steve.
@@ -316,7 +326,8 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
             companyId,
             'inbound',
             conversation,
-            `#${conversation.shortId} ${msg.channel} from ${describeCustomer(conversation)}: ${text.slice(0, 200)}`
+            `#${conversation.shortId} ${msg.channel} from ${describeCustomer(conversation)}: ${text.slice(0, 200)}`,
+            customerPush(conversation, msg.channel, text)
         );
     }
 

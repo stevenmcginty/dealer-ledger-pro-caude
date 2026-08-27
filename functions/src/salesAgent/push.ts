@@ -104,8 +104,8 @@ export const sendOwnerPush = async (
         if (!tokens.length) return 0;
 
         const link = alertLink(alert.convId);
-        const title = pushTitle(alert, settings);
-        const body = alert.text.slice(0, alert.kind === 'draft' ? DRAFT_BODY_LIMIT : BODY_LIMIT);
+        const title = alert.push?.title || pushTitle(alert, settings);
+        const body = (alert.push?.body ?? alert.text).slice(0, alert.kind === 'draft' ? DRAFT_BODY_LIMIT : BODY_LIMIT);
 
         let delivered = 0;
         const dead: string[] = [];
