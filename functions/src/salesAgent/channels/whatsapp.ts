@@ -76,6 +76,11 @@ const graphPost = async (companyId: string, body: Record<string, unknown>): Prom
     const json = (await response.json().catch(() => ({}))) as GraphSendResponse;
 
     if (!response.ok || json.error) {
+        const code = json.error?.code;
+        if (code === 132001) throw new Error(TEMPLATE_PENDING_MESSAGE);
+        if (code === 131047 || code === 131026) {
+            throw new Error('WhatsApp could not deliver: more than 24 hours since their last message, so only an approved opener can be sent.');
+        }
         throw new Error(`WhatsApp send failed (${response.status}): ${json.error?.message || 'unknown error'}`);
     }
 
@@ -158,27 +163,164 @@ export const sendWhatsAppMedia = async (
     return result.messages?.[0]?.id || '';
 };
 
+
+// --- Template families -------------------------------------------------------
+//
+// Meta only delivers a business-initiated message as an APPROVED template, and which of
+// ours is approved changes over time (MARKETING ones sit in review for days, UTILITY
+// ones clear in minutes). So callers ask for a *family* by naming any member and the
+// sender picks whichever member Meta has actually approved, adapting the parameters.
+
+interface TemplateVariant {
+    name: string;
+    /** Map the family's canonical params onto this variant's {{n}} slots. */
+    params: (canonical: string[]) => string[];
+    /** The exact wording the customer sees, for the thread record. */
+    render: (canonical: string[]) => string;
+}
+
+const ENQUIRY_FAMILY: TemplateVariant[] = [
+    {
+        name: 'enquiry_reply',
+        params: ([name, car]) => [name || 'there', car || 'car', "It's still available and ready to view."],
+        render: ([name, car]) =>
+            `Hi ${name || 'there'}, thanks for your enquiry about the ${car || 'car'}. It's still available and ready to view. Reply here with any questions or to arrange a viewing.`,
+    },
+    {
+        name: 'enquiry_followup',
+        params: ([name, car]) => [name || 'there', car || 'car'],
+        render: ([name, car]) =>
+            `Hi ${name || 'there'}, thanks for enquiring about the ${car || 'car'}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`,
+    },
+];
+
+const MISSED_CALL_FAMILY: TemplateVariant[] = [
+    {
+        name: 'missed_call_reply',
+        params: ([dealer]) => [dealer || 'us'],
+        render: ([dealer]) =>
+            `Hi, thanks for calling ${dealer || 'us'} earlier — sorry we missed you. Which car were you calling about? Reply here and we'll get straight back to you.`,
+    },
+    {
+        name: 'missed_call_followup',
+        params: ([dealer]) => [dealer || 'us'],
+        render: ([dealer]) => `Thanks for calling ${dealer || 'us'} earlier. Which car were you calling about?`,
+    },
+];
+
+const OWNER_ALERT_FAMILY: TemplateVariant[] = [
+    {
+        name: 'owner_alert_v2',
+        params: ([text]) => [text || '-'],
+        render: ([text]) =>
+            `Update from Dave, your sales assistant, about a customer conversation in the Agent Inbox: ${text} Open the inbox to reply.`,
+    },
+    { name: 'owner_alert', params: ([text]) => [text || '-'], render: ([text]) => text || '' },
+];
+
+const FAMILIES = [ENQUIRY_FAMILY, MISSED_CALL_FAMILY, OWNER_ALERT_FAMILY];
+
+const familyOf = (templateName: string): TemplateVariant[] | null =>
+    FAMILIES.find(f => f.some(v => v.name === templateName)) || null;
+
+interface TemplateStatus { name: string; status: string; language?: string }
+
+const approvedCache = new Map<string, { at: number; names: Set<string> }>();
+const APPROVED_TTL_MS = 2 * 60_000;
+
+/** Names of the templates Meta will actually deliver right now. Cached briefly per WABA. */
+export const approvedTemplateNames = async (companyId: string): Promise<Set<string>> => {
+    const priv = await readSendPrivate(companyId);
+    const wa = priv.whatsapp;
+    if (!wa?.accessToken || !wa?.businessAccountId) return new Set();
+
+    const cached = approvedCache.get(wa.businessAccountId);
+    if (cached && Date.now() - cached.at < APPROVED_TTL_MS) return cached.names;
+
+    const res = await fetch(
+        `${GRAPH}/${wa.businessAccountId}/message_templates?fields=name,status,language&limit=200`,
+        { headers: { Authorization: `Bearer ${wa.accessToken}` } }
+    );
+    const json = (await res.json().catch(() => ({}))) as { data?: TemplateStatus[] };
+    const names = new Set(
+        (json.data || [])
+            .filter(t => t.status === 'APPROVED' && (!t.language || t.language === TEMPLATE_LANGUAGE))
+            .map(t => t.name)
+    );
+    approvedCache.set(wa.businessAccountId, { at: Date.now(), names });
+    return names;
+};
+
+export const TEMPLATE_PENDING_MESSAGE =
+    'WhatsApp opener is still awaiting Meta approval (usually a few minutes for a new template). Try again shortly.';
+
+/**
+ * Pick the approved member of the requested template's family and shape the params for
+ * it. Throws a plain-English error when Meta has approved none of them.
+ */
+export const resolveTemplate = async (
+    companyId: string,
+    templateName: string,
+    canonicalParams: string[]
+): Promise<{ name: string; params: string[]; text: string }> => {
+    const family = familyOf(templateName);
+    if (!family) return { name: templateName, params: canonicalParams, text: canonicalParams.join(' ') };
+
+    const approved = await approvedTemplateNames(companyId);
+    const variant = family.find(v => approved.has(v.name));
+    if (!variant) {
+        approvedCache.clear();
+        throw new Error(TEMPLATE_PENDING_MESSAGE);
+    }
+    return {
+        name: variant.name,
+        params: variant.params(canonicalParams).map(sanitiseTemplateParam),
+        text: variant.render(canonicalParams),
+    };
+};
+
+/** What the customer would read if this family were sent now with these params. */
+export const renderTemplateFamily = (templateName: string, canonicalParams: string[]): string => {
+    const family = familyOf(templateName);
+    return family ? family[0].render(canonicalParams) : canonicalParams.join(' ');
+};
+
 export const sendWhatsAppTemplate = async (
     companyId: string,
     to: string,
     templateName: string,
     params: string[] = []
-): Promise<string> => {
-    const components = params.length
-        ? [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: sanitiseTemplateParam(p) })) }]
+): Promise<string> => (await sendWhatsAppTemplateResolved(companyId, to, templateName, params)).providerId;
+
+export const sendWhatsAppTemplateResolved = async (
+    companyId: string,
+    to: string,
+    templateName: string,
+    params: string[] = []
+): Promise<{ providerId: string; text: string; name: string }> => {
+    const resolved = await resolveTemplate(companyId, templateName, params);
+    const components = resolved.params.length
+        ? [{ type: 'body', parameters: resolved.params.map(p => ({ type: 'text', text: p })) }]
         : [];
 
-    const result = await graphPost(companyId, {
-        to: toE164(to),
-        type: 'template',
-        template: {
-            name: templateName,
-            language: { code: TEMPLATE_LANGUAGE },
-            ...(components.length ? { components } : {}),
-        },
-    });
+    let result: GraphSendResponse;
+    try {
+        result = await graphPost(companyId, {
+            to: toE164(to),
+            type: 'template',
+            template: {
+                name: resolved.name,
+                language: { code: TEMPLATE_LANGUAGE },
+                ...(components.length ? { components } : {}),
+            },
+        });
+    } catch (error) {
+        // Our idea of "approved" was stale. Forget it so the next try re-checks Meta.
+        approvedCache.clear();
+        throw error;
+    }
 
-    return result.messages?.[0]?.id || '';
+    return { providerId: result.messages?.[0]?.id || '', text: resolved.text, name: resolved.name };
 };
 
 /** Blue ticks. Not required, but a customer who can see the message was read is a
@@ -198,11 +340,13 @@ export const whatsappSender: ChannelSender = {
         if (!(await isWhatsAppLiveFor(companyId))) {
             throw new Error('WhatsApp is not live yet (Meta verification pending), so this message was not sent.');
         }
-        const providerId = job.templateName
-            ? await sendWhatsAppTemplate(companyId, job.to, job.templateName, job.templateParams || [])
-            : job.media
-                ? await sendWhatsAppMedia(companyId, job.to, job.media, job.text || undefined)
-                : await sendWhatsAppText(companyId, job.to, job.text);
+        if (job.templateName) {
+            const sent = await sendWhatsAppTemplateResolved(companyId, job.to, job.templateName, job.templateParams || []);
+            return { providerId: sent.providerId, text: sent.text };
+        }
+        const providerId = job.media
+            ? await sendWhatsAppMedia(companyId, job.to, job.media, job.text || undefined)
+            : await sendWhatsAppText(companyId, job.to, job.text);
 
         return { providerId };
     },
@@ -442,11 +586,11 @@ export const salesAgentWhatsAppWebhook = functions
  * by the time the outbox reaches it. Kept here so the rule and the API that enforces it
  * stay in one file.
  */
-export const FALLBACK_TEMPLATE = 'enquiry_followup';
+export const FALLBACK_TEMPLATE = 'enquiry_reply';
 
 /** The approved template's wording, for the thread record. */
 export const renderFallbackTemplate = (params: string[]): string =>
-    `Hi ${params[0] || 'there'}, thanks for enquiring about the ${params[1] || 'car'}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`;
+    renderTemplateFamily(FALLBACK_TEMPLATE, params);
 
 export const templateFallbackFor = (
     firstName?: string,

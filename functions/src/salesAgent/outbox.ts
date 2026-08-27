@@ -109,7 +109,7 @@ export const sendNow = async (
 
     if (!sender) throw new Error(`No sender for channel ${prepared.channel}`);
 
-    const { providerId } = await sender.send(prepared.companyId, {
+    const { providerId, text: sentText } = await sender.send(prepared.companyId, {
         to: prepared.to,
         text: prepared.text,
         subject: prepared.subject,
@@ -124,7 +124,7 @@ export const sendNow = async (
         await appendMessage(prepared.companyId, conversation, {
             direction: 'out',
             channel: prepared.channel,
-            text: prepared.text,
+            text: sentText || prepared.text,
             from: prepared.from || from,
             providerId,
             subject: prepared.subject,

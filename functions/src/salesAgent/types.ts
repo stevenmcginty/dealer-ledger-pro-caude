@@ -323,7 +323,7 @@ export interface BrainResult {
 
 /** Channel adapters implement this. */
 export interface ChannelSender {
-    send(companyId: string, job: Pick<OutboxJob, 'to' | 'text' | 'subject' | 'emailThreadId' | 'templateName' | 'templateParams' | 'media'>): Promise<{ providerId: string }>;
+    send(companyId: string, job: Pick<OutboxJob, 'to' | 'text' | 'subject' | 'emailThreadId' | 'templateName' | 'templateParams' | 'media'>): Promise<{ providerId: string; text?: string }>;
 }
 
 export const normaliseAddress = (channel: Channel, address: string): string => {

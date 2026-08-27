@@ -7,7 +7,7 @@
  * Chris's portal sends from the same Radlett number as Steve's.
  *
  * A first message to someone new is outside Meta's 24-hour window, so it has
- * to be an approved template (`enquiry_followup`). Free text waits until they
+ * to be an approved template (the `enquiry_reply` family, whichever member Meta has approved). Free text waits until they
  * reply. Nothing is sent while `whatsappLive` is off; the thread is still
  * opened so the button works before verification.
  */

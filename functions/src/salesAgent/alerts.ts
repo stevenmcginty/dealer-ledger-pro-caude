@@ -21,7 +21,7 @@ import { sendOwnerPush, sendPushToCompanyAndInbox } from './push';
 import { Conversation, OwnerAlert, OwnerAlertKind, SalesAgentSettings, stripUndefined } from './types';
 
 /** Approved template used when Steve has not messaged the number for over 24 hours. */
-export const OWNER_ALERT_TEMPLATE = 'owner_alert';
+export const OWNER_ALERT_TEMPLATE = 'owner_alert_v2';
 
 /** Set by the router every time a message arrives from the owner's number. */
 export const recordOwnerInbound = async (companyId: string): Promise<void> => {
