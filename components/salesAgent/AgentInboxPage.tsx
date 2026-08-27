@@ -39,6 +39,7 @@ import {
     deleteAgentConversation,
     deleteAgentMessage,
     discardAgentDraft,
+    draftNow,
     formatAgentTime,
     instructAgent,
     instructionText,
@@ -66,6 +67,7 @@ import {
     conversationsForFilter,
     groupConversations,
     groupHasChannel,
+    partitionSharedGroups,
 } from '../../utils/agentInboxGroups';
 import { dismissConversationNotifications } from '../../utils/inboxNotify';
 import {
@@ -92,6 +94,25 @@ const defaultSendVia = (conv: Conversation): Exclude<SendVia, 'auto'> => {
 };
 
 const homeOf = (conv: Conversation, fallback: string): string => conv.companyId || fallback;
+
+/** Steve's choice to reveal the other ledger's leads, remembered on this phone. */
+const SHOW_OTHER_LEDGER_KEY = 'agentInbox.showOtherLedger';
+
+const readShowOtherLedger = (): boolean => {
+    try {
+        return window.localStorage.getItem(SHOW_OTHER_LEDGER_KEY) === '1';
+    } catch {
+        return false;
+    }
+};
+
+const writeShowOtherLedger = (on: boolean): void => {
+    try {
+        window.localStorage.setItem(SHOW_OTHER_LEDGER_KEY, on ? '1' : '0');
+    } catch {
+        // Private mode etc. — the toggle still works for this visit.
+    }
+};
 
 /** A failure shown under the compose bar: plain English up front, the technical bit behind a toggle. */
 type InlineError = { message: string; detail?: string };
@@ -200,23 +221,29 @@ const avatarTone = (name: string, whatsapp: boolean): string => {
     return tones[name.split('').reduce((n, c) => n + c.charCodeAt(0), 0) % tones.length];
 };
 
+/** Tiny muted channel glyphs — quieter than pills, still tells Steve how they talk. */
+const ChannelGlyphs: React.FC<{ channels: Channel[] }> = ({ channels }) => (
+    <span className="inline-flex flex-shrink-0 translate-y-[2px] items-center gap-1 text-[#8696a0]" aria-hidden>
+        {channels.includes('whatsapp') && <WhatsAppIcon className="h-3.5 w-3.5" />}
+        {channels.includes('email') && <EnvelopeIcon className="h-3.5 w-3.5" />}
+        {channels.includes('sms') && <PhoneIcon className="h-3.5 w-3.5" />}
+    </span>
+);
+
 const GroupRow: React.FC<{
     group: CustomerGroup;
     active: boolean;
     onClick: () => void;
 }> = ({ group, active, onClick }) => {
     const wa = group.channels.includes('whatsapp');
+    const attention = group.waiting ? 'Needs you' : group.pending ? 'Draft' : group.escalated ? 'Escalated' : null;
 
     return (
         <button
             type="button"
             onClick={onClick}
-            className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
-                active
-                    ? 'bg-[#2a3942]'
-                    : group.waiting || group.pending
-                        ? 'bg-amber-950/25 hover:bg-amber-950/40'
-                        : 'hover:bg-white/[0.04]'
+            className={`flex min-h-[44px] w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
+                active ? 'bg-[#2a3942]' : 'hover:bg-white/[0.04]'
             }`}
         >
             <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarTone(group.name, wa)}`}>
@@ -229,24 +256,75 @@ const GroupRow: React.FC<{
                         {formatAgentTime(group.updatedAt)}
                     </span>
                 </div>
-                <p className={`mt-0.5 truncate text-[13px] ${group.unread ? 'font-medium text-[#e9edef]' : 'text-[#8696a0]'}`}>
-                    {group.preview || 'No messages yet'}
-                </p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                    {group.channels.map(ch => <ChannelChip key={ch} channel={ch} compact />)}
-                    {group.shared && (
-                        <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-[#8696a0]">Shared</span>
-                    )}
-                    {group.waiting && <span className="text-[10px] font-medium text-amber-300">Needs you</span>}
-                    {group.pending && !group.waiting && <span className="text-[10px] font-medium text-amber-300">Draft</span>}
+                <div className="mt-0.5 flex items-center gap-2">
+                    <p className={`min-w-0 flex-1 truncate text-[13px] ${group.unread ? 'font-medium text-[#e9edef]' : 'text-[#8696a0]'}`}>
+                        <ChannelGlyphs channels={group.channels} />
+                        <span className="ml-1.5">{group.preview || 'No messages yet'}</span>
+                    </p>
+                    {attention ? (
+                        <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                            {attention}
+                        </span>
+                    ) : group.unread > 0 ? (
+                        <span className="flex h-5 min-w-[1.25rem] flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-bold text-[#111b21]">
+                            {group.unread > 99 ? '99+' : group.unread}
+                        </span>
+                    ) : null}
                 </div>
+                {group.shared && (
+                    <span className="mt-1 inline-flex rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-[#8696a0]">
+                        Other ledger
+                    </span>
+                )}
             </div>
-            {group.unread > 0 && (
-                <span className="flex h-5 min-w-[1.25rem] flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-bold text-[#111b21]">
-                    {group.unread > 99 ? '99+' : group.unread}
-                </span>
-            )}
         </button>
+    );
+};
+
+/**
+ * WhatsApp-style delivery state on an outbound bubble.
+ * `delivery` from the webhook wins; a provider id alone still proves 'sent'
+ * (older messages predate the receipts). A brand-new message with neither is
+ * in flight; anything older with neither stays neutral — never "failed".
+ */
+const deliveryStateOf = (message: AgentMessage): 'sent' | 'delivered' | 'read' | 'failed' | 'pending' | null => {
+    if (message.direction !== 'out') return null;
+    if (message.delivery) return message.delivery;
+    if (message.providerId) return 'sent';
+    if (Date.now() - (message.createdAt || 0) < 5 * 60_000) return 'pending';
+    return null;
+};
+
+const DeliveryTicks: React.FC<{ message: AgentMessage }> = ({ message }) => {
+    const state = deliveryStateOf(message);
+    if (!state) return null;
+    if (state === 'pending') {
+        return (
+            <svg viewBox="0 0 16 16" className="inline h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.4" aria-label="Sending" role="img">
+                <circle cx="8" cy="8" r="5.6" />
+                <path d="M8 5v3.2l2.1 1.3" strokeLinecap="round" />
+            </svg>
+        );
+    }
+    if (state === 'failed') {
+        return <ExclamationTriangleIcon className="inline h-3 w-3 text-red-300" aria-label="Not delivered" />;
+    }
+    const label = state === 'read' ? 'Read' : state === 'delivered' ? 'Delivered' : 'Sent';
+    return (
+        <svg
+            viewBox="0 0 18 12"
+            className={`inline h-3 w-[18px] ${state === 'read' ? 'text-[#53bdeb]' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            role="img"
+            aria-label={label}
+        >
+            <path d="M1.5 6.5 5 10 11.5 3" />
+            {state !== 'sent' && <path d="M8 8 10 10 16.5 3" />}
+        </svg>
     );
 };
 
@@ -254,8 +332,11 @@ const MessageBubble: React.FC<{
     message: AgentMessage;
     agentName: string;
     mixed: boolean;
+    showAuthor: boolean;
+    selected: boolean;
+    onToggleSelect: () => void;
     onDelete: () => void;
-}> = ({ message, agentName, mixed, onDelete }) => {
+}> = ({ message, agentName, mixed, showAuthor, selected, onToggleSelect, onDelete }) => {
     const mine = message.from !== 'customer';
     const fromOwner = message.from === 'owner';
     const instruction = instructionText(message);
@@ -263,9 +344,23 @@ const MessageBubble: React.FC<{
     const wa = message.channel === 'whatsapp';
     const email = message.channel === 'email';
 
+    const trashClass = `flex-shrink-0 p-1 text-[#8696a0] transition-opacity hover:text-red-400 ${
+        selected ? 'opacity-100' : 'pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'
+    }`;
+    const deleteBtn = (label: string) => (
+        <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            aria-label={label}
+            className={trashClass}
+        >
+            <TrashIcon className="h-3.5 w-3.5" />
+        </button>
+    );
+
     if (bounce) {
         return (
-            <div className="group flex items-center justify-center gap-2">
+            <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
                 <div className="max-w-[90%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
                     <span className="font-medium text-red-300/90">Email bounced</span>
                     <span className="mx-1.5 opacity-50">·</span>
@@ -274,30 +369,24 @@ const MessageBubble: React.FC<{
                         <p className="mt-1 whitespace-pre-wrap break-words text-left font-mono text-[10.5px] leading-relaxed text-[#8696a0]">{bounce}</p>
                     </Disclosure>
                 </div>
-                <button type="button" onClick={onDelete} aria-label="Delete this note" className="flex-shrink-0 p-1 text-[#8696a0] hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100">
-                    <TrashIcon className="h-3.5 w-3.5" />
-                </button>
+                {deleteBtn('Delete this note')}
             </div>
         );
     }
 
     if (instruction) {
         return (
-            <div className="group flex items-center justify-center gap-2">
+            <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
                 <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
                     <span className="font-medium text-[#e9edef]/70">You told {agentName}:</span> {instruction}
                 </p>
-                <button type="button" onClick={onDelete} aria-label="Delete this note" className="flex-shrink-0 p-1 text-[#8696a0] hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100">
-                    <TrashIcon className="h-3.5 w-3.5" />
-                </button>
+                {deleteBtn('Delete this note')}
             </div>
         );
     }
 
     const bubble = !mine
-        ? email
-            ? 'rounded-tl-sm bg-[#1c2d4a] text-[#e9edef]'
-            : 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
+        ? 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
         : fromOwner
             ? 'rounded-tr-sm bg-emerald-800 text-white'
             : wa
@@ -307,9 +396,9 @@ const MessageBubble: React.FC<{
                     : 'rounded-tr-sm bg-brand-700 text-white';
 
     return (
-        <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
+        <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`} onClick={onToggleSelect}>
             <div className="max-w-[78%] sm:max-w-[70%]">
-                {mine && (
+                {mine && showAuthor && (
                     <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-300' : wa ? 'text-[#25d366]' : 'text-sky-300'}`}>
                         {fromOwner ? 'You' : agentName}
                     </p>
@@ -348,13 +437,17 @@ const MessageBubble: React.FC<{
                         {message.text && message.text !== '[photo]' && message.text !== '[video]' && message.text !== '[document]' && (
                             <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">{message.text}</p>
                         )}
-                        <p className={`mt-1 text-[10px] ${mine ? 'text-right text-white/50' : 'text-[#8696a0]'}`}>
+                        <p className={`mt-1 flex items-center gap-1 text-[10px] ${mine ? 'justify-end text-white/50' : 'text-[#8696a0]'}`}>
                             {formatAgentTime(message.createdAt)}
+                            {mine && <DeliveryTicks message={message} />}
                         </p>
+                        {mine && message.delivery === 'failed' && (
+                            <p className="mt-0.5 text-right text-[10px] font-medium text-red-300">
+                                Not delivered{message.deliveryError ? ` — ${message.deliveryError}` : ''}
+                            </p>
+                        )}
                     </div>
-                    <button type="button" onClick={onDelete} aria-label="Delete this message" className="flex-shrink-0 p-1 text-[#8696a0] hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100">
-                        <TrashIcon className="h-3.5 w-3.5" />
-                    </button>
+                    {deleteBtn('Delete this message')}
                 </div>
             </div>
         </div>
@@ -381,6 +474,7 @@ const AgentInboxPage = () => {
     const [changingMode, setChangingMode] = useState(false);
     const [agentName, setAgentName] = useState('Dave');
     const [draftText, setDraftText] = useState('');
+    const [promptText, setPromptText] = useState('');
     const [draftBusy, setDraftBusy] = useState<'' | 'approve' | 'discard'>('');
     const [replyMode, setReplyMode] = useState<'human' | 'agent'>('agent');
     const [sendVia, setSendVia] = useState<Exclude<SendVia, 'auto'>>('email');
@@ -396,6 +490,19 @@ const AgentInboxPage = () => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [answerMode, setAnswerMode] = useState(true);
     const [detailsOpen, setDetailsOpen] = useState(false);
+    const [showOther, setShowOther] = useState(readShowOtherLedger);
+    const [selectedMsgKey, setSelectedMsgKey] = useState<string | null>(null);
+    const [bannerCollapsed, setBannerCollapsed] = useState(false);
+    /** draftNow in flight ('working') or fell over ('failed') — never blocks typing. */
+    const [drafting, setDrafting] = useState<null | 'working' | 'failed'>(null);
+    const draftTriedRef = useRef<Set<string>>(new Set());
+
+    const toggleShowOther = useCallback(() => {
+        setShowOther(on => {
+            writeShowOtherLedger(!on);
+            return !on;
+        });
+    }, []);
 
     const threadRef = useRef<HTMLDivElement>(null);
     const replyBoxRef = useRef<HTMLTextAreaElement>(null);
@@ -439,10 +546,16 @@ const AgentInboxPage = () => {
         return merged;
     }, [own, shared]);
 
+    const allGroups = useMemo(
+        () => groupConversations(conversations, companyId || undefined),
+        [conversations, companyId]
+    );
+    const otherLedgerCount = useMemo(() => partitionSharedGroups(allGroups).other.length, [allGroups]);
+
     const groups = useMemo(() => {
-        const all = groupConversations(conversations, companyId || undefined);
+        const base = showOther ? allGroups : partitionSharedGroups(allGroups).mine;
         const q = query.trim().toLowerCase();
-        return all.filter(group => {
+        return base.filter(group => {
             if (!groupHasChannel(group, filter)) return false;
             if (!q) return true;
             return (
@@ -455,7 +568,7 @@ const AgentInboxPage = () => {
                 )
             );
         });
-    }, [conversations, companyId, filter, query]);
+    }, [allGroups, showOther, filter, query]);
 
     const linkHandled = useRef(false);
     useEffect(() => {
@@ -467,14 +580,16 @@ const AgentInboxPage = () => {
 
     useEffect(() => onAgentConversationRequest(setActiveConvId), []);
 
+    // Resolved against every group (not the visible list) so a notification
+    // link still opens a thread the shared-ledger toggle is hiding.
     const activeGroup = useMemo(() => {
         if (activeGroupId) {
-            const byId = groups.find(g => g.id === activeGroupId);
+            const byId = allGroups.find(g => g.id === activeGroupId);
             if (byId) return byId;
         }
-        if (activeConvId) return groups.find(g => g.conversations.some(c => c.id === activeConvId)) || null;
+        if (activeConvId) return allGroups.find(g => g.conversations.some(c => c.id === activeConvId)) || null;
         return null;
-    }, [groups, activeGroupId, activeConvId]);
+    }, [allGroups, activeGroupId, activeConvId]);
 
     const threadConversations = useMemo(() => {
         if (!activeGroup) return [];
@@ -513,6 +628,9 @@ const AgentInboxPage = () => {
         setMenuOpen(false);
         setAnswerMode(true);
         setDetailsOpen(false);
+        setSelectedMsgKey(null);
+        setBannerCollapsed(false);
+        setDrafting(null);
         const unsubs = activeGroup.conversations.map(conv => {
             const home = homeOf(conv, companyId);
             void markConversationRead(home, conv.id).catch(() => undefined);
@@ -527,6 +645,10 @@ const AgentInboxPage = () => {
     const draftId = active?.pendingDraft?.id || '';
     useEffect(() => {
         setDraftText(active?.pendingDraft?.text || '');
+        // The prompt that produced this draft stays amendable, so a tweak-and-
+        // re-run never means retyping. Unprompted drafts start with a blank prompt.
+        setPromptText(active?.pendingDraft?.source === 'instruction' ? (active?.ownerAnswer?.answer || '') : '');
+        if (draftId) setPhrasingSince(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [draftId]);
 
@@ -724,10 +846,58 @@ const AgentInboxPage = () => {
         }
     }, [companyId, active, draftBusy, toast]);
 
-    const handleAskForChanges = useCallback(() => {
-        setReplyMode('agent');
-        replyBoxRef.current?.focus();
-    }, []);
+    /**
+     * Ask the backend to draft a reply to whatever the customer is waiting on.
+     * Benign refusals (already drafted, paused, nothing waiting) stay silent;
+     * a real failure only shows a quiet retry line — never a blocked thread.
+     */
+    const requestDraft = useCallback(async (conv: Conversation, force = false) => {
+        if (!companyId) return;
+        setDrafting('working');
+        try {
+            await draftNow(homeOf(conv, companyId), conv.id, force);
+            setDrafting(null);
+        } catch {
+            setDrafting('failed');
+        }
+    }, [companyId]);
+
+    // A thread opened with an unanswered customer message and no draft gets one
+    // written on the spot — once per thread, and never over Dave's own question.
+    useEffect(() => {
+        if (!companyId || !active) return;
+        if (active.pendingDraft || active.pendingQuestion || active.mode === 'paused') return;
+        if ((active.lastCustomerMessageAt || 0) <= (active.lastOutboundAt || 0)) return;
+        if (draftTriedRef.current.has(active.id)) return;
+        draftTriedRef.current.add(active.id);
+        void requestDraft(active);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [active?.id, companyId]);
+
+    /**
+     * Run Dave again from the vetting card. With an amended prompt it follows
+     * the prompt; with the prompt left empty it just has another go.
+     */
+    const handleReprompt = useCallback(async () => {
+        const text = promptText.trim();
+        if (!companyId || !active || sending) return;
+        setSending(true);
+        setPhrasingSince(Date.now());
+        try {
+            if (text) {
+                await instructAgent(homeOf(active, companyId), active.id, text);
+            } else {
+                await draftNow(homeOf(active, companyId), active.id, true);
+                setPhrasingSince(null);
+            }
+            setSendError(null);
+        } catch (err: any) {
+            setPhrasingSince(null);
+            setSendError(describeError(err, `Could not pass that on to ${agentName}.`));
+        } finally {
+            setSending(false);
+        }
+    }, [companyId, active, promptText, sending, agentName]);
 
     const handleWhatsAppHer = useCallback(async () => {
         if (!companyId || !active || sending) return;
@@ -768,14 +938,15 @@ const AgentInboxPage = () => {
         [leads, active]
     );
 
+    // Tab counts match what the list actually shows for the current toggle.
     const counts = useMemo(() => {
-        const all = groupConversations(conversations, companyId || undefined);
+        const base = showOther ? allGroups : partitionSharedGroups(allGroups).mine;
         return {
-            all: all.length,
-            whatsapp: all.filter(g => groupHasChannel(g, 'whatsapp')).length,
-            email: all.filter(g => groupHasChannel(g, 'email')).length,
+            all: base.length,
+            whatsapp: base.filter(g => groupHasChannel(g, 'whatsapp')).length,
+            email: base.filter(g => groupHasChannel(g, 'email')).length,
         };
-    }, [conversations, companyId]);
+    }, [allGroups, showOther]);
 
     if (!companyId || own === null) {
         return (
@@ -789,11 +960,16 @@ const AgentInboxPage = () => {
     const phoneOnFile = active ? (conversationPhone(active) || phoneFromThread(active)) : undefined;
     const emailOnFile = active ? conversationEmail(active) : undefined;
     const bounced = !!(active && threadLooksBounced(active, messages));
+    const whatsappAlreadySent = messages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
     const whatsappNeedsOpener = !!phoneOnFile && !(active?.lastCustomerMessageAt);
     const asking = !!active?.pendingQuestion && answerMode;
+    const vetting = !asking && !!active?.pendingDraft;
+    /** Where an approved draft will go out — WhatsApp once the email route is dead. */
+    const draftChannel: Channel = active ? (bounced && phoneOnFile ? 'whatsapp' : active.channel) : 'email';
+    const canChooseChannel = !!phoneOnFile && !!emailOnFile;
     const tabs: Array<{ id: InboxFilter; label: string; count: number; accent?: string }> = [
         { id: 'all', label: 'All', count: counts.all },
-        { id: 'whatsapp', label: inbox ? 'WhatsApp · Shared' : 'WhatsApp', count: counts.whatsapp, accent: 'text-[#25d366]' },
+        { id: 'whatsapp', label: 'WhatsApp', count: counts.whatsapp, accent: 'text-[#25d366]' },
         { id: 'email', label: 'Email', count: counts.email, accent: 'text-sky-300' },
     ];
 
@@ -851,12 +1027,6 @@ const AgentInboxPage = () => {
                     ))}
                 </div>
 
-                {filter === 'whatsapp' && inbox && (
-                    <p className="px-4 pb-2 text-[11px] text-[#25d366]/80">
-                        Every WhatsApp to the shared number, whichever Dealer Ledger user is signed in.
-                    </p>
-                )}
-
                 <div className="px-3 pb-2">
                     <label className="flex items-center gap-2 rounded-lg bg-[#202c33] px-3 py-2">
                         <MagnifyingGlassIcon className="h-4 w-4 text-[#8696a0]" />
@@ -868,6 +1038,29 @@ const AgentInboxPage = () => {
                         />
                     </label>
                 </div>
+
+                {otherLedgerCount > 0 && (
+                    <div className="px-3 pb-1">
+                        <button
+                            type="button"
+                            onClick={toggleShowOther}
+                            aria-pressed={showOther}
+                            className="flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-[12px] font-medium text-[#8696a0] transition-colors hover:bg-white/5 hover:text-white"
+                        >
+                            <span>
+                                Other ledger&apos;s leads
+                                {!showOther && (
+                                    <span className="ml-1.5 rounded-full bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-semibold text-[#e9edef]">
+                                        {otherLedgerCount} hidden
+                                    </span>
+                                )}
+                            </span>
+                            <span className={showOther ? 'font-semibold text-[#e9edef]' : ''}>
+                                {showOther ? 'Hide' : 'Show'}
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 <div className="min-h-0 flex-1 overflow-y-auto">
                     {groups.length === 0 ? (
@@ -907,23 +1100,25 @@ const AgentInboxPage = () => {
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
                                         <h2 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-white">{activeGroup.name}</h2>
-                                        {active.escalated && <Badge size="sm" variant="danger">Escalated</Badge>}
+                                        {active.escalated && !bounced && <Badge size="sm" variant="danger">Escalated</Badge>}
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-1.5 text-[12px] leading-tight text-[#8696a0]">
-                                        <span className="flex flex-shrink-0 items-center gap-1">
-                                            {(threadConversations.length ? threadConversations : activeGroup.conversations).map(conv => (
-                                                <button
-                                                    key={conversationRefKey(conv)}
-                                                    type="button"
-                                                    onClick={() => setActiveConvId(conv.id)}
-                                                    aria-label={`Show the ${CHANNEL_LABELS[conv.channel] || conv.channel} thread`}
-                                                    aria-pressed={conv.id === active.id}
-                                                    className={`rounded-full ${conv.id === active.id ? 'ring-1 ring-white/40' : 'opacity-60'}`}
-                                                >
-                                                    <ChannelChip channel={conv.channel} compact />
-                                                </button>
-                                            ))}
-                                        </span>
+                                        {(threadConversations.length ? threadConversations : activeGroup.conversations).length > 1 && (
+                                            <span className="flex flex-shrink-0 items-center gap-1">
+                                                {(threadConversations.length ? threadConversations : activeGroup.conversations).map(conv => (
+                                                    <button
+                                                        key={conversationRefKey(conv)}
+                                                        type="button"
+                                                        onClick={() => setActiveConvId(conv.id)}
+                                                        aria-label={`Show the ${CHANNEL_LABELS[conv.channel] || conv.channel} thread`}
+                                                        aria-pressed={conv.id === active.id}
+                                                        className={`rounded-full ${conv.id === active.id ? 'ring-1 ring-white/40' : 'opacity-60'}`}
+                                                    >
+                                                        <ChannelChip channel={conv.channel} compact />
+                                                    </button>
+                                                ))}
+                                            </span>
+                                        )}
                                         {active.vehicleInterest?.title ? (
                                             <span className="flex min-w-0 items-center gap-1">
                                                 <CarIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25d366]" />
@@ -949,19 +1144,6 @@ const AgentInboxPage = () => {
                                         </button>
                                     </div>
                                 </div>
-                                {phoneOnFile && active.channel === 'email' && !bounced && (
-                                    <button
-                                        type="button"
-                                        onClick={handleWhatsAppHer}
-                                        disabled={sending}
-                                        aria-label="Send WhatsApp"
-                                        title="Send WhatsApp"
-                                        className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#25d366] text-[13px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50 sm:w-auto sm:px-3.5"
-                                    >
-                                        <WhatsAppIcon className="h-5 w-5 sm:h-4 sm:w-4" />
-                                        <span className="hidden sm:inline">WhatsApp</span>
-                                    </button>
-                                )}
                                 <button
                                     type="button"
                                     onClick={() => setMenuOpen(o => !o)}
@@ -1071,10 +1253,34 @@ const AgentInboxPage = () => {
                             )}
                         </div>
 
-                        {bounced && (
-                            <div className="border-b border-white/5 border-l-2 border-l-red-400/80 bg-[#141c22] px-4 py-3">
-                                <p className="text-[13px] font-semibold text-white">Email bounced — {phoneOnFile ? 'reach them on WhatsApp instead' : 'no other way through'}</p>
-                                <p className="mt-0.5 text-[12px] leading-snug text-[#8696a0]">
+                        {bounced && (whatsappAlreadySent || bannerCollapsed ? (
+                            /* Handled or put away: one quiet line, the chat gets the screen back. */
+                            <div className="flex items-center gap-2 border-b border-white/5 bg-[#141c22] px-4 py-1.5">
+                                {phoneOnFile ? (
+                                    <WhatsAppIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25d366]" />
+                                ) : (
+                                    <ExclamationTriangleIcon className="h-3.5 w-3.5 flex-shrink-0 text-red-300" />
+                                )}
+                                <p className="min-w-0 flex-1 truncate text-[12px] text-[#8696a0]">
+                                    {phoneOnFile
+                                        ? whatsappAlreadySent
+                                            ? 'Email bounces — this thread runs on WhatsApp now.'
+                                            : 'Email bounces — replies go by WhatsApp.'
+                                        : 'Email bounces — no number on file either.'}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="relative border-b border-white/5 border-l-2 border-l-red-400/80 bg-[#141c22] px-4 py-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setBannerCollapsed(true)}
+                                    aria-label="Put this notice away"
+                                    className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
+                                >
+                                    <XMarkIcon className="h-4 w-4" />
+                                </button>
+                                <p className="pr-8 text-[13px] font-semibold text-white">Email bounced — {phoneOnFile ? 'reach them on WhatsApp instead' : 'no other way through'}</p>
+                                <p className="mt-0.5 pr-8 text-[12px] leading-snug text-[#8696a0]">
                                     {emailOnFile ? `${emailOnFile} is undeliverable` : 'Their address is undeliverable'}
                                     {active.emailBounce?.reason ? ` (${active.emailBounce.reason})` : ''}.
                                     {phoneOnFile ? ' Email replies are switched off for this thread.' : ' No mobile number on file.'}
@@ -1096,7 +1302,7 @@ const AgentInboxPage = () => {
                                     </div>
                                 )}
                             </div>
-                        )}
+                        ))}
 
                         {active.pendingQuestion && (
                             <div className="border-b border-white/5 border-l-2 border-l-amber-400/80 bg-[#141c22] px-4 py-3">
@@ -1118,43 +1324,18 @@ const AgentInboxPage = () => {
                             </div>
                         )}
 
-                        {active.pendingDraft && (
-                            <div className="border-b border-white/5 border-l-2 border-l-amber-400/80 bg-[#141c22] px-4 py-3">
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-300">{agentName} drafted a reply — your approval needed</p>
-                                <p className="mt-0.5 text-[11px] text-[#8696a0]">
-                                    Written {formatAgentTime(active.pendingDraft.createdAt)} · nothing has been sent
-                                    {active.pendingDraft.subject ? ` · ${active.pendingDraft.subject}` : ''}
-                                </p>
-                                {bounced && (
-                                    <p className="mt-2 text-[12px] leading-snug text-red-300">
-                                        This looks like a reply to a bounce, not to the customer. Discard it and WhatsApp them instead.
-                                    </p>
-                                )}
-                                <textarea
-                                    rows={5}
-                                    value={draftText}
-                                    onChange={e => setDraftText(e.target.value)}
-                                    aria-label={`The reply ${agentName} has drafted`}
-                                    className="mt-3 w-full resize-y rounded-xl border-0 bg-black/30 px-3 py-2 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
-                                />
-                                <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                                    <Button size="sm" variant="primary" onClick={handleApproveDraft} loading={draftBusy === 'approve'} disabled={!draftText.trim() || !!draftBusy}>
-                                        Approve &amp; send
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={handleAskForChanges} disabled={!!draftBusy}>
-                                        Ask {agentName} to change…
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={handleDiscardDraft} loading={draftBusy === 'discard'} disabled={!!draftBusy} className="ml-auto text-[#8696a0]">
-                                        Discard
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-
-                        {active.escalated && active.escalationReason && !active.pendingQuestion && (
+                        {active.escalated && active.escalationReason && !active.pendingQuestion && !bounced && !bannerCollapsed && (
                             <div className="flex items-start gap-2.5 border-b border-white/5 border-l-2 border-l-red-400/80 bg-[#141c22] px-4 py-3">
                                 <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-300" />
-                                <p className="text-[13px] leading-snug text-[#e9edef]">{active.escalationReason}</p>
+                                <p className="min-w-0 flex-1 text-[13px] leading-snug text-[#e9edef]">{active.escalationReason}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => setBannerCollapsed(true)}
+                                    aria-label="Put this notice away"
+                                    className="-mr-1 -mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
+                                >
+                                    <XMarkIcon className="h-4 w-4" />
+                                </button>
                             </div>
                         )}
 
@@ -1168,15 +1349,23 @@ const AgentInboxPage = () => {
                             }}
                         >
                             {messages.length ? (
-                                messages.map(message => (
-                                    <MessageBubble
-                                        key={`${conversationRefKey(message.conv)}:${message.id}`}
-                                        message={message}
-                                        agentName={agentName}
-                                        mixed={mixed}
-                                        onDelete={() => setPendingDelete({ kind: 'message', message, conv: message.conv })}
-                                    />
-                                ))
+                                messages.map((message, i) => {
+                                    const key = `${conversationRefKey(message.conv)}:${message.id}`;
+                                    const prev = messages[i - 1];
+                                    const showAuthor = !prev || prev.from !== message.from;
+                                    return (
+                                        <MessageBubble
+                                            key={key}
+                                            message={message}
+                                            agentName={agentName}
+                                            mixed={mixed}
+                                            showAuthor={showAuthor}
+                                            selected={selectedMsgKey === key}
+                                            onToggleSelect={() => setSelectedMsgKey(k => (k === key ? null : key))}
+                                            onDelete={() => setPendingDelete({ kind: 'message', message, conv: message.conv })}
+                                        />
+                                    );
+                                })
                             ) : (
                                 <p className="py-12 text-center text-sm text-[#8696a0]">Nothing said yet.</p>
                             )}
@@ -1196,49 +1385,62 @@ const AgentInboxPage = () => {
                                         Reply to customer<span className="hidden sm:inline"> instead</span>
                                     </button>
                                 </div>
-                            ) : (
-                                <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-black/35 p-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setReplyMode('human')}
-                                        aria-pressed={replyMode === 'human'}
-                                        className={`rounded-lg px-3 py-1.5 text-left transition-colors ${
-                                            replyMode === 'human'
-                                                ? 'bg-emerald-700 text-white shadow'
-                                                : 'text-[#8696a0] hover:text-white'
-                                        }`}
-                                    >
-                                        <span className="block text-[13px] font-semibold leading-tight">Send as you</span>
-                                        <span className={`block text-[10px] leading-tight ${replyMode === 'human' ? 'text-emerald-100/80' : 'text-[#8696a0]'}`}>
-                                            Customer sees these words
+                            ) : vetting && active.pendingDraft ? (
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <p className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-amber-300">
+                                        <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                                        <span className="truncate">
+                                            {active.pendingDraft.source === 'instruction'
+                                                ? `${agentName}'s draft, from your prompt`
+                                                : `${agentName} drafted this reply`}
                                         </span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => { if (!attachment) setReplyMode('agent'); }}
-                                        aria-pressed={replyMode === 'agent'}
-                                        disabled={!!attachment}
-                                        className={`rounded-lg px-3 py-1.5 text-left transition-colors ${
-                                            replyMode === 'agent'
-                                                ? 'bg-[#005c4b] text-white shadow'
-                                                : 'text-[#8696a0] hover:text-white disabled:opacity-40'
-                                        }`}
-                                    >
-                                        <span className="flex items-center gap-1 text-[13px] font-semibold leading-tight">
-                                            <SparklesIcon className="h-3.5 w-3.5" />
-                                            Tell {agentName}
-                                        </span>
-                                        <span className={`block text-[10px] leading-tight ${replyMode === 'agent' ? 'text-[#d1f4de]/80' : 'text-[#8696a0]'}`}>
-                                            He phrases it for you
-                                        </span>
-                                    </button>
+                                    </p>
+                                    <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                                        Not sent yet
+                                    </span>
                                 </div>
+                            ) : (
+                                <>
+                                    <div className="mb-1.5 flex gap-1 rounded-full bg-black/35 p-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setReplyMode('human')}
+                                            aria-pressed={replyMode === 'human'}
+                                            className={`flex h-9 flex-1 items-center justify-center rounded-full text-[13px] font-semibold transition-colors ${
+                                                replyMode === 'human'
+                                                    ? 'bg-[#2a3942] text-white shadow'
+                                                    : 'text-[#8696a0] hover:text-white'
+                                            }`}
+                                        >
+                                            Me
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { if (!attachment) setReplyMode('agent'); }}
+                                            aria-pressed={replyMode === 'agent'}
+                                            disabled={!!attachment}
+                                            className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+                                                replyMode === 'agent'
+                                                    ? 'bg-[#005c4b] text-white shadow'
+                                                    : 'text-[#8696a0] hover:text-white'
+                                            }`}
+                                        >
+                                            <SparklesIcon className="h-3.5 w-3.5" />
+                                            Ask {agentName}
+                                        </button>
+                                    </div>
+                                    <p className="mb-2 px-1 text-[11px] leading-tight text-[#8696a0]">
+                                        {replyMode === 'human'
+                                            ? 'You type it — the customer gets exactly your words.'
+                                            : `Prompt ${agentName} — his draft comes back for you to check first.`}
+                                    </p>
+                                </>
                             )}
 
                             {phrasingSince && (
                                 <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
                                     <Spinner className="h-3.5 w-3.5" />
-                                    {agentName} is phrasing that…
+                                    {agentName} is drafting…
                                 </p>
                             )}
 
@@ -1249,40 +1451,85 @@ const AgentInboxPage = () => {
                                 </p>
                             )}
 
-                            {!asking && phoneOnFile && !bounced && sendVia !== 'whatsapp' && replyMode === 'human' && (
-                                <button
-                                    type="button"
-                                    onClick={() => setSendVia(sendVia === 'both' ? 'email' : 'both')}
-                                    aria-pressed={sendVia === 'both'}
-                                    className={`mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${
-                                        sendVia === 'both'
-                                            ? 'bg-[#005c4b] text-white'
-                                            : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
-                                    }`}
-                                >
-                                    <span
-                                        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border ${
-                                            sendVia === 'both' ? 'border-white bg-white text-[#005c4b]' : 'border-[#8696a0]'
-                                        }`}
-                                        aria-hidden
+                            {drafting === 'working' && !vetting && !asking && (
+                                <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
+                                    <Spinner className="h-3.5 w-3.5" />
+                                    {agentName} is writing a draft — or just type your own reply.
+                                </p>
+                            )}
+                            {drafting === 'failed' && !vetting && !asking && (
+                                <p className="mb-2 flex items-center gap-2 text-xs text-[#8696a0]">
+                                    {agentName} could not draft a reply.
+                                    <button
+                                        type="button"
+                                        onClick={() => { if (active) void requestDraft(active); }}
+                                        className="font-semibold text-[#25d366] hover:underline"
                                     >
-                                        {sendVia === 'both' ? (
-                                            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-                                                <path d="M6.2 11.4 2.8 8l1.1-1.1 2.3 2.3 5.9-5.9L13.2 4.4z" />
-                                            </svg>
-                                        ) : null}
-                                    </span>
-                                    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium">
-                                        <WhatsAppIcon className="h-4 w-4 flex-shrink-0" />
-                                        <span className="truncate">Also send on WhatsApp · {displayUkPhone(phoneOnFile)}</span>
-                                    </span>
-                                </button>
+                                        Try again
+                                    </button>
+                                </p>
                             )}
 
-                            {!asking && replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
-                                <p className="mb-2 text-[11px] leading-snug text-[#8696a0]">
-                                    They have not WhatsApp&apos;d us yet, so the first message has to be the approved opener. Free text goes once they reply.
-                                </p>
+                            {!asking && !vetting && replyMode === 'human' && canChooseChannel && (
+                                <div className="mb-2 flex gap-1.5" role="radiogroup" aria-label="Send this on">
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={sendVia === 'email'}
+                                        onClick={() => setSendVia('email')}
+                                        disabled={bounced || !!attachment}
+                                        title={bounced ? 'Their email address bounces' : attachment ? 'Photos and files go by WhatsApp' : undefined}
+                                        className={`flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+                                            sendVia === 'email' ? 'bg-sky-600 text-white' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
+                                        }`}
+                                    >
+                                        <EnvelopeIcon className="h-4 w-4" />
+                                        <span className={bounced ? 'line-through' : ''}>Email</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={sendVia === 'whatsapp'}
+                                        onClick={() => setSendVia('whatsapp')}
+                                        className={`flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition-colors ${
+                                            sendVia === 'whatsapp' ? 'bg-[#25d366] text-[#111b21]' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
+                                        }`}
+                                    >
+                                        <WhatsAppIcon className="h-4 w-4" />
+                                        WhatsApp
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={sendVia === 'both'}
+                                        onClick={() => setSendVia('both')}
+                                        disabled={bounced || !!attachment}
+                                        title={bounced ? 'Their email address bounces' : attachment ? 'Photos and files go by WhatsApp' : undefined}
+                                        className={`flex h-11 flex-1 items-center justify-center rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+                                            sendVia === 'both' ? 'bg-[#005c4b] text-white' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
+                                        }`}
+                                    >
+                                        Both
+                                    </button>
+                                </div>
+                            )}
+
+                            {!asking && !vetting && replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
+                                <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
+                                    <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
+                                        They have not WhatsApp&apos;d us yet — the first message must be the approved opener. Free text goes once they reply.
+                                    </p>
+                                    {!reply.trim() && (
+                                        <button
+                                            type="button"
+                                            onClick={handleWhatsAppHer}
+                                            disabled={sending}
+                                            className="h-9 flex-shrink-0 rounded-full bg-[#25d366] px-3 text-[12px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50"
+                                        >
+                                            Send opener
+                                        </button>
+                                    )}
+                                </div>
                             )}
 
                             {attachment && (
@@ -1318,6 +1565,68 @@ const AgentInboxPage = () => {
                                         {answering ? <Spinner className="h-4 w-4" /> : 'Send answer'}
                                     </button>
                                 </div>
+                            ) : vetting && active.pendingDraft ? (
+                                <div>
+                                    {bounced && active.pendingDraft.source === 'agent' && (
+                                        <p className="mb-2 text-[12px] leading-snug text-red-300">
+                                            This may be a reply to the bounce notice, not the customer — read it before sending.
+                                        </p>
+                                    )}
+                                    <textarea
+                                        rows={4}
+                                        value={draftText}
+                                        onChange={e => setDraftText(e.target.value)}
+                                        aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
+                                        className="w-full resize-y rounded-2xl border border-amber-400/25 bg-[#2a3942] px-4 py-3 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                                    />
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            value={promptText}
+                                            onChange={e => setPromptText(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReprompt(); } }}
+                                            placeholder={`Tell ${agentName} what to change…`}
+                                            aria-label={`Your prompt to ${agentName} — amend it and run him again`}
+                                            className="h-11 min-w-0 flex-1 rounded-full bg-black/35 px-4 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/30"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleReprompt}
+                                            disabled={sending || !!draftBusy}
+                                            title={promptText.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
+                                            className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full bg-[#005c4b] px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
+                                        >
+                                            {sending ? <Spinner className="h-4 w-4" /> : <SparklesIcon className="h-4 w-4" />}
+                                            Redo
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleApproveDraft}
+                                            disabled={!draftText.trim() || !!draftBusy}
+                                            className={`flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-[14px] font-semibold transition-colors disabled:opacity-40 ${
+                                                draftChannel === 'email' ? 'bg-sky-600 text-white' : 'bg-[#25d366] text-[#111b21]'
+                                            }`}
+                                        >
+                                            {draftBusy === 'approve' ? <Spinner className="h-4 w-4" /> : (
+                                                <>
+                                                    {draftChannel === 'email'
+                                                        ? <EnvelopeIcon className="h-4 w-4" aria-hidden />
+                                                        : <WhatsAppIcon className="h-4 w-4" aria-hidden />}
+                                                    Send · {CHANNEL_LABELS[draftChannel] || draftChannel}
+                                                </>
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDiscardDraft}
+                                            disabled={!!draftBusy}
+                                            className="flex h-11 flex-shrink-0 items-center justify-center rounded-full px-4 text-[13px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-white disabled:opacity-40"
+                                        >
+                                            {draftBusy === 'discard' ? <Spinner className="h-4 w-4" /> : 'Discard'}
+                                        </button>
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="flex items-end gap-2">
                                     {phoneOnFile && sendVia !== 'email' && (
@@ -1338,6 +1647,7 @@ const AgentInboxPage = () => {
                                                     }
                                                     setAttachment(file);
                                                     setReplyMode('human');
+                                                    setSendVia('whatsapp');
                                                 }}
                                             />
                                             <button
@@ -1363,7 +1673,7 @@ const AgentInboxPage = () => {
                                             }
                                         }}
                                         placeholder={replyMode === 'agent' && !attachment
-                                            ? `Tell ${agentName} what to say…`
+                                            ? `Prompt ${agentName}…`
                                             : sendVia === 'both' ? 'Reply by email — and WhatsApp as well…'
                                                 : sendVia === 'whatsapp' ? 'Reply on WhatsApp…'
                                                     : 'Reply by email…'}
@@ -1374,21 +1684,36 @@ const AgentInboxPage = () => {
                                         type="button"
                                         onClick={attachment || replyMode === 'human' ? handleSend : handleInstruct}
                                         disabled={(!reply.trim() && !attachment) || sending}
-                                        className={`flex h-11 flex-shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold disabled:opacity-40 ${
+                                        className={`flex h-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
                                             attachment || replyMode === 'human'
-                                                ? 'min-w-[2.75rem] bg-[#25d366] text-[#111b21]'
+                                                ? sendVia === 'email'
+                                                    ? 'bg-sky-600 text-white'
+                                                    : sendVia === 'both'
+                                                        ? 'bg-[#005c4b] text-white'
+                                                        : 'bg-[#25d366] text-[#111b21]'
                                                 : 'gap-1 bg-[#005c4b] text-white'
                                         }`}
-                                        aria-label={attachment || replyMode === 'human' ? 'Send' : `Tell ${agentName}`}
+                                        aria-label={
+                                            attachment || replyMode === 'human'
+                                                ? sendVia === 'both' ? 'Send by email and WhatsApp' : sendVia === 'email' ? 'Send by email' : 'Send on WhatsApp'
+                                                : `Tell ${agentName}`
+                                        }
                                     >
                                         {sending ? <Spinner className="h-4 w-4" /> : attachment || replyMode === 'human' ? (
-                                            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-                                                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                                            </svg>
+                                            <>
+                                                {sendVia === 'email' ? (
+                                                    <EnvelopeIcon className="h-4 w-4" aria-hidden />
+                                                ) : sendVia === 'whatsapp' ? (
+                                                    <WhatsAppIcon className="h-4 w-4" aria-hidden />
+                                                ) : null}
+                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+                                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                                </svg>
+                                            </>
                                         ) : (
                                             <>
                                                 <SparklesIcon className="h-4 w-4" />
-                                                <span className="hidden sm:inline">Tell {agentName}</span>
+                                                <span>Ask {agentName}</span>
                                             </>
                                         )}
                                     </button>

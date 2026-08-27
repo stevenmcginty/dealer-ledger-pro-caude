@@ -5,6 +5,7 @@ import {
     conversationsForFilter,
     groupConversations,
     groupHasChannel,
+    partitionSharedGroups,
     phoneKey,
 } from '../utils/agentInboxGroups';
 import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../utils/agentInboxBounce';
@@ -141,6 +142,38 @@ describe('groupConversations', () => {
         expect(conversationsForFilter(groups[0], 'whatsapp').map(c => c.id)).toEqual(['wa']);
         expect(conversationsForFilter(groups[0], 'email').map(c => c.id)).toEqual(['em']);
         expect(conversationsForFilter(groups[0], 'all')).toHaveLength(2);
+    });
+});
+
+describe('partitionSharedGroups', () => {
+    it('splits other-ledger groups out so the list can hide them by default', () => {
+        const groups = groupConversations([
+            conv({ id: 'mine', companyId: 'co-a', address: '+447700900666', contact: { phone: '+447700900666' } }),
+            conv({ id: 'theirs', companyId: 'co-b', address: '+447700900777', contact: { phone: '+447700900777' } }),
+        ], 'co-a');
+        const { mine, other } = partitionSharedGroups(groups);
+        expect(mine.map(g => g.latest.id)).toEqual(['mine']);
+        expect(other.map(g => g.latest.id)).toEqual(['theirs']);
+    });
+
+    it('puts a mixed group on the other side so it is hidden with the toggle, never double-listed', () => {
+        const groups = groupConversations([
+            conv({ id: 'mine', companyId: 'co-a', address: '+447700900888', contact: { phone: '+447700900888' } }),
+            conv({ id: 'theirs', companyId: 'co-b', address: '+447700900888', contact: { phone: '+447700900888' } }),
+        ], 'co-a');
+        expect(groups).toHaveLength(1);
+        const { mine, other } = partitionSharedGroups(groups);
+        expect(mine).toHaveLength(0);
+        expect(other).toHaveLength(1);
+    });
+
+    it('hides nothing when there is no viewer company (everything counts as mine)', () => {
+        const groups = groupConversations([
+            conv({ id: 'a', companyId: 'co-b', address: '+447700900999', contact: { phone: '+447700900999' } }),
+        ]);
+        const { mine, other } = partitionSharedGroups(groups);
+        expect(mine).toHaveLength(1);
+        expect(other).toHaveLength(0);
     });
 });
 

@@ -138,6 +138,19 @@ export const groupConversations = (
     return groups;
 };
 
+/**
+ * Split groups into the viewer's own and those that live (even partly) on
+ * another ledger, so the list can hide the other ledger's leads by default.
+ */
+export const partitionSharedGroups = (
+    groups: CustomerGroup[]
+): { mine: CustomerGroup[]; other: CustomerGroup[] } => {
+    const mine: CustomerGroup[] = [];
+    const other: CustomerGroup[] = [];
+    groups.forEach(group => (group.shared ? other : mine).push(group));
+    return { mine, other };
+};
+
 export const groupHasChannel = (group: CustomerGroup, filter: InboxFilter): boolean => {
     if (filter === 'all') return true;
     return group.channels.includes(filter);
