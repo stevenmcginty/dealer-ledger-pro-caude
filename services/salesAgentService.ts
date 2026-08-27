@@ -697,6 +697,21 @@ export const sendAgentReply = (
     );
 
 /**
+ * Ask Dave to write a reply to whatever the customer last said, without sending it.
+ *
+ * For a thread opened with a message sitting in it and no draft yet — the webhook
+ * only drafts messages that arrive from now on. Returns drafted:false with a reason
+ * when there is nothing to write (already drafted, paused, nothing waiting).
+ */
+export const draftNow = (companyId: string, convId: string, force = false) =>
+    call<{ companyId: string; convId: string; force?: boolean }, { ok: true; drafted: boolean; reason?: string }>(
+        'salesAgentDraftNow',
+        { companyId, convId, ...(force ? { force } : {}) },
+        120000,
+        'Dave could not draft a reply.'
+    );
+
+/**
  * Answer the question the agent stopped to ask. The agent puts the answer into
  * its own words, so this is not sent to the customer verbatim.
  */

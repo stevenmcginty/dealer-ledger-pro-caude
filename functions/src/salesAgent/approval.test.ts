@@ -6,6 +6,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { agentTurnLimitReached, needsApproval } from './approval';
+import { awaitingReply } from './router';
 
 describe('needsApproval', () => {
     it('holds every channel when the original flag is on or missing', () => {
@@ -62,5 +63,29 @@ describe('draftOnly holds regardless of the channel setting', () => {
 
     it('leaves normal approval behaviour alone when not set', () => {
         assert.equal(holds(false, { channel: 'whatsapp' }, { emailApprovalMode: true }), true);
+    });
+});
+
+/** A message sitting unanswered is what a draft is for. */
+describe('awaitingReply', () => {
+    const cust = { direction: 'in' as const, from: 'customer' as const };
+    const out = { direction: 'out' as const, from: 'agent' as const };
+    const ownerNote = { direction: 'in' as const, from: 'owner' as const };
+
+    it('is true when the customer spoke last', () => {
+        assert.equal(awaitingReply([out, cust]), true);
+    });
+
+    it('is false once we have replied', () => {
+        assert.equal(awaitingReply([cust, out]), false);
+    });
+
+    it('is false on an empty thread', () => {
+        assert.equal(awaitingReply([]), false);
+    });
+
+    it("ignores the owner's own notes when deciding", () => {
+        assert.equal(awaitingReply([cust, out, ownerNote]), false);
+        assert.equal(awaitingReply([out, cust, ownerNote]), true);
     });
 });

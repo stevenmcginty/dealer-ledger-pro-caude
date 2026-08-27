@@ -54,6 +54,7 @@ import {
 } from './inboxRouting';
 import { startOutboundWhatsApp } from './startWhatsApp';
 import {
+    AgentMessage,
     Channel,
     Contact,
     Conversation,
@@ -1172,6 +1173,84 @@ export const salesAgentApproveDraft = functions
             return { ok: true, text, sendAfter, sent };
         } catch (error: any) {
             throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');
+        }
+    });
+
+/**
+ * Is there a customer message sitting here that nobody has answered?
+ *
+ * The last message in the thread being from the customer is the whole test: an
+ * outbound after it means it was dealt with, and a draft already waiting means
+ * there is nothing to write.
+ */
+export const awaitingReply = (
+    messages: Array<Pick<AgentMessage, 'direction' | 'from'>>
+): boolean => {
+    const last = [...messages].reverse().find(m => m.from === 'customer' || m.direction === 'out');
+    return !!last && last.from === 'customer';
+};
+
+/**
+ * Write a draft for a message that is already sitting there.
+ *
+ * The webhook drafts as messages arrive, but only from the moment that shipped —
+ * anything already waiting in the inbox would stay blank forever, and Steve opening
+ * a thread expects Dave to have had a go at it. Idempotent: an existing draft is
+ * returned rather than replaced, so opening a thread twice costs one brain call.
+ */
+export const draftNow = async (
+    companyId: string,
+    convId: string,
+    force = false
+): Promise<{ ok: true; drafted: boolean; reason?: string }> => {
+    const settings = await readSettings(companyId);
+    const conversation = await getConversation(companyId, convId);
+
+    if (!conversation) throw new Error(`Conversation ${convId} not found`);
+    if (conversation.pendingDraft && !force) return { ok: true, drafted: false, reason: 'already-drafted' };
+    if (conversation.pendingQuestion) return { ok: true, drafted: false, reason: 'agent-is-asking' };
+    if (conversation.mode === 'paused') return { ok: true, drafted: false, reason: 'paused' };
+
+    const history = await readHistory(companyId, convId);
+    if (!awaitingReply(history) && !force) return { ok: true, drafted: false, reason: 'nothing-waiting' };
+
+    const lastCustomer = [...history].reverse().find(m => m.from === 'customer');
+    if (!lastCustomer) return { ok: true, drafted: false, reason: 'nothing-waiting' };
+
+    await runAgentTurn(
+        companyId,
+        conversation,
+        {
+            companyId,
+            channel: lastCustomer.channel || conversation.channel,
+            address: conversation.address,
+            text: lastCustomer.text || '',
+            providerId: `draft-now:${convId}:${lastCustomer.id}`,
+            receivedAt: lastCustomer.createdAt || Date.now(),
+            ...(conversation.emailSubject ? { subject: conversation.emailSubject } : {}),
+        },
+        settings,
+        { draftOnly: true }
+    );
+
+    return { ok: true, drafted: true };
+};
+
+/**
+ * Ask Dave to write a reply to whatever the customer last said, without sending it.
+ *
+ * Called when a thread is opened with an unanswered message and no draft.
+ */
+export const salesAgentDraftNow = functions
+    .runWith({ secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
+        const companyId = await requireInboxAccess(context, data?.companyId);
+        const convId = String(data?.convId || '');
+
+        try {
+            return await draftNow(companyId, convId, data?.force === true);
+        } catch (error: any) {
+            throw new functions.https.HttpsError('internal', error?.message || 'Dave could not draft a reply.');
         }
     });
 
