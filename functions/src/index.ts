@@ -31,12 +31,13 @@ export { linkWebsite, unlinkWebsite, previewWebsiteSync, pushAllStockNow } from 
 export { refreshSalesAgentStock, runSalesAgentStockIndexNow } from './salesAgent/stock';
 export { salesAgentWhatsAppWebhook } from './salesAgent/channels/whatsapp';
 export { salesAgentSmsWebhook } from './salesAgent/channels/twilio';
-export { salesAgentGmailPush, salesAgentBackfillLeads } from './salesAgent/channels/gmail';
+export { salesAgentGmailPush, salesAgentBackfillLeads, salesAgentReplayEmail } from './salesAgent/channels/gmail';
 export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRenewWatch } from './salesAgent/gmailAuth';
 export { salesAgentOutboxTick } from './salesAgent/outbox';
 export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSaveSharedInbox, salesAgentStartWhatsApp, salesAgentSimulate } from './salesAgent/router';
 export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush, salesAgentPushDebug } from './salesAgent/push';
 export { pruneWhatsAppStorage } from './salesAgent/whatsappStorage';
+export { syncCompanyClaim, syncInboxClaims, refreshAuthClaims } from './auth/claims';
 
 // Health check function
 export const healthCheck = functions.https.onRequest((req, res) => {

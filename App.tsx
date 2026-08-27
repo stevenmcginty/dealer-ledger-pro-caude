@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { onAuthStateChanged, signOut, type User } from './services/firebase';
+import { ensureCompanyClaim } from './services/authClaims';
 import LoginPage from './components/auth/LoginPage';
 import LandingPage from './pages/LandingPage';
 import LedgerCore from './LedgerCore';
@@ -51,6 +52,8 @@ const App = () => {
         const unsubscribe = onAuthStateChanged(user => {
             setUser(user);
             setAuthLoading(false);
+            // Storage rules need the companyId claim on the token; set it if missing.
+            if (user) void ensureCompanyClaim(user);
         });
         return () => unsubscribe();
     }, []);

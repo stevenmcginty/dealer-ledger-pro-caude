@@ -44,7 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.pruneWhatsAppStorage = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentStartWhatsApp = exports.salesAgentSaveSharedInbox = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
+exports.healthCheck = exports.refreshAuthClaims = exports.syncInboxClaims = exports.syncCompanyClaim = exports.pruneWhatsAppStorage = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentUnregisterPush = exports.salesAgentRegisterPush = exports.salesAgentSimulate = exports.salesAgentStartWhatsApp = exports.salesAgentSaveSharedInbox = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.salesAgentOutboxTick = exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.salesAgentReplayEmail = exports.salesAgentBackfillLeads = exports.salesAgentGmailPush = exports.salesAgentSmsWebhook = exports.salesAgentWhatsAppWebhook = exports.runSalesAgentStockIndexNow = exports.refreshSalesAgentStock = exports.pushAllStockNow = exports.previewWebsiteSync = exports.unlinkWebsite = exports.linkWebsite = exports.runMotSweepNow = exports.lookupVehicleByReg = exports.syncVehicleToWebsite = exports.refreshStockMotStatus = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 // Initialize Firebase Admin
@@ -76,6 +76,7 @@ Object.defineProperty(exports, "salesAgentSmsWebhook", { enumerable: true, get: 
 var gmail_1 = require("./salesAgent/channels/gmail");
 Object.defineProperty(exports, "salesAgentGmailPush", { enumerable: true, get: function () { return gmail_1.salesAgentGmailPush; } });
 Object.defineProperty(exports, "salesAgentBackfillLeads", { enumerable: true, get: function () { return gmail_1.salesAgentBackfillLeads; } });
+Object.defineProperty(exports, "salesAgentReplayEmail", { enumerable: true, get: function () { return gmail_1.salesAgentReplayEmail; } });
 var gmailAuth_1 = require("./salesAgent/gmailAuth");
 Object.defineProperty(exports, "salesAgentGmailAuthUrl", { enumerable: true, get: function () { return gmailAuth_1.salesAgentGmailAuthUrl; } });
 Object.defineProperty(exports, "salesAgentGmailOAuthCallback", { enumerable: true, get: function () { return gmailAuth_1.salesAgentGmailOAuthCallback; } });
@@ -100,6 +101,10 @@ Object.defineProperty(exports, "salesAgentTestPush", { enumerable: true, get: fu
 Object.defineProperty(exports, "salesAgentPushDebug", { enumerable: true, get: function () { return push_1.salesAgentPushDebug; } });
 var whatsappStorage_1 = require("./salesAgent/whatsappStorage");
 Object.defineProperty(exports, "pruneWhatsAppStorage", { enumerable: true, get: function () { return whatsappStorage_1.pruneWhatsAppStorage; } });
+var claims_1 = require("./auth/claims");
+Object.defineProperty(exports, "syncCompanyClaim", { enumerable: true, get: function () { return claims_1.syncCompanyClaim; } });
+Object.defineProperty(exports, "syncInboxClaims", { enumerable: true, get: function () { return claims_1.syncInboxClaims; } });
+Object.defineProperty(exports, "refreshAuthClaims", { enumerable: true, get: function () { return claims_1.refreshAuthClaims; } });
 // Health check function
 exports.healthCheck = functions.https.onRequest((req, res) => {
     res.json({

@@ -7,6 +7,7 @@ import {
     groupHasChannel,
     phoneKey,
 } from '../utils/agentInboxGroups';
+import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../utils/agentInboxBounce';
 
 const conv = (over: Partial<Conversation>): Conversation => ({
     id: over.id || 'c1',
@@ -140,5 +141,42 @@ describe('groupConversations', () => {
         expect(conversationsForFilter(groups[0], 'whatsapp').map(c => c.id)).toEqual(['wa']);
         expect(conversationsForFilter(groups[0], 'email').map(c => c.id)).toEqual(['em']);
         expect(conversationsForFilter(groups[0], 'all')).toHaveLength(2);
+    });
+});
+
+describe('threadLooksBounced', () => {
+    it('reads the stored bounce and the Gmail failure subject', () => {
+        expect(threadLooksBounced(conv({
+            emailBounce: { address: 'jackandtash@hotmail.com', reason: 'undeliverable', at: 1 },
+        }))).toBe(true);
+        expect(threadLooksBounced(conv({
+            emailSubject: 'Delivery Status Notification (Failure)',
+        }))).toBe(true);
+        expect(threadLooksBounced(conv({
+            pendingQuestion: {
+                id: 'q',
+                question: 'Email to Natasha White-foy bounced. Please call her on +447826555653.',
+                askedAt: 1,
+                context: 'Customer email jackandtash@hotmail.com is undeliverable.',
+            },
+        }))).toBe(true);
+        expect(threadLooksBounced(conv({}))).toBe(false);
+    });
+
+    it('formats a UK mobile the way the desk reads it', () => {
+        expect(displayUkPhone('+447826555653')).toBe('07826 555 653');
+    });
+
+    it('pulls the mobile out of Dave asking you to call them', () => {
+        expect(phoneFromThread(conv({
+            channel: 'email',
+            address: 'jackandtash@hotmail.com',
+            contact: { email: 'jackandtash@hotmail.com' },
+            pendingQuestion: {
+                id: 'q',
+                question: 'Email to Natasha White-foy bounced. Please call her on +447826555653 to confirm the Mini.',
+                askedAt: 1,
+            },
+        }))).toBe('+447826555653');
     });
 });

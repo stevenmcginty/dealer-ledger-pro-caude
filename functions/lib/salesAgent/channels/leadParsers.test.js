@@ -345,4 +345,68 @@ const email = (over) => (0, leadParsers_1.parseLeadEmail)({
         node_assert_1.strict.equal(email({ from: 'dealer-leads@messages.cargurus.com', subject: 'Lead Intelligence: weekly' }).kind, 'ignore');
     });
 });
+(0, node_test_1.describe)('CarGurus chat-bot lead (HTML only, transcript comments)', () => {
+    const html = [
+        '<html><body><table><tr><td><h3>You have a new customer lead for your 2003 Porsche Boxster 3.2 S [260] 2dr Tiptronic S</h3></td></tr>',
+        '<tr><td><b>Name:</b> Harsha Peerthy</td></tr>',
+        '<tr><td><b>Email:</b> <a href="mailto:harshapeerthy@hotmail.co.uk">harshapeerthy@hotmail.co.uk</a></td></tr>',
+        '<tr><td><b>Postcode:</b></td></tr>',
+        '<tr><td><b>Customer comments:</b> Comments: Harsha would like to review the features of this vehicle Transcript: (Consumer): Regarding this 2003 Porsche Boxster (ID #9965793). (Agent): Welcome to CarGurus messaging service. (Consumer): Vehicle details (Agent): Great! (Consumer): 3 (Agent): Can I have your full name? (Consumer): Harsha Peerthy (Agent): Contact preference? (Consumer): Email or sms (Consumer): 1) 3) (Consumer): harshapeerthy@hotmail.co.uk (Consumer): Does it have a full service history? (Consumer): 2) (CarGurus deal rating: N/A / Is from deliverable listing: No)</td></tr>',
+        '<tr><td>Reg: K50ATR Reg. date: 30 May 2003 Vehicle: 2003 Porsche Boxster 3.2 S [260] 2dr Tiptronic S Stock number: 1924213 Listing price: £8,995 CarGurus Instant Market Value: N/A</td></tr>',
+        '</table></body></html>',
+    ].join('');
+    const lead = email({
+        from: 'dealer-leads@messages.cargurus.com',
+        subject: 'Lead submission from CarGurus',
+        text: '',
+        html,
+        selfEmail: 'radlettcars@gmail.com',
+    });
+    (0, node_test_1.it)('finds the customer and the car with no text part', () => {
+        node_assert_1.strict.equal(lead.kind, 'enquiry');
+        node_assert_1.strict.equal(lead.name, 'Harsha Peerthy');
+        node_assert_1.strict.equal(lead.email, 'harshapeerthy@hotmail.co.uk');
+        node_assert_1.strict.equal(lead.contactable, true);
+        node_assert_1.strict.deepEqual(lead.replyTo, { channel: 'email', address: 'harshapeerthy@hotmail.co.uk' });
+        node_assert_1.strict.equal(lead.vehicle?.stockId, '1924213');
+        node_assert_1.strict.equal(lead.vehicle?.reg, 'K50ATR');
+        node_assert_1.strict.equal(lead.vehicle?.title, '2003 Porsche Boxster 3.2 S [260] 2dr Tiptronic S');
+    });
+    (0, node_test_1.it)('boils the transcript down to what the customer wants', () => {
+        node_assert_1.strict.equal(lead.message, 'Harsha would like to review the features of this vehicle. In their words: "Does it have a full service history?"');
+    });
+});
+(0, node_test_1.describe)('Delivery failure (bounce)', () => {
+    const dsn = {
+        from: 'Mail Delivery Subsystem <mailer-daemon@googlemail.com>',
+        subject: 'Delivery Status Notification (Failure)',
+        failedRecipient: 'jackandtash@hotmail.com',
+        text: [
+            "Your message wasn't delivered to jackandtash@hotmail.com because the address couldn't be found, or is unable to receive mail.",
+            '',
+            'The response from the remote server was:',
+            '550 5.1.1 RESOLVER.ADR.RecipNotFound; Recipient not found by SMTP address lookup',
+        ].join('\n'),
+        selfEmail: SELF,
+    };
+    (0, node_test_1.it)('is a bounce, not a customer', () => {
+        node_assert_1.strict.equal((0, leadParsers_1.isDeliveryFailure)(dsn), true);
+        const lead = (0, leadParsers_1.parseLeadEmail)(dsn);
+        node_assert_1.strict.equal(lead.kind, 'bounce');
+        node_assert_1.strict.equal(lead.contactable, false);
+        node_assert_1.strict.equal(lead.email, 'jackandtash@hotmail.com');
+        node_assert_1.strict.equal(lead.bounceReason, 'address not found, or unable to receive mail');
+        node_assert_1.strict.equal(lead.replyTargets.length, 0);
+    });
+    (0, node_test_1.it)('does not treat a customer mentioning a bounce as a DSN', () => {
+        const lead = (0, leadParsers_1.parseLeadEmail)({
+            from: 'Natasha <natasha@gmail.com>',
+            subject: 'Mini convertible',
+            text: 'Hi, did my last email bounce? I still want the Mini on Friday.',
+            selfEmail: SELF,
+        });
+        node_assert_1.strict.equal(lead.kind, 'enquiry');
+        node_assert_1.strict.equal(lead.email, 'natasha@gmail.com');
+    });
+});
 //# sourceMappingURL=leadParsers.test.js.map

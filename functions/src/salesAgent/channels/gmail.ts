@@ -37,7 +37,7 @@ import {
 import { GMAIL_SECRETS, gmailClientFor, startGmailWatch } from '../gmailAuth';
 import { handleInbound } from '../router';
 import { ChannelSender, Channel, InboundMessage, extractUkMobiles, rtdbKey } from '../types';
-import { ParsedLead, crmLeadSource, parseLeadEmail } from './leadParsers';
+import { ParsedLead, crmLeadSource, htmlToText, parseLeadEmail } from './leadParsers';
 import { stripQuotedReply } from './gmailParse';
 
 // --- Reading a message ------------------------------------------------------
@@ -84,7 +84,30 @@ export const toRawEmail = (message: gmail_v1.Schema$Message, selfEmail: string) 
         messageId: message.id || undefined,
         threadId: message.threadId || undefined,
         selfEmail,
+        failedRecipient: headerValue(message, 'X-Failed-Recipients') || undefined,
+        autoSubmitted: headerValue(message, 'Auto-Submitted') || undefined,
     };
+};
+
+/**
+ * The whole email as the brain should read it: the text part if it is real, else
+ * the HTML flattened; tracking links and "do not reply" chrome dropped; capped so a
+ * newsletter-sized lead cannot swamp the prompt.
+ */
+export const FULL_EMAIL_CHARS = 4000;
+export const emailBodyForBrain = (raw: { text: string; html?: string }): string => {
+    const text = raw.text && raw.text.length > 60 && !/use an HTML compatible email viewer/i.test(raw.text)
+        ? raw.text
+        : htmlToText(raw.html) || raw.text;
+    const cleaned = text
+        .replace(/https?:\/\/\S{60,}/g, '[link]')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => !/^PLEASE DO NOT REPLY|^This is an automated email/i.test(line))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    return cleaned.length > FULL_EMAIL_CHARS ? `${cleaned.slice(0, FULL_EMAIL_CHARS)} […]` : cleaned;
 };
 
 // --- Push handling ----------------------------------------------------------
@@ -140,19 +163,25 @@ const processMessage = async (
         return;
     }
 
+    if (lead.kind === 'bounce' && !lead.email) {
+        await recordIgnored(companyId, message.id || String(Date.now()), raw.from, raw.subject, 'bounce_no_recipient');
+        return;
+    }
+
     const inbound: InboundMessage = {
         companyId,
         channel: (lead.replyTo.channel || 'email') as Channel,
         address: lead.replyTo.address || raw.from,
         text: lead.message,
         providerId: lead.correlationId ? `cazoo:${lead.correlationId}` : (message.id || ''),
-        name: lead.name,
-        subject: raw.subject,
-        emailThreadId: message.threadId || undefined,
+        name: lead.kind === 'bounce' ? undefined : lead.name,
+        subject: lead.kind === 'bounce' ? undefined : raw.subject,
+        emailThreadId: lead.kind === 'bounce' ? undefined : (message.threadId || undefined),
         extractedPhones: Array.from(new Set([
             ...(lead.phone ? [lead.phone] : []),
             ...extractUkMobiles(raw.text),
         ])),
+        fullText: emailBodyForBrain(raw),
         receivedAt: Number(message.internalDate) || Date.now(),
     };
 
@@ -448,6 +477,39 @@ const ensureLabel = async (gmail: gmail_v1.Gmail, name: string): Promise<string>
 // --- Backfill ---------------------------------------------------------------
 
 const MAX_BACKFILL_MESSAGES = 300;
+
+/**
+ * Put one Gmail message through the inbox pipeline again, exactly as the push would
+ * have. For a lead the parser got wrong the first time: fix the parser, deploy, delete
+ * the bad conversation, replay. Duplicate protection is the message's providerId.
+ */
+export const salesAgentReplayEmail = functions
+    .runWith({ secrets: [...GMAIL_SECRETS, ...BRAIN_SECRETS], timeoutSeconds: 120 })
+    .database.ref('/companies/{companyId}/salesAgent/replay/{jobId}')
+    .onCreate(async (snap, context) => {
+        const companyId = context.params.companyId as string;
+        const job = (snap.val() || {}) as { messageId?: string; dryRun?: boolean };
+        const messageId = String(job.messageId || '');
+        const report = (patch: Record<string, unknown>) => snap.ref.update({ ...patch, finishedAt: Date.now() });
+        if (!messageId) { await report({ error: 'messageId is required' }); return; }
+
+        try {
+            const [settings, priv, gmail] = await Promise.all([readSettings(companyId), readPrivate(companyId), gmailClientFor(companyId)]);
+            const selfEmail = (priv.gmail?.email || settings.emailAddress || '').toLowerCase();
+            const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+            const raw = toRawEmail(full.data, selfEmail);
+            const lead = parseLeadEmail(raw);
+            const parts = (full.data.payload?.parts || []).map(p => p.mimeType);
+            if (job.dryRun !== false) {
+                await report({ dryRun: true, from: raw.from, subject: raw.subject, textLength: raw.text.length, hasHtml: !!raw.html, mimeParts: parts, textPreview: raw.text.slice(0, 3000), bodyText: htmlToText(raw.html).slice(0, 10000), lead: JSON.parse(JSON.stringify(lead)) });
+                return;
+            }
+            await processMessage(companyId, selfEmail, full.data);
+            await report({ dryRun: false, lead: JSON.parse(JSON.stringify(lead)) });
+        } catch (error) {
+            await report({ error: (error as Error).message || String(error) });
+        }
+    });
 
 /**
  * Run the parsers over the last N days of inbox without answering anybody.

@@ -51,7 +51,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.messageOrDefault = exports.crmLeadSource = exports.isCazooReservationPhish = exports.parseLeadEmail = exports.isGenericMarketing = exports.isSalesDeskRelevant = exports.looksLikeSpam = exports.findReg = exports.isNoReplyAddress = exports.parseFromHeader = void 0;
+exports.messageOrDefault = exports.crmLeadSource = exports.isCazooReservationPhish = exports.parseLeadEmail = exports.isDeliveryFailure = exports.decipherCarGurusTranscript = exports.htmlToText = exports.isGenericMarketing = exports.isSalesDeskRelevant = exports.looksLikeSpam = exports.findReg = exports.isNoReplyAddress = exports.parseFromHeader = void 0;
 const cheerio = __importStar(require("cheerio"));
 const types_1 = require("../types");
 // --- Address handling -------------------------------------------------------
@@ -280,31 +280,104 @@ const isGenericMarketing = (subject, text, from) => {
 };
 exports.isGenericMarketing = isGenericMarketing;
 // --- Per-source parsers -----------------------------------------------------
-/** "*Name:* paul summerfield" — CarGurus writes every field this way. */
+/**
+ * "*Name:* paul summerfield" — CarGurus writes every field this way in its text
+ * part; the HTML-derived fallback (htmlToText) and newer mails carry the same
+ * labels without the asterisks, so both forms are accepted.
+ */
 const starField = (text, label) => {
-    const re = new RegExp(`\\*\\s*${label}\\s*:?\\s*\\*\\s*([^\\n]*)`, 'i');
-    return clean(text.match(re)?.[1]);
+    const starred = new RegExp(`\\*\\s*${label}\\s*:?\\s*\\*\\s*([^\\n]*)`, 'i');
+    const plain = new RegExp(`(?:^|\\n)\\s*${label}\\s*:\\s*([^\\n]*)`, 'i');
+    const sameLine = clean(text.match(starred)?.[1] ?? text.match(plain)?.[1]);
+    return sameLine || fieldBlock(text, label).split('\n').map(clean).find(Boolean) || '';
 };
+/**
+ * The HTML rendering of a CarGurus lead puts every label and its value in separate
+ * table cells, so after htmlToText they sit on separate lines. This takes everything
+ * after "*Label:*" up to the next label or section heading, which is also how the
+ * multi-line chat transcript under "Customer comments" is captured whole.
+ */
+const fieldBlock = (text, label) => {
+    const re = new RegExp(`\\*?\\s*${label}\\s*:\\s*\\*?[ \\t]*\\n?([\\s\\S]*?)(?=\\n\\s*\\*[^*\\n]{1,40}:\\*|\\n\\s*\\*(?:Listing|Seller details|Contact information)\\*|\\n\\s*(?:Reg|Vehicle|Stock number|Listing price)\\s*:|\\n\\s*View on CarGurus|$)`, 'i');
+    return (text.match(re)?.[1] || '').replace(/\r/g, '').trim();
+};
+/**
+ * A readable text body out of an HTML-only email, keeping the line structure the
+ * field parsers rely on and marking bold labels the way CarGurus' text part does.
+ */
+const htmlToText = (html) => {
+    if (!html)
+        return '';
+    const $ = cheerio.load(html);
+    $('style, script, head').remove();
+    $('b, strong').each((_, el) => { $(el).replaceWith(`*${$(el).text().trim()}*`); });
+    $('br').replaceWith('\n');
+    $('p, div, tr, li, h1, h2, h3, h4, h5, h6, table').each((_, el) => { $(el).append('\n'); });
+    $('td, th').each((_, el) => { $(el).append(' '); });
+    return $.root().text()
+        .replace(/\r/g, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+};
+exports.htmlToText = htmlToText;
+/** First email address in a body that is not ours and not a platform robot. */
+const firstCustomerEmail = (text, selfEmail) => {
+    const all = text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
+    return all
+        .map(e => e.toLowerCase())
+        .find(e => e !== (selfEmail || '').toLowerCase() && !PLATFORM_DOMAINS.some(d => e.endsWith(`@${d}`) || e.endsWith(`.${d}`)));
+};
+/**
+ * CarGurus' chat-bot leads arrive as "Comments: <summary> Transcript: (Consumer): …
+ * (Agent): …". The customer's own words are the (Consumer) turns; the menu picks,
+ * their name and their email are things the bot asked for, not what they want.
+ * What is left, with the summary in front, is the enquiry.
+ */
+const decipherCarGurusTranscript = (comments, name, email) => {
+    const m = comments.match(/^(?:Comments:\s*)?([\s\S]*?)\s*Transcript:\s*([\s\S]*)$/i);
+    if (!m)
+        return comments;
+    const summary = clean(m[1]).replace(/\.$/, '');
+    const turns = Array.from(m[2].matchAll(/\(Consumer\):\s*([\s\S]*?)(?=\s*\((?:Consumer|Agent)\):|$)/gi))
+        .map(t => clean(t[1]).replace(/\(CarGurus deal rating[^)]*\)\s*$/i, '').trim());
+    const noise = (turn) => !turn
+        || /^[\d)\s.,]+$/.test(turn)
+        || /^(vehicle details|check availability|test drive|something else|yes|no|email|phone|sms|text|email or sms)$/i.test(turn)
+        || (!!name && turn.toLowerCase() === name.toLowerCase())
+        || (!!email && turn.toLowerCase() === email.toLowerCase())
+        || /^regarding this /i.test(turn);
+    const said = turns.filter(t => !noise(t));
+    const parts = [
+        summary ? `${summary}.` : '',
+        said.length ? `In their words: "${said.join(' ')}"` : '',
+    ].filter(Boolean);
+    return clean(parts.join(' ')) || comments;
+};
+exports.decipherCarGurusTranscript = decipherCarGurusTranscript;
 const parseCarGurusLead = (raw) => {
     const text = raw.text || '';
     const name = tidyName(starField(text, 'Name'));
-    const email = clean(starField(text, 'Email')).toLowerCase() || undefined;
-    const phone = firstPhone(starField(text, 'Phone number'));
+    const email = clean(starField(text, 'Email')).toLowerCase().match(/[\w.+-]+@[\w.-]+/)?.[0]
+        || firstCustomerEmail(text, raw.selfEmail);
+    const phone = firstPhone(starField(text, 'Phone number'), starField(text, 'Phone'));
     const postcode = findPostcode(starField(text, 'Postcode')) || undefined;
-    const comments = starField(text, 'Customer comments');
+    const comments = clean(fieldBlock(text, 'Customer comments').replace(/\n+/g, ' ')) || starField(text, 'Comments');
     const preference = comments.match(/I prefer to be contacted by:\s*(Email|Phone|Text|SMS)/i)?.[1];
     // Everything from "I prefer to be contacted by" onwards is CarGurus' own boilerplate,
-    // repeated twice and followed by their deal-rating note.
-    const message = clean(comments
+    // repeated twice and followed by their deal-rating note. Chat-bot leads carry a
+    // transcript instead, boiled down to what the customer actually asked for.
+    const message = (0, exports.decipherCarGurusTranscript)(clean(comments
         .split(/I prefer to be contacted by:/i)[0]
-        .replace(/\(CarGurus deal rating[^)]*\)\s*$/i, ''));
-    const vehicleLine = text.match(/\bVehicle:\s*(.+?)\s+Stock number:/i)?.[1];
-    const headline = text.match(/###\s*You have a new customer lead for your\s*(.+?)\s*###/i)?.[1];
+        .replace(/\(CarGurus deal rating[^)]*\)\s*$/i, '')), name, email);
+    const vehicleLine = text.match(/\bVehicle:\s*(.+?)\s+Stock number:/i)?.[1] || starField(text, 'Vehicle');
+    const headline = text.match(/###\s*You have a new customer lead for your\s*(.+?)\s*###/i)?.[1]
+        || text.match(/You have a new customer lead for your\s*([^\n]+)/i)?.[1];
     const vehicle = {
         title: clean(vehicleLine || headline) || undefined,
-        reg: (0, exports.findReg)(text.match(/\bReg:\s*([A-Z0-9 ]{2,10})/i)?.[1]),
-        stockId: text.match(/Stock number:\s*(\d+)/i)?.[1],
-        price: parsePrice(text.match(/Listing price:\s*(£[\d,]+)/i)?.[1]),
+        reg: (0, exports.findReg)(text.match(/\bReg:\s*([A-Z0-9 ]{2,10})/i)?.[1] || starField(text, 'Reg')),
+        stockId: (text.match(/Stock number:\s*(\d+)/i)?.[1] || starField(text, 'Stock number')).match(/\d+/)?.[0],
+        price: parsePrice(text.match(/Listing price:\s*(£[\d,]+)/i)?.[1] || starField(text, 'Listing price')),
     };
     return withReply({
         source: 'CarGurus',
@@ -466,6 +539,28 @@ const parseCarDealer5Enquiry = (raw) => {
         .replace(/^mailto:/i, '').trim().toLowerCase() || bodyEmails(fields['email']?.text || '', raw.selfEmail)[0];
     const phone = firstPhone((fields['phone']?.html.find('a[href^="tel:"]').attr('href') || '').replace(/^tel:/i, ''), fields['phone']?.text);
     const gdpr = (fields['gdpr contact']?.text || fields['contact']?.text || '').toLowerCase();
+    const title = clean($('h2').first().text()) || undefined;
+    const reg = (0, exports.findReg)(raw.subject.match(/\(([A-Z0-9\s]{2,10})\)/i)?.[1], raw.subject);
+    // The form's purpose is in the subject ("Book A Test Drive - …", "Enquiry - …"),
+    // and a test-drive form carries the slot they picked. Both are the enquiry, even
+    // when the free-text Message box is empty — and it usually is.
+    const purpose = /test\s*drive/i.test(raw.subject) ? 'test drive'
+        : /reserve|reservation/i.test(raw.subject) ? 'reservation'
+            : /finance/i.test(raw.subject) ? 'finance'
+                : /part[\s-]*ex|valuation/i.test(raw.subject) ? 'part exchange'
+                    : undefined;
+    const date = clean(fields['preferred date']?.text || fields['date']?.text);
+    const time = clean(fields['preferred time']?.text || fields['time']?.text);
+    const slot = [date, time].filter(Boolean).join(' at ');
+    const car = title ? `${title}${reg ? ` (${reg})` : ''}` : 'the car';
+    const opener = purpose === 'test drive'
+        ? `I'd like to book a test drive of the ${car}${slot ? `, preferably on ${slot}` : ''}.`
+        : purpose === 'reservation' ? `I'd like to reserve the ${car}.`
+            : purpose === 'finance' ? `I'd like to look at finance on the ${car}.`
+                : purpose === 'part exchange' ? `I'd like a part-exchange valuation against the ${car}.`
+                    : '';
+    const freeText = clean(fields['message']?.text);
+    const message = [opener, freeText].filter(Boolean).join(' ');
     return withReply({
         source: 'Website',
         kind: 'enquiry',
@@ -474,13 +569,13 @@ const parseCarDealer5Enquiry = (raw) => {
         email: email || undefined,
         phone,
         vehicle: {
-            title: clean($('h2').first().text()) || undefined,
+            title,
             price: parsePrice($('h3').first().text()),
-            reg: (0, exports.findReg)(raw.subject.match(/\(([A-Z0-9\s]{2,10})\)/i)?.[1], raw.subject),
+            reg,
             stockId: stockId && /^\d+$/.test(stockId) ? stockId : undefined,
             url,
         },
-        message: clean(fields['message']?.text),
+        message,
         preferredContact: gdpr.includes('email') ? 'email' : gdpr.includes('phone') ? 'phone' : undefined,
     });
 };
@@ -507,6 +602,64 @@ const parseCarDealer5Reservation = (raw, paymentFailed) => {
     if (paymentFailed)
         return { ...lead, contactable: false, replyTargets: [] };
     return lead;
+};
+const BOUNCE_SUBJECT_RE = /delivery status notification|undeliverable|returned mail|mail delivery failed|failure notice|delivery failure|delivery has failed/i;
+const BOUNCE_SENDER_RE = /^(mailer-daemon|postmaster|mail-daemon|noreply-dmarc)@/i;
+const FAILED_RECIPIENT_RE = /(?:wasn't delivered to|was not delivered to|could(?: not|n't) be delivered to|failed recipient|final-recipient:\s*rfc822:?)\s*<?([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})>?/i;
+const bounceReasonOf = (subject, text) => {
+    const hay = `${subject}\n${text}`;
+    if (/could(?: not|n't) be found|address not found|user unknown|recipnotfound|mailbox unavailable|does not exist/i.test(hay)) {
+        return 'address not found, or unable to receive mail';
+    }
+    if (/mailbox full|over quota|insufficient storage/i.test(hay))
+        return 'mailbox full';
+    if (/\b(?:550|554|553)\b.*\b(?:spam|policy|blocked|rejected)\b/i.test(hay) || /rejected by the (?:server|recipient)/i.test(hay)) {
+        return "rejected by the recipient's mail server";
+    }
+    return 'undeliverable';
+};
+/**
+ * Gmail's Delivery Status Notification (Failure) — and the same shape from
+ * Hotmail/Outlook. This is not a customer. Answering it talks to a mailer daemon
+ * and, worse, Dave will draft a holding line to an address that already bounced.
+ */
+const isDeliveryFailure = (raw) => {
+    const sender = (0, exports.parseFromHeader)(raw.from).address;
+    if (raw.failedRecipient)
+        return true;
+    if (BOUNCE_SENDER_RE.test(sender))
+        return true;
+    if (BOUNCE_SUBJECT_RE.test(raw.subject || ''))
+        return true;
+    if (/^auto-(?:replied|generated)/i.test(raw.autoSubmitted || '') && /undeliverable|wasn't delivered|delivery failure/i.test(raw.text || '')) {
+        return true;
+    }
+    return (0, exports.isNoReplyAddress)(sender) && BOUNCE_SUBJECT_RE.test(raw.subject || '');
+};
+exports.isDeliveryFailure = isDeliveryFailure;
+const parseDeliveryFailure = (raw) => {
+    const text = raw.text || '';
+    const self = (raw.selfEmail || '').toLowerCase();
+    const fromHeader = (0, exports.parseFromHeader)(raw.from).address;
+    const candidates = [
+        (raw.failedRecipient || '').toLowerCase(),
+        (text.match(FAILED_RECIPIENT_RE)?.[1] || '').toLowerCase(),
+        ...(bodyEmails(text, raw.selfEmail)),
+    ].filter(e => e && e.includes('@') && e !== self && e !== fromHeader && !(0, exports.isNoReplyAddress)(e));
+    const email = candidates[0] || undefined;
+    const reason = bounceReasonOf(raw.subject || '', text);
+    const diagnostic = clean(text).slice(0, 500);
+    return {
+        source: 'Direct',
+        kind: 'bounce',
+        email,
+        phone: firstPhone(text),
+        message: diagnostic,
+        bounceReason: reason,
+        replyTargets: [],
+        replyTo: { channel: 'email', address: email || '' },
+        contactable: false,
+    };
 };
 /**
  * Somebody who just wrote an email. The subject is kept as a vehicle hint rather than a
@@ -539,7 +692,10 @@ const parseDirectEmail = (raw, source) => {
  * because the subject lines collide: "Enquiry - ..." is used by both Cazoo and the
  * dealership's own website.
  */
-const parseLeadEmail = (raw) => {
+const parseLeadEmail = (input) => {
+    // HTML-only mail (CarGurus' chat-bot leads, 27 Aug) has no text part; parsing
+    // nothing would answer the platform's robot address instead of the customer.
+    const raw = input.text?.trim() ? input : { ...input, text: (0, exports.htmlToText)(input.html) };
     const sender = (0, exports.parseFromHeader)(raw.from);
     const from = sender.address;
     const subject = raw.subject || '';
@@ -553,6 +709,8 @@ const parseLeadEmail = (raw) => {
     if (IGNORE_SUBJECTS.some(re => re.test(subject))) {
         return ignored('Other', 'ignored_subject');
     }
+    if ((0, exports.isDeliveryFailure)(raw))
+        return parseDeliveryFailure(raw);
     if (/cargurus\.com$/i.test(from.split('@')[1] || '') || /cargurus/i.test(from)) {
         if (/phone lead/i.test(subject) || (/^\s*Phone:/mi.test(text) && /Duration:/i.test(text))) {
             return parseCarGurusPhoneLead(raw);

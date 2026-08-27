@@ -30,7 +30,10 @@ import {
     answerAgentQuestion,
     approveAgentDraft,
     approvedSendMessage,
+    bounceNoticeText,
+    conversationEmail,
     conversationName,
+    conversationPhone,
     deleteAgentConversation,
     deleteAgentMessage,
     discardAgentDraft,
@@ -40,6 +43,7 @@ import {
     markConversationRead,
     MessageMedia,
     sendAgentReply,
+    SendVia,
     setConversationMode,
     subscribeToAgentConversations,
     subscribeToAgentConversationsAcross,
@@ -70,6 +74,20 @@ import {
     prepareWhatsAppFile,
 } from '../../utils/whatsappMedia';
 import StartWhatsAppSheet from './StartWhatsAppSheet';
+import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../../utils/agentInboxBounce';
+
+const whatsappOpener = (firstName?: string, vehicleTitle?: string): string => {
+    const name = (firstName || 'there').trim() || 'there';
+    const vehicle = (vehicleTitle || 'car').trim() || 'car';
+    return `Hi ${name}, thanks for enquiring about the ${vehicle}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`;
+};
+
+const defaultSendVia = (conv: Conversation): Exclude<SendVia, 'auto'> => {
+    const phone = conversationPhone(conv) || phoneFromThread(conv);
+    if (threadLooksBounced(conv) && phone) return 'whatsapp';
+    if (conv.channel === 'whatsapp' && phone) return 'whatsapp';
+    return 'email';
+};
 
 const MODE_VARIANT: Record<ConversationMode, 'primary' | 'success' | 'warning'> = {
     agent: 'primary',
@@ -178,8 +196,22 @@ const MessageBubble: React.FC<{
     const mine = message.from !== 'customer';
     const fromOwner = message.from === 'owner';
     const instruction = instructionText(message);
+    const bounce = bounceNoticeText(message);
     const wa = message.channel === 'whatsapp';
     const email = message.channel === 'email';
+
+    if (bounce) {
+        return (
+            <div className="group flex items-center justify-center gap-2">
+                <p className="max-w-[90%] rounded-lg border border-red-500/30 bg-red-950/40 px-3 py-2 text-center text-[12px] leading-relaxed text-red-100">
+                    {bounce}
+                </p>
+                <button type="button" onClick={onDelete} aria-label="Delete this note" className="flex-shrink-0 p-1 text-[#8696a0] hover:text-red-400 sm:opacity-0 sm:group-hover:opacity-100">
+                    <TrashIcon className="h-3.5 w-3.5" />
+                </button>
+            </div>
+        );
+    }
 
     if (instruction) {
         return (
@@ -283,6 +315,7 @@ const AgentInboxPage = () => {
     const [draftText, setDraftText] = useState('');
     const [draftBusy, setDraftBusy] = useState<'' | 'approve' | 'discard'>('');
     const [replyMode, setReplyMode] = useState<'human' | 'agent'>('agent');
+    const [sendVia, setSendVia] = useState<Exclude<SendVia, 'auto'>>('email');
     const [phrasingSince, setPhrasingSince] = useState<number | null>(null);
     const [pendingDelete, setPendingDelete] = useState<
         { kind: 'thread'; conv: Conversation } | { kind: 'message'; message: AgentMessage; conv: Conversation } | null
@@ -423,7 +456,8 @@ const AgentInboxPage = () => {
 
     useEffect(() => {
         setReplyMode(active?.mode === 'agent' ? 'agent' : 'human');
-    }, [active?.id, active?.mode]);
+        if (active) setSendVia(defaultSendVia(active));
+    }, [active?.id, active?.mode, active?.emailBounce?.at]);
 
     const messages = useMemo(() => {
         if (!activeGroup) return [];
@@ -506,9 +540,15 @@ const AgentInboxPage = () => {
                 media = { kind, url, mime: ready.type, filename: ready.name };
             }
             setSendStatus(null);
-            await sendAgentReply(homeOf(active, companyId), active.id, text, media);
+            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, media, sendVia, conversationPhone(active) || phoneFromThread(active));
             setReply('');
             setAttachment(null);
+            const sent = (result?.sent || []).map(ch => CHANNEL_LABELS[ch] || ch);
+            toast.success(
+                result?.skippedWhatsApp
+                    ? `${sent.length ? `Sent on ${sent.join(' and ')}. ` : ''}${result.skippedWhatsApp}`
+                    : sent.length ? `Sent on ${sent.join(' and ')}.` : 'Sent.'
+            );
         } catch (err: any) {
             const code = err?.code || '';
             toast.error(
@@ -520,7 +560,7 @@ const AgentInboxPage = () => {
             setSendStatus(null);
             setSending(false);
         }
-    }, [companyId, active, reply, attachment, sending, toast]);
+    }, [companyId, active, reply, attachment, sending, toast, sendVia]);
 
     const handleInstruct = useCallback(async () => {
         const text = reply.trim();
@@ -559,7 +599,8 @@ const AgentInboxPage = () => {
         setDraftBusy('approve');
         try {
             const result = await approveAgentDraft(homeOf(active, companyId), active.id, text);
-            toast.success(approvedSendMessage(CHANNEL_LABELS[active.channel] || active.channel, result.sendAfter));
+            const sent = (result.sent || [active.channel]).map(ch => CHANNEL_LABELS[ch] || ch).join(' and ');
+            toast.success(approvedSendMessage(sent, result.sendAfter));
         } catch (err: any) {
             toast.error(err?.message || 'That draft was not sent.');
         } finally {
@@ -614,6 +655,32 @@ const AgentInboxPage = () => {
         replyBoxRef.current?.focus();
     }, []);
 
+    const handleWhatsAppHer = useCallback(async () => {
+        if (!companyId || !active || sending) return;
+        const phone = conversationPhone(active) || phoneFromThread(active);
+        if (!phone) {
+            toast.error('No mobile number on file.');
+            return;
+        }
+        const text = reply.trim() || whatsappOpener(active.contact?.firstName, active.vehicleInterest?.title);
+        setSending(true);
+        try {
+            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, undefined, 'whatsapp', phone);
+            setReply('');
+            if (result?.skippedWhatsApp) {
+                toast.error(result.skippedWhatsApp);
+            } else {
+                toast.success(active.lastCustomerMessageAt
+                    ? 'Sent on WhatsApp.'
+                    : 'WhatsApp opener sent. Free text can go once they reply.');
+            }
+        } catch (err: any) {
+            toast.error(err?.message || 'That WhatsApp could not be sent.');
+        } finally {
+            setSending(false);
+        }
+    }, [companyId, active, reply, sending, toast]);
+
     const openLead = useCallback(() => {
         const leadId = active?.contact?.leadId;
         if (!leadId) return;
@@ -644,6 +711,10 @@ const AgentInboxPage = () => {
     }
 
     const mixed = !!activeGroup && filter === 'all' && (activeGroup.conversations.length > 1 || activeGroup.channels.length > 1);
+    const phoneOnFile = active ? (conversationPhone(active) || phoneFromThread(active)) : undefined;
+    const emailOnFile = active ? conversationEmail(active) : undefined;
+    const bounced = !!(active && threadLooksBounced(active, messages));
+    const whatsappNeedsOpener = !!phoneOnFile && !(active?.lastCustomerMessageAt);
     const tabs: Array<{ id: InboxFilter; label: string; count: number; accent?: string }> = [
         { id: 'all', label: 'All', count: counts.all },
         { id: 'whatsapp', label: inbox ? 'WhatsApp · Shared' : 'WhatsApp', count: counts.whatsapp, accent: 'text-[#25d366]' },
@@ -780,7 +851,25 @@ const AgentInboxPage = () => {
                                             <ChannelChip channel={conv.channel} />
                                         </button>
                                     ))}
-                                    <span className="text-[11px] text-[#8696a0]">{active.address}</span>
+                                    {emailOnFile && (
+                                        <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] ${bounced ? 'bg-red-950/60 text-red-200' : 'text-[#8696a0]'}`}>
+                                            <EnvelopeIcon className="h-3 w-3" />
+                                            {emailOnFile}
+                                            {bounced ? ' · bounced' : ''}
+                                        </span>
+                                    )}
+                                    {phoneOnFile && (
+                                        <a
+                                            href={`tel:${phoneOnFile}`}
+                                            className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5 text-[11px] text-[#e9edef] hover:bg-white/10"
+                                        >
+                                            <PhoneIcon className="h-3 w-3 text-[#25d366]" />
+                                            {displayUkPhone(phoneOnFile)}
+                                        </a>
+                                    )}
+                                    {!emailOnFile && !phoneOnFile && (
+                                        <span className="text-[11px] text-[#8696a0]">{active.address}</span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -813,6 +902,12 @@ const AgentInboxPage = () => {
                                 </button>
                             )}
                             <div className="ml-auto flex flex-wrap gap-1.5">
+                                {phoneOnFile && (
+                                    <Button size="sm" variant="primary" onClick={handleWhatsAppHer} disabled={sending} className="bg-[#25d366] text-[#111b21] hover:bg-[#20bd5a]">
+                                        <WhatsAppIcon className="h-4 w-4" />
+                                        WhatsApp
+                                    </Button>
+                                )}
                                 {active.mode !== 'human' && (
                                     <Button size="sm" variant="secondary" onClick={() => handleMode('human')} disabled={changingMode}>Take over</Button>
                                 )}
@@ -861,6 +956,34 @@ const AgentInboxPage = () => {
                             </div>
                         )}
 
+                        {bounced && (
+                            <div className="border-b border-red-500/40 bg-red-950/40 px-4 py-3">
+                                <p className="text-sm font-semibold text-red-200">
+                                    Email bounced{active.emailBounce?.reason ? ` — ${active.emailBounce.reason}` : ''}
+                                </p>
+                                <p className="mt-1 text-sm text-red-100/80">
+                                    {emailOnFile ? `${emailOnFile} is undeliverable. ` : ''}
+                                    {phoneOnFile
+                                        ? `WhatsApp or call ${displayUkPhone(phoneOnFile)} — do not send another email.`
+                                        : 'No mobile on file, so there is no other way through from here.'}
+                                </p>
+                                {phoneOnFile && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <Button size="sm" variant="primary" onClick={handleWhatsAppHer} disabled={sending} className="bg-[#25d366] text-[#111b21] hover:bg-[#20bd5a]">
+                                            <WhatsAppIcon className="h-4 w-4" />
+                                            WhatsApp {active.contact?.firstName || 'them'}
+                                        </Button>
+                                        <a
+                                            href={`tel:${phoneOnFile}`}
+                                            className="inline-flex items-center rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/15"
+                                        >
+                                            Call {displayUkPhone(phoneOnFile)}
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {active.pendingDraft && (
                             <div className="border-b border-amber-500/40 bg-amber-950/40 px-4 py-3">
                                 <div className="flex items-start gap-3">
@@ -873,6 +996,11 @@ const AgentInboxPage = () => {
                                             Written {formatAgentTime(active.pendingDraft.createdAt)} · nothing has been sent
                                             {active.pendingDraft.subject ? ` · ${active.pendingDraft.subject}` : ''}
                                         </p>
+                                        {bounced && (
+                                            <p className="mt-2 rounded-lg border border-red-500/30 bg-red-950/50 px-3 py-2 text-xs text-red-100">
+                                                This looks like a reply to a bounce, not to the customer. Discard it and WhatsApp them instead.
+                                            </p>
+                                        )}
                                         <textarea
                                             rows={6}
                                             value={draftText}
@@ -982,6 +1110,47 @@ const AgentInboxPage = () => {
                                 </p>
                             )}
 
+                            {phoneOnFile && !bounced && sendVia !== 'whatsapp' && replyMode === 'human' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSendVia(sendVia === 'both' ? 'email' : 'both')}
+                                    aria-pressed={sendVia === 'both'}
+                                    className={`mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                                        sendVia === 'both'
+                                            ? 'bg-[#005c4b] text-white'
+                                            : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
+                                    }`}
+                                >
+                                    <span
+                                        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border ${
+                                            sendVia === 'both' ? 'border-white bg-white text-[#005c4b]' : 'border-[#8696a0]'
+                                        }`}
+                                        aria-hidden
+                                    >
+                                        {sendVia === 'both' ? (
+                                            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+                                                <path d="M6.2 11.4 2.8 8l1.1-1.1 2.3 2.3 5.9-5.9L13.2 4.4z" />
+                                            </svg>
+                                        ) : null}
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex items-center gap-1.5 text-sm font-semibold">
+                                            <WhatsAppIcon className="h-4 w-4" />
+                                            Send on WhatsApp as well
+                                        </span>
+                                        <span className={`block text-[11px] ${sendVia === 'both' ? 'text-[#d1f4de]/80' : 'text-[#8696a0]'}`}>
+                                            {displayUkPhone(phoneOnFile)} · emails bounce, people miss them
+                                        </span>
+                                    </span>
+                                </button>
+                            )}
+
+                            {replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
+                                <p className="mb-2 text-[11px] leading-snug text-[#8696a0]">
+                                    They have not WhatsApp&apos;d us yet, so the first message has to be the approved opener. Free text goes once they reply.
+                                </p>
+                            )}
+
                             {attachment && (
                                 <div className="mb-2 flex items-center gap-2 rounded-lg bg-black/30 px-3 py-2 text-xs text-[#e9edef]">
                                     <PaperClipIcon className="h-4 w-4 text-[#25d366]" />
@@ -993,7 +1162,7 @@ const AgentInboxPage = () => {
                             )}
 
                             <div className="flex items-end gap-2">
-                                {active.channel === 'whatsapp' && (
+                                {phoneOnFile && sendVia !== 'email' && (
                                     <>
                                         <input
                                             ref={fileRef}
@@ -1037,7 +1206,9 @@ const AgentInboxPage = () => {
                                     }}
                                     placeholder={replyMode === 'agent' && !attachment
                                         ? `Tell ${agentName} what to say…`
-                                        : `Reply on ${CHANNEL_LABELS[active.channel] || 'this chat'}…`}
+                                        : sendVia === 'both' ? 'Reply by email — and WhatsApp as well…'
+                                            : sendVia === 'whatsapp' ? 'Reply on WhatsApp…'
+                                                : 'Reply by email…'}
                                     aria-label={replyMode === 'agent' && !attachment ? `What to tell ${agentName} to say` : 'Your reply to the customer'}
                                     className="min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-sm text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/40"
                                 />

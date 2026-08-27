@@ -8,7 +8,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { capReply, softenDashes } from './index';
-import { buildContents, buildSystemPrompt } from './prompt';
+import { BOUNCE_NOTICE_PREFIX, buildContents, buildSystemPrompt } from './prompt';
 import type { Conversation, SalesAgentSettings } from '../types';
 
 describe('Brain reply formatting', () => {
@@ -165,4 +165,41 @@ describe('inbox context', () => {
         assert.ok(!prompt.includes('HOW STEVE WRITES'));
     });
 });
+    it('locks onto the car the lead identified and shows the email subject', () => {
+        const conv = { ...baseConv, vehicleInterest: { stockId: '1793552', title: 'Mini Convertible 1.6 Cooper S Convertible', ledgerVehicleId: 'v1' } };
+        const prompt = buildSystemPrompt({ conversation: conv, settings });
+        assert.ok(prompt.includes('THE CAR IS ALREADY KNOWN'));
+        assert.ok(prompt.includes('get_stock_item with id "1793552"'));
+        assert.ok(!buildSystemPrompt({ conversation: baseConv, settings }).includes('THE CAR IS ALREADY KNOWN'));
+
+        const contents = buildContents({ conversation: conv, history: [], settings, inbound: { companyId: 'company-1', channel: 'email', address: 'jackandtash@hotmail.com', text: 'Is the MINI CONVERTIBLE still available?', subject: 'Book A Test Drive - MINI CONVERTIBLE (LD12FZE) - Natasha', providerId: 'm2', receivedAt: Date.now() } });
+        const last = contents[contents.length - 1].parts?.[0]?.text || '';
+        assert.ok(last.startsWith('[Email subject: Book A Test Drive - MINI CONVERTIBLE (LD12FZE) - Natasha]'));
+    });
+
+    it('tells Dave the email is dead and skips bounce notices in the transcript', () => {
+        const bounced = {
+            ...baseConv,
+            emailBounce: { address: 'jackandtash@hotmail.com', reason: 'address not found, or unable to receive mail', at: Date.now() },
+            contact: { firstName: 'Natasha', email: 'jackandtash@hotmail.com', phone: '+447826555653' },
+        };
+        const prompt = buildSystemPrompt({ conversation: bounced, settings });
+        assert.ok(prompt.includes('EMAIL BOUNCE'));
+        assert.ok(prompt.includes('Do not write them an email'));
+        assert.ok(prompt.includes('Delivery Status Notification'));
+
+        const contents = buildContents({
+            conversation: bounced,
+            history: [
+                { id: 'm1', direction: 'in', channel: 'email', from: 'owner', text: `${BOUNCE_NOTICE_PREFIX}Email bounced.`, createdAt: 1 },
+                { id: 'm2', direction: 'in', channel: 'email', from: 'customer', text: 'Can I book Friday 12:00?', createdAt: 2 },
+            ],
+            settings,
+            inbound: { companyId: 'company-1', channel: 'whatsapp', address: '+447826555653', text: 'Still on for Friday?', providerId: 'w1', receivedAt: Date.now() },
+        });
+        const blob = contents.map(c => (c.parts?.[0] as { text?: string })?.text || '').join('\n');
+        assert.ok(!blob.includes('Email bounced.'));
+        assert.ok(blob.includes('Can I book Friday 12:00?'));
+    });
+
 });

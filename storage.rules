@@ -12,10 +12,12 @@ service firebase.storage {
     // e.g. -OD...xyz/HH...1b3/receipts/scan_123.jpg
     match /{companyId}/{userId}/{path=**} {
 
-      // Function to verify that the user requesting access belongs to the company
-      // specified in the file path. It does this by checking the Realtime Database.
+      // Company membership comes from the `companyId` custom claim, kept in step
+      // with users/{uid}/companyId by functions/src/auth/claims.ts. Storage rules
+      // cannot read the Realtime Database directly (get()/exists() are Firestore
+      // only and silently deny everything here — 27 Aug 2026).
       function isUserInCompany() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
+        return request.auth != null && request.auth.token.companyId == companyId;
       }
 
       // READ access is granted if the user is authenticated and is a member of the company.
@@ -48,18 +50,12 @@ service firebase.storage {
     // this rule is what actually lets a video through.
     match /{companyId}/whatsapp/{fileName} {
       function isUserInCompany() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
-      }
-      function userCompanyId() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data;
+        return request.auth != null && request.auth.token.companyId == companyId;
       }
       function sharesInbox() {
         return request.auth != null
-          && userCompanyId() != null
-          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId()))
-          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId))
-          && get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId())).data
-             == get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId)).data;
+          && 'peers' in request.auth.token
+          && companyId in request.auth.token.peers;
       }
       function allowedWhatsAppType() {
         return request.resource.contentType == ''
@@ -94,18 +90,12 @@ service firebase.storage {
     // into the other person's user folder.
     match /{companyId}/{userId}/whatsapp/{fileName} {
       function isUserInCompany() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
-      }
-      function userCompanyId() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data;
+        return request.auth != null && request.auth.token.companyId == companyId;
       }
       function sharesInbox() {
         return request.auth != null
-          && userCompanyId() != null
-          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId()))
-          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId))
-          && get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId())).data
-             == get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId)).data;
+          && 'peers' in request.auth.token
+          && companyId in request.auth.token.peers;
       }
       function allowedWhatsAppType() {
         return request.resource.contentType == ''
@@ -132,18 +122,12 @@ service firebase.storage {
     // match lets a shared-inbox peer read it too.
     match /{companyId}/salesAgent/whatsapp/{fileName} {
       function isUserInCompany() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data == companyId;
-      }
-      function userCompanyId() {
-        return get(/databases/(default)/data/users/$(request.auth.uid)/companyId).data;
+        return request.auth != null && request.auth.token.companyId == companyId;
       }
       function sharesInbox() {
         return request.auth != null
-          && userCompanyId() != null
-          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId()))
-          && exists(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId))
-          && get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(userCompanyId())).data
-             == get(/databases/(default)/data/salesAgentRouting/inboxMembers/$(companyId)).data;
+          && 'peers' in request.auth.token
+          && companyId in request.auth.token.peers;
       }
 
       allow read: if request.auth != null && (isUserInCompany() || sharesInbox());

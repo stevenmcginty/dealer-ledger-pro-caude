@@ -150,5 +150,38 @@ const prompt_1 = require("./prompt");
             node_assert_1.strict.ok(!prompt.includes('HOW STEVE WRITES'));
         });
     });
+    (0, node_test_1.it)('locks onto the car the lead identified and shows the email subject', () => {
+        const conv = { ...baseConv, vehicleInterest: { stockId: '1793552', title: 'Mini Convertible 1.6 Cooper S Convertible', ledgerVehicleId: 'v1' } };
+        const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: conv, settings });
+        node_assert_1.strict.ok(prompt.includes('THE CAR IS ALREADY KNOWN'));
+        node_assert_1.strict.ok(prompt.includes('get_stock_item with id "1793552"'));
+        node_assert_1.strict.ok(!(0, prompt_1.buildSystemPrompt)({ conversation: baseConv, settings }).includes('THE CAR IS ALREADY KNOWN'));
+        const contents = (0, prompt_1.buildContents)({ conversation: conv, history: [], settings, inbound: { companyId: 'company-1', channel: 'email', address: 'jackandtash@hotmail.com', text: 'Is the MINI CONVERTIBLE still available?', subject: 'Book A Test Drive - MINI CONVERTIBLE (LD12FZE) - Natasha', providerId: 'm2', receivedAt: Date.now() } });
+        const last = contents[contents.length - 1].parts?.[0]?.text || '';
+        node_assert_1.strict.ok(last.startsWith('[Email subject: Book A Test Drive - MINI CONVERTIBLE (LD12FZE) - Natasha]'));
+    });
+    (0, node_test_1.it)('tells Dave the email is dead and skips bounce notices in the transcript', () => {
+        const bounced = {
+            ...baseConv,
+            emailBounce: { address: 'jackandtash@hotmail.com', reason: 'address not found, or unable to receive mail', at: Date.now() },
+            contact: { firstName: 'Natasha', email: 'jackandtash@hotmail.com', phone: '+447826555653' },
+        };
+        const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: bounced, settings });
+        node_assert_1.strict.ok(prompt.includes('EMAIL BOUNCE'));
+        node_assert_1.strict.ok(prompt.includes('Do not write them an email'));
+        node_assert_1.strict.ok(prompt.includes('Delivery Status Notification'));
+        const contents = (0, prompt_1.buildContents)({
+            conversation: bounced,
+            history: [
+                { id: 'm1', direction: 'in', channel: 'email', from: 'owner', text: `${prompt_1.BOUNCE_NOTICE_PREFIX}Email bounced.`, createdAt: 1 },
+                { id: 'm2', direction: 'in', channel: 'email', from: 'customer', text: 'Can I book Friday 12:00?', createdAt: 2 },
+            ],
+            settings,
+            inbound: { companyId: 'company-1', channel: 'whatsapp', address: '+447826555653', text: 'Still on for Friday?', providerId: 'w1', receivedAt: Date.now() },
+        });
+        const blob = contents.map(c => c.parts?.[0]?.text || '').join('\n');
+        node_assert_1.strict.ok(!blob.includes('Email bounced.'));
+        node_assert_1.strict.ok(blob.includes('Can I book Friday 12:00?'));
+    });
 });
 //# sourceMappingURL=brain.test.js.map

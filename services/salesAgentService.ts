@@ -152,6 +152,8 @@ export interface Conversation {
     unread: number;
     emailThreadId?: string;
     emailSubject?: string;
+    /** Set when a Delivery Status Notification came back for this thread. */
+    emailBounce?: { address: string; reason: string; diagnostic?: string; at: number };
     /**
      * Set when a shared inbox placed this thread. The client uses it to mark
      * conversations that live on another ledger in the WhatsApp shared view.
@@ -670,16 +672,20 @@ export const startAgentWhatsApp = (
     'That WhatsApp could not be started.'
 );
 
-/** Send a message to the customer as Steve, on whichever channel they used. */
+export type SendVia = 'auto' | 'email' | 'whatsapp' | 'both';
+
+/** Send a message to the customer as Steve. `via` sends email, WhatsApp, or both. */
 export const sendAgentReply = (
     companyId: string,
     convId: string,
     text: string,
-    media?: MessageMedia
+    media?: MessageMedia,
+    via: SendVia = 'auto',
+    phone?: string
 ) =>
-    call<{ companyId: string; convId: string; text: string; media?: MessageMedia }, void>(
+    call<{ companyId: string; convId: string; text: string; media?: MessageMedia; via?: SendVia; phone?: string }, { ok: true; sent?: Channel[]; skippedWhatsApp?: string | null }>(
         'salesAgentSendReply',
-        { companyId, convId, text, ...(media ? { media } : {}) },
+        { companyId, convId, text, via, ...(media ? { media } : {}), ...(phone ? { phone } : {}) },
         120000,
         'That message was not sent.'
     );
@@ -717,7 +723,7 @@ export const instructAgent = (companyId: string, convId: string, text: string) =
  * the next opening; `sendAfter` says when.
  */
 export const approveAgentDraft = (companyId: string, convId: string, text?: string, signAs: 'agent' | 'owner' = 'agent') =>
-    call<{ companyId: string; convId: string; text?: string; signAs: 'agent' | 'owner' }, { ok: boolean; text: string; sendAfter: number }>(
+    call<{ companyId: string; convId: string; text?: string; signAs: 'agent' | 'owner' }, { ok: boolean; text: string; sendAfter: number; sent?: Channel[] }>(
         'salesAgentApproveDraft',
         { companyId, convId, signAs, ...(text === undefined ? {} : { text }) },
         60000,
@@ -838,6 +844,27 @@ export const instructionText = (message: AgentMessage): string | null => {
     return text.startsWith(OWNER_INSTRUCTION_PREFIX)
         ? text.slice(OWNER_INSTRUCTION_PREFIX.length).trim()
         : null;
+};
+
+export const BOUNCE_NOTICE_PREFIX = '[bounce] ';
+
+export const bounceNoticeText = (message: AgentMessage): string | null => {
+    if (message.from !== 'owner') return null;
+    const text = (message.text || '').trim();
+    return text.startsWith(BOUNCE_NOTICE_PREFIX)
+        ? text.slice(BOUNCE_NOTICE_PREFIX.length).trim()
+        : null;
+};
+
+export const conversationPhone = (conv: Conversation): string | undefined => {
+    const raw = conv.contact?.phone || (conv.channel !== 'email' ? conv.address : '');
+    const digits = (raw || '').replace(/\D/g, '');
+    return digits.length >= 9 ? raw : undefined;
+};
+
+export const conversationEmail = (conv: Conversation): string | undefined => {
+    const raw = (conv.contact?.email || (conv.channel === 'email' ? conv.address : '') || '').trim().toLowerCase();
+    return raw.includes('@') ? raw : undefined;
 };
 
 /** The name to put at the top of a conversation when the customer gave one. */

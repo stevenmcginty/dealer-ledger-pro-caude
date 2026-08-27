@@ -55,6 +55,13 @@ export const OWNER_INSTRUCTION_QUESTION = '(instruction)';
  */
 export const OWNER_INSTRUCTION_PREFIX = '[instruction] ';
 
+/**
+ * A delivery-failure notice stored in the thread so Steve can see it. Not a
+ * customer turn; the transcript must not replay it as one, or Dave will draft
+ * a holding line to a dead address.
+ */
+export const BOUNCE_NOTICE_PREFIX = '[bounce] ';
+
 const ownerNameOf = (settings: SalesAgentSettings): string => settings.ownerName || 'Steve';
 
 /** The persona customers talk to. */
@@ -244,6 +251,31 @@ export const buildSystemPrompt = (args: {
         ].join('\n'),
     );
 
+    if (conversation.channel === 'email') {
+        sections.push(
+            [
+                'READ THE WHOLE EMAIL',
+                '- An email lead arrives as a short summary line followed by the full email as received. Read the full email every time. Website forms and platform leads put the important things in labelled fields, not in the message box.',
+                '- Answer everything it contains: the car it names, the reason for the form (test drive, reservation, finance, part exchange), any preferred date and time, any questions, and note a phone number if they gave one.',
+                '- A test drive or viewing request with a date and time is the customer proposing a slot. Do not ask "mornings or afternoons?". Acknowledge the slot, call ask_owner to confirm it, and tell them you are checking it and will confirm shortly.',
+                '- A reply that could have been written without reading the email (a generic "yes it is available, which one do you mean?") is wrong.',
+            ].join('\n'),
+        );
+    }
+
+    if (conversation.vehicleInterest?.stockId) {
+        const v = conversation.vehicleInterest;
+        sections.push(
+            [
+                'THE CAR IS ALREADY KNOWN',
+                `- This enquiry came in about ONE specific car, identified by its registration or listing: ${v.title || 'see stock id'} (stock id ${v.stockId}). That is the car. Do not guess at it, do not search for it by model, do not list other cars.`,
+                `- Call get_stock_item with id "${v.stockId}" before you write anything, and answer about that car: its availability, its price, its spec.`,
+                '- "Is it still available?" means this car. If it is available, say so plainly, name it (year, model, colour) so they know you have the right one, and move to the next step (questions they asked, then a viewing). Never answer "we have a few" or ask "which one caught your eye" when the car is already known.',
+                '- Only if get_stock_item says it is reserved or sold: say so briefly, then search_stock for the closest alternatives of the same make.',
+            ].join('\n'),
+        );
+    }
+
     sections.push(
         [
             'DEEP VEHICLE KNOWLEDGE (STOCK TOOLS)',
@@ -335,6 +367,7 @@ export const buildSystemPrompt = (args: {
         [
             'HAND OVER TO A HUMAN',
             'Call request_handoff and say someone from the sales team will pick it up when any of these arise: a complaint, legal issues, a finance decline/approval decision, an existing customer with a mechanical fault, or when the customer asks for a person. Do not name them unless the customer already did.',
+            '- A Delivery Status Notification, "undeliverable", or mailer-daemon bounce is NOT a customer. Return an empty reply (""), do not write a holding line, do not call ask_owner. The desk is already being told.',
         ].join('\n'),
     );
 
@@ -367,7 +400,10 @@ export const buildSystemPrompt = (args: {
             `Viewing booked: ${conversation.booking ? `${conversation.booking.window} for ${conversation.booking.name}` : 'no'}`,
             `Times they have pushed on price: ${conversation.priceRequests || 0}`,
             `Where the conversation has got to: ${orUnknown(conversation.summary, 'this is the start of the conversation')}`,
-        ].join('\n'),
+            conversation.emailBounce
+                ? `EMAIL BOUNCE: mail to ${conversation.emailBounce.address} failed (${conversation.emailBounce.reason}). Do not write them an email. Do not call ask_owner about the bounce — the desk already knows. If a mobile is on file, this conversation continues on WhatsApp.`
+                : '',
+        ].filter(Boolean).join('\n'),
     );
 
     if (emailContext?.ownerStyle.length) {
@@ -438,6 +474,7 @@ export const buildContents = (args: {
         // model once, as the ownerAnswer injection below; replaying it here as well would
         // have the agent answering Steve's words as though the customer had said them.
         if (message.from === 'owner' && text.startsWith(OWNER_INSTRUCTION_PREFIX)) continue;
+        if (message.from === 'owner' && text.startsWith(BOUNCE_NOTICE_PREFIX)) continue;
         if (message.from === 'agent') {
             contents.push({ role: 'model', parts: [{ text }] });
         } else if (message.from === 'owner') {
@@ -459,7 +496,18 @@ export const buildContents = (args: {
     }
 
     const inboundText = (inbound.text || '').trim();
-    const parts: Part[] = [{ text: inboundText || '(the customer sent no text)' }];
+    // An email's subject often carries the car (a website "Book A Test Drive - MINI
+    // CONVERTIBLE (LD12FZE)" form, a reg the customer typed); the model must see it.
+    const subject = inbound.channel === 'email' && (inbound.subject || '').trim() && !history.length
+        ? `[Email subject: ${(inbound.subject || '').trim()}]\n`
+        : '';
+    // The whole email, so nothing a form or a rambling customer put in it is lost on
+    // the way through the parser. Only when it adds something the summary lacks.
+    const full = inbound.channel === 'email' && (inbound.fullText || '').trim();
+    const fullBlock = full && full !== inboundText
+        ? `\n\n[The full email as received. Read all of it; the line above is only a summary.]\n${full}\n[End of email]`
+        : '';
+    const parts: Part[] = [{ text: `${subject}${inboundText || '(the customer sent no text)'}${fullBlock}` }];
     contents.push({ role: 'user', parts });
 
     return contents;

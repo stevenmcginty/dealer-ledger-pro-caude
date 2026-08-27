@@ -52,6 +52,7 @@ exports.salesAgentSimulate = exports.salesAgentSaveSharedInbox = exports.salesAg
 const functions = __importStar(require("firebase-functions/v1"));
 const brain_1 = require("./brain");
 const prompt_1 = require("./brain/prompt");
+const sendTargets_1 = require("./sendTargets");
 const search_1 = require("./stock/search");
 const conversations_1 = require("./conversations");
 Object.defineProperty(exports, "BRAIN_SECRETS", { enumerable: true, get: function () { return conversations_1.BRAIN_SECRETS; } });
@@ -67,8 +68,6 @@ const startWhatsApp_1 = require("./startWhatsApp");
 const types_1 = require("./types");
 const approval_1 = require("./approval");
 const gmailContext_1 = require("./channels/gmailContext");
-/** Opening template for a lead that came in by email but left us a mobile. */
-const FOLLOW_UP_TEMPLATE = 'enquiry_followup';
 /** Template used to answer a missed call or a phone lead. */
 const MISSED_CALL_TEMPLATE = 'missed_call_followup';
 /** Human-feel delay, then the next office-hours window if that lands after close. */
@@ -178,6 +177,60 @@ const handlePhoneLead = async (companyId, conversation, settings, lead) => {
         sendAfter: queueSendAfter(settings, (0, outbox_1.randomDelayMs)(settings.replyDelaySeconds)),
     });
 };
+/**
+ * A Delivery Status Notification is not a customer. Do not run Dave, do not
+ * draft a holding line, and do not send another email at the dead address.
+ */
+const handleEmailBounce = async (companyId, conversation, settings, msg, lead) => {
+    const address = (lead.email || conversation.contact?.email || conversation.address || '').toLowerCase();
+    const reason = lead.bounceReason || 'undeliverable';
+    const phone = (0, sendTargets_1.contactPhone)(conversation) || lead.phone;
+    const e164 = phone ? (0, types_1.toE164)(phone) : undefined;
+    const who = (0, alerts_1.describeCustomer)(conversation);
+    const booking = conversation.booking?.window;
+    const vehicle = conversation.vehicleInterest?.title;
+    const emailBounce = {
+        address,
+        reason,
+        ...(lead.message ? { diagnostic: lead.message.slice(0, 400) } : {}),
+        at: msg.receivedAt || Date.now(),
+    };
+    const notice = [
+        `Email to ${who} bounced (${reason}).`,
+        address ? `Address: ${address}.` : '',
+        e164 ? `Phone on file: ${e164}. WhatsApp them from the inbox — do not email again.` : 'No phone on file.',
+        booking ? `Booked: ${booking}${vehicle ? ` for the ${vehicle}` : ''}.` : '',
+    ].filter(Boolean).join(' ');
+    const patch = {
+        emailBounce,
+        escalated: true,
+        escalationReason: `Email bounced: ${reason}`,
+        pendingDraft: null,
+        pendingQuestion: null,
+        mode: 'human',
+        lastInboundAt: msg.receivedAt || Date.now(),
+        unread: (conversation.unread || 0) + 1,
+    };
+    if (e164) {
+        patch.contact = { ...(conversation.contact || {}), phone: e164, ...(address ? { email: address } : {}) };
+        patch.channel = 'whatsapp';
+        patch.address = e164;
+        await (0, conversations_1.indexContact)(companyId, 'whatsapp', e164, conversation.id);
+        await (0, conversations_1.indexContact)(companyId, 'sms', e164, conversation.id);
+    }
+    await (0, conversations_1.updateConversation)(companyId, conversation.id, patch);
+    Object.assign(conversation, patch);
+    await (0, conversations_1.appendMessage)(companyId, conversation, {
+        direction: 'in',
+        channel: 'email',
+        text: `${prompt_1.BOUNCE_NOTICE_PREFIX}${notice}`,
+        from: 'owner',
+        providerId: msg.providerId,
+        subject: 'Delivery Status Notification (Failure)',
+        createdAt: msg.receivedAt || Date.now(),
+    });
+    await (0, alerts_1.sendOwnerAlert)(companyId, 'error', conversation, `#${conversation.shortId} ${notice}`);
+};
 const handleInbound = async (msg, options = {}) => {
     const credentialCompanyId = msg.companyId;
     const inbox = await (0, inboxRouting_1.inboxForMember)(credentialCompanyId);
@@ -221,6 +274,10 @@ const handleInbound = async (msg, options = {}) => {
         emailSubject: msg.subject,
     });
     await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, msg.channel, msg.address);
+    if (lead?.kind === 'bounce') {
+        await handleEmailBounce(companyId, conversation, settings, msg, lead);
+        return;
+    }
     const text = lead ? (0, leadParsers_1.messageOrDefault)(lead, conversation.vehicleInterest?.title) : msg.text;
     await (0, conversations_1.appendMessage)(companyId, conversation, {
         direction: 'in',
@@ -238,8 +295,13 @@ const handleInbound = async (msg, options = {}) => {
     };
     // Meta's 24h free-text window is opened by a WhatsApp message and nothing else.
     // Letting an email refresh it would queue free text that Graph then refuses.
-    if (msg.channel === 'whatsapp')
+    if (msg.channel === 'whatsapp') {
         patch.lastCustomerMessageAt = msg.receivedAt || Date.now();
+        if (conversation.channel !== 'whatsapp') {
+            patch.channel = 'whatsapp';
+            patch.address = msg.address;
+        }
+    }
     if (msg.emailThreadId)
         patch.emailThreadId = msg.emailThreadId;
     if (msg.subject)
@@ -515,31 +577,10 @@ const approveDraft = async (companyId, convId, edited, signAs = 'agent') => {
     if (!text)
         throw new Error('There is nothing to send.');
     const sendAfter = queueSendAfter(settings, 0);
-    const job = {
-        companyId,
-        convId,
-        channel: conversation.channel,
-        to: conversation.address,
-        text,
-        subject: draft.subject || conversation.emailSubject,
-        emailThreadId: conversation.emailThreadId,
-        sendAfter,
-        ...(signAs === 'owner' ? { from: 'owner' } : {}),
-    };
-    if (sendAfter > Date.now() + 2000) {
-        await (0, outbox_1.enqueue)(job);
-    }
-    else {
-        await (0, outbox_1.sendNow)({
-            ...job,
-            id: 'approved-draft',
-            attempts: 0,
-            createdAt: Date.now(),
-        }, signAs);
-    }
+    const result = await enqueueOrSend(companyId, conversation, settings, text, 'auto', signAs, { sendAfter });
     await (0, conversations_1.updateConversation)(companyId, convId, { pendingDraft: null });
     delete conversation.pendingDraft;
-    return { text, name: (0, alerts_1.describeCustomer)(conversation), sendAfter };
+    return { text, name: (0, alerts_1.describeCustomer)(conversation), sendAfter: result.sendAfter, sent: result.sent };
 };
 exports.approveDraft = approveDraft;
 /** Throw the held draft away. Nothing is sent and the agent is not asked to try again. */
@@ -556,82 +597,132 @@ const discardDraft = async (companyId, convId) => {
 };
 exports.discardDraft = discardDraft;
 /**
- * Queue the reply, and decide whether this is the moment to move an email lead onto
- * WhatsApp.
+ * Queue Dave's reply on the channel they are on.
  *
- * When it is, both go out. The email is what stops the customer being left cold if the
- * WhatsApp template is rejected or their number turns out not to be on WhatsApp; the
- * template is what actually starts a conversation, because almost nobody replies to a
- * dealership email twice. From then on the conversation lives on WhatsApp, and their
- * number is indexed so their reply finds its way back to the same thread.
+ * First email to a lead who left a mobile also sends the WhatsApp opener once
+ * (the desk still chooses "as well" from the inbox after that). A bounced
+ * address is dropped. Outside the 24h window the opener template is used —
+ * Meta will not take Dave's email wording as free text until they write in.
  */
 const deliverReply = async (companyId, conversation, settings, reply, inbound) => {
     const sendAfter = queueSendAfter(settings, (0, outbox_1.randomDelayMs)(settings.replyDelaySeconds));
-    const onEmail = conversation.channel === 'email';
-    if (onEmail) {
-        await (0, outbox_1.enqueue)({
-            companyId,
-            convId: conversation.id,
-            channel: 'email',
-            to: conversation.address,
-            text: reply,
-            subject: conversation.emailSubject || inbound.subject,
-            emailThreadId: conversation.emailThreadId,
-            sendAfter,
-        });
-    }
-    const phone = onEmail
-        ? conversation.contact?.phone || inbound.extractedPhones?.[0]
-        : undefined;
-    if (phone) {
-        const e164 = (0, types_1.toE164)(phone);
+    const inboundPhone = inbound.extractedPhones?.[0];
+    if (inboundPhone && !conversation.contact?.phone) {
+        const e164 = (0, types_1.toE164)(inboundPhone);
         const contact = { ...(conversation.contact || {}), phone: e164 };
-        // Index the mobile even while WhatsApp is dark, so a later inbound finds
-        // this thread instead of opening a second one.
-        await (0, conversations_1.indexContact)(companyId, 'whatsapp', e164, conversation.id);
-        await (0, conversations_1.indexContact)(companyId, 'sms', e164, conversation.id);
         conversation.contact = contact;
         await (0, conversations_1.updateConversation)(companyId, conversation.id, { contact });
-        await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, 'whatsapp', e164);
-        const whatsappLive = settings.preferWhatsAppReply
-            && settings.channels.whatsapp
-            && await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId);
-        if (whatsappLive) {
-            await (0, outbox_1.enqueue)({
-                companyId,
-                convId: conversation.id,
-                channel: 'whatsapp',
-                to: e164,
-                text: reply,
-                templateName: FOLLOW_UP_TEMPLATE,
-                templateParams: [
-                    conversation.contact?.firstName || 'there',
-                    conversation.vehicleInterest?.title || 'car',
-                ],
-                sendAfter,
-            });
-            const moved = { channel: 'whatsapp', address: e164, contact };
-            await (0, conversations_1.updateConversation)(companyId, conversation.id, moved);
-            Object.assign(conversation, moved);
+    }
+    const phone = (0, sendTargets_1.contactPhone)(conversation);
+    if (phone) {
+        await (0, conversations_1.indexContact)(companyId, 'whatsapp', phone, conversation.id);
+        await (0, conversations_1.indexContact)(companyId, 'sms', phone, conversation.id);
+        await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, 'whatsapp', phone);
+    }
+    const live = settings.channels.whatsapp && await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId);
+    const firstEmailToMobile = conversation.channel === 'email'
+        && !!phone
+        && !conversation.lastOutboundAt
+        && settings.preferWhatsAppReply !== false;
+    const targets = (0, sendTargets_1.resolveSendTargets)(conversation, firstEmailToMobile ? 'both' : 'auto')
+        .filter(target => target.channel !== 'whatsapp' || live);
+    for (const target of targets) {
+        const job = {
+            companyId,
+            convId: conversation.id,
+            channel: target.channel,
+            to: target.to,
+            text: reply,
+            sendAfter,
+        };
+        if (target.channel === 'email') {
+            job.subject = conversation.emailSubject || inbound.subject;
+            job.emailThreadId = conversation.emailThreadId;
         }
-        return;
+        if (target.channel === 'whatsapp' && target.templateOnly) {
+            const fallback = (0, whatsapp_1.templateFallbackFor)(conversation.contact?.firstName, conversation.vehicleInterest?.title);
+            Object.assign(job, fallback);
+            job.text = (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || []);
+        }
+        await (0, outbox_1.enqueue)(job);
     }
-    if (onEmail)
-        return;
-    const job = {
-        companyId,
-        convId: conversation.id,
-        channel: conversation.channel,
-        to: conversation.address,
-        text: reply,
-        sendAfter,
-    };
-    // Outside the 24h window Meta will not take free text at all. The outbox re-checks
-    // this at send time; doing it here as well keeps the queued job honest.
-    if (conversation.channel === 'whatsapp' && !(0, whatsapp_1.withinCustomerServiceWindow)(conversation.lastCustomerMessageAt)) {
-        Object.assign(job, (0, whatsapp_1.templateFallbackFor)(conversation.contact?.firstName, conversation.vehicleInterest?.title));
+    if (conversation.emailBounce && phone && live && conversation.channel !== 'whatsapp') {
+        const moved = { channel: 'whatsapp', address: phone };
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, moved);
+        Object.assign(conversation, moved);
     }
-    await (0, outbox_1.enqueue)(job);
+};
+const enqueueOrSend = async (companyId, conversation, settings, text, via, from, extra) => {
+    const sendAfter = extra?.sendAfter ?? Date.now();
+    const live = settings.channels.whatsapp && await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId);
+    const targets = (0, sendTargets_1.resolveSendTargets)(conversation, via);
+    const sent = [];
+    let skippedWhatsApp;
+    const phone = (0, sendTargets_1.contactPhone)(conversation);
+    if (phone) {
+        await (0, conversations_1.indexContact)(companyId, 'whatsapp', phone, conversation.id);
+        await (0, conversations_1.indexContact)(companyId, 'sms', phone, conversation.id);
+        await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, 'whatsapp', phone);
+    }
+    for (const target of targets) {
+        if (target.channel === 'whatsapp' && !live) {
+            skippedWhatsApp = 'WhatsApp is not live yet.';
+            continue;
+        }
+        if (extra?.media && target.channel !== 'whatsapp')
+            continue;
+        if (extra?.media && target.channel === 'whatsapp' && target.templateOnly) {
+            throw new Error('WhatsApp only accepts photos, videos and files within 24 hours of their last message.');
+        }
+        const job = {
+            companyId,
+            convId: conversation.id,
+            channel: target.channel,
+            to: target.to,
+            text,
+            sendAfter,
+            ...(from === 'owner' ? { from } : {}),
+            ...(target.channel === 'email'
+                ? { subject: conversation.emailSubject, emailThreadId: conversation.emailThreadId }
+                : {}),
+            ...(extra?.media && target.channel === 'whatsapp' ? { media: extra.media } : {}),
+        };
+        if (target.channel === 'whatsapp' && target.templateOnly && !extra?.media) {
+            const fallback = (0, whatsapp_1.templateFallbackFor)(conversation.contact?.firstName, conversation.vehicleInterest?.title);
+            Object.assign(job, fallback);
+            job.text = (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || []);
+        }
+        try {
+            if (sendAfter > Date.now() + 2000) {
+                await (0, outbox_1.enqueue)(job);
+            }
+            else {
+                await (0, outbox_1.sendNow)({
+                    ...job,
+                    id: 'immediate',
+                    attempts: 0,
+                    createdAt: Date.now(),
+                }, from);
+            }
+            sent.push(target.channel);
+        }
+        catch (error) {
+            if (target.channel === 'whatsapp' && sent.length) {
+                skippedWhatsApp = error?.message || 'WhatsApp could not be sent.';
+                continue;
+            }
+            throw error;
+        }
+    }
+    if (!sent.length) {
+        throw new Error(skippedWhatsApp || 'There is nowhere to send that. No working email or mobile is on file.');
+    }
+    if (conversation.emailBounce && phone && live && conversation.channel !== 'whatsapp') {
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, { channel: 'whatsapp', address: phone });
+        conversation.channel = 'whatsapp';
+        conversation.address = phone;
+    }
+    return { sent, skippedWhatsApp, sendAfter };
 };
 // --- Steve talking to the agent ---------------------------------------------
 /**
@@ -724,33 +815,30 @@ exports.salesAgentSendReply = functions
     const conversation = await (0, conversations_1.getConversation)(companyId, convId);
     if (!conversation)
         throw new functions.https.HttpsError('not-found', 'That conversation no longer exists.');
-    if (conversation.channel === 'whatsapp' && !(await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId))) {
-        throw new functions.https.HttpsError('failed-precondition', 'WhatsApp is not live yet. The thread is here; nothing will be sent until Meta verification is on.');
+    const givenPhone = String(data?.phone || '').trim();
+    if (givenPhone && !conversation.contact?.phone) {
+        const e164 = (0, types_1.toE164)(givenPhone);
+        const contact = { ...(conversation.contact || {}), phone: e164 };
+        await (0, conversations_1.updateConversation)(companyId, convId, { contact });
+        conversation.contact = contact;
     }
-    if (media && conversation.channel !== 'whatsapp') {
+    const viaRaw = String(data?.via || 'auto');
+    const via = viaRaw === 'email' || viaRaw === 'whatsapp' || viaRaw === 'both' ? viaRaw : 'auto';
+    if (media && via === 'email') {
         throw new functions.https.HttpsError('failed-precondition', 'Photos, videos and files can only be sent on WhatsApp.');
     }
-    const job = {
-        id: 'immediate',
-        companyId,
-        convId,
-        channel: conversation.channel,
-        to: conversation.address,
-        text,
-        subject: conversation.emailSubject,
-        emailThreadId: conversation.emailThreadId,
-        sendAfter: Date.now(),
-        attempts: 0,
-        createdAt: Date.now(),
-        ...(media ? { media } : {}),
-    };
+    const settings = await (0, conversations_1.readSettings)(companyId);
     try {
-        const { providerId } = await (0, outbox_1.sendNow)(job, 'owner');
+        const result = await enqueueOrSend(companyId, conversation, settings, text || (media ? `[${media.kind}]` : ''), via, 'owner', { media });
         await (0, conversations_1.updateConversation)(companyId, convId, { unread: 0 });
-        return { ok: true, providerId };
+        return { ok: true, sent: result.sent, skippedWhatsApp: result.skippedWhatsApp || null };
     }
     catch (error) {
-        throw new functions.https.HttpsError('unavailable', error?.message || 'The message could not be sent.');
+        const message = error?.message || 'The message could not be sent.';
+        if (/not live/i.test(message) || /nowhere to send/i.test(message)) {
+            throw new functions.https.HttpsError('failed-precondition', message);
+        }
+        throw new functions.https.HttpsError('unavailable', message);
     }
 });
 /** Answer the question the agent is waiting on, from the app instead of by WhatsApp. */
@@ -810,8 +898,8 @@ exports.salesAgentApproveDraft = functions
     const edited = data?.text === undefined ? undefined : String(data.text).trim();
     const signAs = data?.signAs === 'owner' ? 'owner' : 'agent';
     try {
-        const { text, sendAfter } = await (0, exports.approveDraft)(companyId, convId, edited, signAs);
-        return { ok: true, text, sendAfter };
+        const { text, sendAfter, sent } = await (0, exports.approveDraft)(companyId, convId, edited, signAs);
+        return { ok: true, text, sendAfter, sent };
     }
     catch (error) {
         throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');

@@ -201,6 +201,11 @@ export interface Conversation {
     unread: number;
     emailThreadId?: string;              // Gmail threadId for replies
     emailSubject?: string;
+    /**
+     * Set when a Delivery Status Notification comes back for this thread.
+     * Email replies are skipped; WhatsApp/phone is the way through if we have a number.
+     */
+    emailBounce?: { address: string; reason: string; diagnostic?: string; at: number };
 }
 
 export type WhatsAppMediaKind = 'image' | 'video' | 'document';
@@ -234,6 +239,8 @@ export interface InboundMessage {
     subject?: string;
     emailThreadId?: string;
     extractedPhones?: string[];          // mobiles found in an email body -> router may open WhatsApp
+    /** The whole email as readable text (capped), so the brain reads what the parser did not. */
+    fullText?: string;
     media?: MessageMedia;
     receivedAt: number;
 }
