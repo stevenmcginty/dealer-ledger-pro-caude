@@ -54,11 +54,9 @@ const whatsapp_1 = require("./channels/whatsapp");
 const twilio_1 = require("./channels/twilio");
 const gmailAuth_1 = require("./gmailAuth");
 const MAX_ATTEMPTS = 3;
-const senders = {
-    whatsapp: whatsapp_1.whatsappSender,
-    sms: twilio_1.twilioSender,
-    email: gmail_1.gmailSender,
-};
+// Resolved lazily: whatsapp.ts -> router.ts -> outbox.ts -> whatsapp.ts is a cycle,
+// so at module-load time whatsappSender can still be undefined.
+const senderFor = (channel) => ({ whatsapp: whatsapp_1.whatsappSender, sms: twilio_1.twilioSender, email: gmail_1.gmailSender }[channel]);
 /** A reply that lands on the same second every time is a tell. */
 const randomDelayMs = (window) => {
     const [min, max] = window;
@@ -92,6 +90,9 @@ const applyWhatsAppWindow = async (job) => {
     if (job.channel !== 'whatsapp' || job.templateName)
         return job;
     const conversation = await (0, conversations_1.getConversation)(job.companyId, job.convId);
+    if (job.media && !(0, whatsapp_1.withinCustomerServiceWindow)(conversation?.lastCustomerMessageAt)) {
+        throw new Error('WhatsApp only accepts photos, videos and files within 24 hours of their last message.');
+    }
     if ((0, whatsapp_1.withinCustomerServiceWindow)(conversation?.lastCustomerMessageAt))
         return job;
     console.warn(`Outbox ${job.id}: outside the 24h window, falling back to a template`);
@@ -112,7 +113,7 @@ const applyWhatsAppWindow = async (job) => {
  */
 const sendNow = async (job, from = 'agent') => {
     const prepared = await applyWhatsAppWindow(job);
-    const sender = senders[prepared.channel];
+    const sender = senderFor(prepared.channel);
     if (!sender)
         throw new Error(`No sender for channel ${prepared.channel}`);
     const { providerId } = await sender.send(prepared.companyId, {
@@ -122,6 +123,7 @@ const sendNow = async (job, from = 'agent') => {
         emailThreadId: prepared.emailThreadId,
         templateName: prepared.templateName,
         templateParams: prepared.templateParams,
+        media: prepared.media,
     });
     const conversation = await (0, conversations_1.getConversation)(prepared.companyId, prepared.convId);
     if (conversation) {
@@ -133,6 +135,7 @@ const sendNow = async (job, from = 'agent') => {
             providerId,
             subject: prepared.subject,
             createdAt: Date.now(),
+            ...(prepared.media ? { media: prepared.media } : {}),
         });
         await (0, conversations_1.updateConversation)(prepared.companyId, conversation.id, { lastOutboundAt: Date.now() });
     }

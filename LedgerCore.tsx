@@ -421,8 +421,10 @@ const LedgerCore = () => {
             </div>
         </header>
 
-         <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-6">
-            <div className="max-w-7xl mx-auto">
+         <div className={view === 'agentInbox'
+            ? 'flex-1 min-h-0 overflow-hidden pb-[4.75rem] md:pb-0'
+            : 'flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-6'}>
+            <div className={view === 'agentInbox' ? 'h-full min-h-0' : 'max-w-7xl mx-auto'}>
                 <Suspense fallback={<div className="flex items-center justify-center py-24"><Spinner className="h-8 w-8 text-brand-500" /></div>}>
                     {renderView()}
                 </Suspense>

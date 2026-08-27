@@ -28,8 +28,29 @@
           ".write": "auth != null && (auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || !data.exists())"
         },
 
+        "salesAgent": {
+          ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')",
+          "conversations": {
+            ".read": "auth != null && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).exists() && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).val() === root.child('salesAgentRouting').child('inboxMembers').child($companyId).val()",
+            ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || (root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).exists() && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).val() === root.child('salesAgentRouting').child('inboxMembers').child($companyId).val()))"
+          }
+        },
+
         "$other": {
           ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        }
+      }
+    },
+
+    "salesAgentRouting": {
+      "inboxMembers": {
+        "$companyId": {
+          ".read": "auth != null && (root.child('users').child(auth.uid).child('companyId').val() == $companyId || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        }
+      },
+      "sharedInboxes": {
+        "$inboxId": {
+          ".read": "auth != null && (auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || (root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).exists() && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).val() == $inboxId))"
         }
       }
     },

@@ -85,6 +85,39 @@ export const requireMember = async (
     return id;
 };
 
+/**
+ * Same as requireMember, plus anyone on the shared Gmail / WhatsApp inbox.
+ *
+ * Steve and Chris do not share a ledger, but they share a number. Replies and
+ * read-state on a thread that landed in the other account have to work from
+ * either login or the shared inbox is read-only theatre.
+ */
+export const requireInboxAccess = async (
+    context: functions.https.CallableContext,
+    companyId: unknown
+): Promise<string> => {
+    try {
+        return await requireMember(context, companyId);
+    } catch (error: any) {
+        if (!context.auth || !(error instanceof functions.https.HttpsError) || error.code !== 'permission-denied') {
+            throw error;
+        }
+
+        const id = String(companyId || '').trim();
+        const userCompanySnap = await db().ref(`users/${context.auth.uid}/companyId`).once('value');
+        const userCompany = String(userCompanySnap.val() || '').trim();
+        if (!id || !userCompany) throw error;
+
+        const [mine, theirs] = await Promise.all([
+            db().ref(routingPath(`inboxMembers/${userCompany}`)).once('value'),
+            db().ref(routingPath(`inboxMembers/${id}`)).once('value'),
+        ]);
+        const inboxId = mine.val();
+        if (inboxId && inboxId === theirs.val()) return id;
+        throw error;
+    }
+};
+
 /** CRM lead shapes, mirrored from the app's root types.ts. Functions compile only ./src,
  *  so the shapes are restated here the same way connectors/types.ts restates its own. */
 export type LeadSource =

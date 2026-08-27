@@ -2,7 +2,7 @@
 // hashed /assets/ files. Everything else — Firebase RTDB long-polling, Google
 // APIs, Cloud Functions — must go straight to the network. Wrapping those in
 // respondWith() is what made a PWA refresh hang until site data was cleared.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v7';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v8';
 
 // --- Cloud Messaging ------------------------------------------------------
 // Owner alerts from the sales agent arrive here as web push. There is no second
@@ -85,10 +85,18 @@ self.addEventListener('push', event => {
       tag: n.tag || convId || kind || 'dave',
       renotify: true,
       requireInteraction: isDraft || isQuestion,
-      vibrate: [80, 40, 80],
+      vibrate: [80, 40, 80, 40, 120],
       data: { convId, kind, url: d.url || '' },
       actions,
     });
+    try {
+      const notes = await self.registration.getNotifications();
+      const badgeCount = notes.length;
+      if (self.navigator && typeof self.navigator.setAppBadge === 'function') {
+        if (badgeCount > 0) await self.navigator.setAppBadge(badgeCount);
+        else await self.navigator.clearAppBadge();
+      }
+    } catch (_) {}
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
       try {

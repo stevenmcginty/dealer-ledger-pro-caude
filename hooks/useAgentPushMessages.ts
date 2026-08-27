@@ -5,6 +5,7 @@ import { useUI } from './useUI';
 import { PushAlert, onPushAlert, showAlertNotification, syncPushToken } from '../services/pushService';
 import { approveAgentDraft, formatQueuedSend } from '../services/salesAgentService';
 import { requestAgentConversation, requestDraftReview, takeDraftActionFromUrl, takeDraftReviewFromUrl } from '../utils/agentInboxLink';
+import { playInboxChime } from '../utils/inboxNotify';
 
 /**
  * Owner alerts that arrive while the app is open.
@@ -68,7 +69,13 @@ export const useAgentPushMessages = (): void => {
     // the gap. The listener is attached once and reads the latest handler.
     const show = useRef<(alert: PushAlert) => void>(() => {});
     show.current = alert => {
-        requestDraftReview(alert.convId);
+        playInboxChime();
+        // Drafts stay on the bell. Incoming WhatsApp / email go to the inbox.
+        if (alert.kind === 'draft' || alert.kind === 'question') {
+            requestDraftReview(alert.convId);
+        } else {
+            requestAgentConversation(alert.convId);
+        }
         // Into the shade as well, with Approve / Edit, so it is not lost the
         // moment the app is swiped away.
         void showAlertNotification(alert);
@@ -79,8 +86,11 @@ export const useAgentPushMessages = (): void => {
 
         const message = alert.body ? `${alert.title}: ${alert.body}` : alert.title;
         toast.info(message, {
-            label: 'Open in notifications',
-            onClick: () => requestDraftReview(alert.convId),
+            label: 'Open inbox',
+            onClick: () => {
+                setViewRef.current('agentInbox');
+                requestAgentConversation(alert.convId);
+            },
         });
     };
 
@@ -123,16 +133,24 @@ export const useAgentPushMessages = (): void => {
             if (type === 'dlp:dave-approve') approveFromShade.current(convId);
             else if (type === 'dlp:dave-review') openInInbox(convId);
             else if (type === 'dlp:dave-alert') {
-                // The worker has already put it in the shade; just open the bell.
+                // The worker has already put it in the shade. The FCM onMessage
+                // path does not run when the worker owns the push, so the chime
+                // and routing live here as well.
                 const kind = String(event.data?.kind || '');
-                requestDraftReview(convId);
-                if (kind !== 'draft' && kind !== 'question') {
-                    const body = String(event.data?.body || '');
-                    toastRef.current.info(body ? `${String(event.data?.title || 'Dave')}: ${body}` : 'Dave', {
-                        label: 'Open in notifications',
-                        onClick: () => requestDraftReview(convId),
-                    });
+                playInboxChime();
+                if (kind === 'draft' || kind === 'question') {
+                    requestDraftReview(convId);
+                    return;
                 }
+                requestAgentConversation(convId);
+                const body = String(event.data?.body || '');
+                toastRef.current.info(body ? `${String(event.data?.title || 'Inbox')}: ${body}` : 'New message', {
+                    label: 'Open inbox',
+                    onClick: () => {
+                        setViewRef.current('agentInbox');
+                        requestAgentConversation(convId);
+                    },
+                });
             }
         };
         navigator.serviceWorker.addEventListener('message', onMessage);

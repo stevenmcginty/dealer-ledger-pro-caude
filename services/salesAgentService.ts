@@ -58,9 +58,10 @@ export interface SalesAgentSettings {
     /** Web push to this company's registered devices, alongside the WhatsApp alert. */
     pushNotifications?: boolean;
     /**
-     * Email replies are written but held until you approve them, on WhatsApp with
-     * `SEND 12` or in the Agent Inbox. WhatsApp and SMS replies always go on their own.
-     * Undefined means on.
+     * Hold Dave's replies for approval in this ledger's Agent Inbox.
+     * `true` / undefined: he drafts, you send. `false`: he replies to the
+     * customer himself (automatic reply). Per company, so Steve and Chris
+     * can choose differently.
      */
     emailApprovalMode?: boolean;
     /**
@@ -141,6 +142,36 @@ export interface Conversation {
     unread: number;
     emailThreadId?: string;
     emailSubject?: string;
+    /**
+     * Set when a shared inbox placed this thread. The client uses it to mark
+     * conversations that live on another ledger in the WhatsApp shared view.
+     */
+    routing?: {
+        inboxId: string;
+        reason: 'existing' | 'owner' | 'fallback';
+        ownerCompanyId?: string;
+    };
+}
+
+/** One Gmail / one WhatsApp number shared by several ledger accounts. */
+export interface SharedInboxMeta {
+    id: string;
+    name?: string;
+    credentialCompanyId: string;
+    memberCompanyIds: string[];
+    fallbackCompanyId: string;
+    gmailAddress?: string;
+    whatsappPhoneNumberId?: string;
+    whatsappLive?: boolean;
+}
+
+export type WhatsAppMediaKind = 'image' | 'video' | 'document';
+
+export interface MessageMedia {
+    kind: WhatsAppMediaKind;
+    url: string;
+    mime?: string;
+    filename?: string;
 }
 
 export interface AgentMessage {
@@ -151,6 +182,7 @@ export interface AgentMessage {
     from: 'customer' | 'agent' | 'owner';
     providerId?: string;
     subject?: string;
+    media?: MessageMedia;
     createdAt: number;
 }
 
@@ -287,13 +319,112 @@ export const subscribeToAgentConversations = (
             // `messages` is a child of the conversation; it is fetched separately
             // and would otherwise be carried around in every list row.
             const { messages, ...rest } = raw[id] || {};
-            return { ...rest, id } as Conversation;
+            return { ...rest, id, companyId: rest.companyId || companyId } as Conversation;
         });
         list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         cb(list);
     };
     ref.on('value', listener);
     return () => ref.off('value', listener);
+};
+
+const asSharedInbox = (id: string, raw: Partial<SharedInboxMeta> | null): SharedInboxMeta | null => {
+    if (!raw?.credentialCompanyId) return null;
+    const stored = Array.isArray(raw.memberCompanyIds)
+        ? raw.memberCompanyIds
+        : raw.memberCompanyIds && typeof raw.memberCompanyIds === 'object'
+            ? Object.values(raw.memberCompanyIds as Record<string, string>)
+            : [];
+    const memberCompanyIds = Array.from(new Set(
+        [raw.credentialCompanyId, ...stored, raw.fallbackCompanyId || ''].map(s => String(s || '').trim()).filter(Boolean)
+    ));
+    return {
+        id,
+        credentialCompanyId: raw.credentialCompanyId,
+        memberCompanyIds,
+        fallbackCompanyId: raw.fallbackCompanyId || raw.credentialCompanyId,
+        whatsappLive: raw.whatsappLive === true,
+        ...(raw.name ? { name: raw.name } : {}),
+        ...(raw.gmailAddress ? { gmailAddress: raw.gmailAddress } : {}),
+        ...(raw.whatsappPhoneNumberId ? { whatsappPhoneNumberId: raw.whatsappPhoneNumberId } : {}),
+    };
+};
+
+/**
+ * The shared Gmail / WhatsApp inbox this company belongs to, or null.
+ *
+ * Lives outside the company tree (`salesAgentRouting`). A missing rule or a
+ * company that does not share a number is treated as "no shared inbox".
+ */
+export const subscribeToSharedInbox = (
+    companyId: string,
+    cb: (inbox: SharedInboxMeta | null) => void
+) => {
+    let inboxUnsub: (() => void) | null = null;
+    const memberRef = db.ref(`salesAgentRouting/inboxMembers/${companyId}`);
+    const onMember = (snap: firebase.database.DataSnapshot) => {
+        inboxUnsub?.();
+        inboxUnsub = null;
+        const inboxId = String(snap.val() || '');
+        if (!inboxId) {
+            cb(null);
+            return;
+        }
+        const inboxRef = db.ref(`salesAgentRouting/sharedInboxes/${inboxId}`);
+        const onInbox = (inboxSnap: firebase.database.DataSnapshot) => {
+            cb(asSharedInbox(inboxId, inboxSnap.val() as Partial<SharedInboxMeta> | null));
+        };
+        inboxRef.on('value', onInbox, () => cb(null));
+        inboxUnsub = () => inboxRef.off('value', onInbox);
+    };
+    memberRef.on('value', onMember, () => cb(null));
+    return () => {
+        memberRef.off('value', onMember);
+        inboxUnsub?.();
+    };
+};
+
+/**
+ * Live conversations across several ledgers. Used for the WhatsApp shared
+ * inbox so Steve and Chris see every message to the shared number.
+ *
+ * Duplicate ids from two companies are kept as two threads (push keys are
+ * unique, but the merge key is companyId:id to be safe).
+ */
+export const subscribeToAgentConversationsAcross = (
+    companyIds: string[],
+    cb: (conversations: Conversation[]) => void
+) => {
+    const unique = Array.from(new Set(companyIds.map(id => String(id || '').trim()).filter(Boolean)));
+    if (!unique.length) {
+        cb([]);
+        return () => undefined;
+    }
+
+    const byCompany = new Map<string, Conversation[]>();
+    const unsubs = unique.map(id => {
+        const ref = db.ref(`${agentRoot(id)}/conversations`);
+        const listener = (snap: firebase.database.DataSnapshot) => {
+            const raw = snap.val() || {};
+            const list = Object.keys(raw).map(convId => {
+                const { messages, ...rest } = raw[convId] || {};
+                return { ...rest, id: convId, companyId: rest.companyId || id } as Conversation;
+            });
+            byCompany.set(id, list);
+            const merged = Array.from(byCompany.values()).flat();
+            merged.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            cb(merged);
+        };
+        ref.on('value', listener, () => {
+            byCompany.set(id, []);
+            const merged = Array.from(byCompany.values()).flat();
+            merged.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            cb(merged);
+        });
+        return () => ref.off('value', listener);
+    });
+
+    return () => unsubs.forEach(stop => stop());
 };
 
 export const subscribeToAgentMessages = (
@@ -503,11 +634,16 @@ export const startAgentWhatsApp = (
 );
 
 /** Send a message to the customer as Steve, on whichever channel they used. */
-export const sendAgentReply = (companyId: string, convId: string, text: string) =>
-    call<{ companyId: string; convId: string; text: string }, void>(
+export const sendAgentReply = (
+    companyId: string,
+    convId: string,
+    text: string,
+    media?: MessageMedia
+) =>
+    call<{ companyId: string; convId: string; text: string; media?: MessageMedia }, void>(
         'salesAgentSendReply',
-        { companyId, convId, text },
-        60000,
+        { companyId, convId, text, ...(media ? { media } : {}) },
+        120000,
         'That message was not sent.'
     );
 

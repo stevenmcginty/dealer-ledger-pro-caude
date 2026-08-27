@@ -69,17 +69,26 @@ const sendOwnerAlert = async (companyId, kind, conversation, text) => {
         sentAt: Date.now(),
     };
     let settings = null;
+    const skipWhatsApp = kind === 'inbound';
     try {
         settings = await (0, conversations_1.readSettings)(companyId);
-        await deliver(companyId, text, settings.agentName || 'Dave');
-        alert.deliveredVia = 'whatsapp';
+        if (!skipWhatsApp) {
+            await deliver(companyId, text, settings.agentName || 'Dave');
+            alert.deliveredVia = 'whatsapp';
+        }
+        else {
+            alert.deliveredVia = 'none';
+        }
     }
     catch (error) {
         console.error(`Owner alert (${kind}) for company ${companyId} could not be delivered`, error);
         alert.deliveredVia = 'none';
         alert.error = error?.message || String(error);
     }
-    const pushedTo = await (0, push_1.sendOwnerPush)(companyId, settings, alert);
+    const fanOut = kind === 'new_conversation' || kind === 'inbound' || kind === 'escalation';
+    const pushedTo = fanOut
+        ? await (0, push_1.sendPushToCompanyAndInbox)(companyId, settings, alert)
+        : await (0, push_1.sendOwnerPush)(companyId, settings, alert);
     if (pushedTo > 0) {
         alert.pushedTo = pushedTo;
         if (alert.deliveredVia !== 'whatsapp')

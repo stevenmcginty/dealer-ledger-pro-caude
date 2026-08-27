@@ -53,7 +53,11 @@ export interface SalesAgentSettings {
     unmatchedStockPolicy?: 'include' | 'exclude';
     /** Push notifications to this company's phones as well as WhatsApp alerts (default true). */
     pushNotifications?: boolean;
-    /** Replies are drafted and held for the owner to approve before they go out (default true). Applies to email now and to WhatsApp once that channel is sending. */
+    /**
+     * Hold Dave's replies for approval in this ledger's Agent Inbox (default true).
+     * `false` is automatic reply: the first contact (and later turns) go out
+     * without waiting. Per company, so Steve and Chris can choose differently.
+     */
     emailApprovalMode?: boolean;
     /**
      * When Dave is allowed to send to the customer. Drafting and owner alerts
@@ -188,6 +192,15 @@ export interface Conversation {
     emailSubject?: string;
 }
 
+export type WhatsAppMediaKind = 'image' | 'video' | 'document';
+
+export interface MessageMedia {
+    kind: WhatsAppMediaKind;
+    url: string;
+    mime?: string;
+    filename?: string;
+}
+
 export interface AgentMessage {
     id: string;
     direction: 'in' | 'out';
@@ -196,6 +209,7 @@ export interface AgentMessage {
     from: 'customer' | 'agent' | 'owner';
     providerId?: string;                 // WhatsApp wamid / Twilio SID / Gmail message id (dedupe)
     subject?: string;
+    media?: MessageMedia;
     createdAt: number;
 }
 
@@ -209,10 +223,11 @@ export interface InboundMessage {
     subject?: string;
     emailThreadId?: string;
     extractedPhones?: string[];          // mobiles found in an email body -> router may open WhatsApp
+    media?: MessageMedia;
     receivedAt: number;
 }
 
-export type OwnerAlertKind = 'new_conversation' | 'escalation' | 'booking' | 'question' | 'draft' | 'error';
+export type OwnerAlertKind = 'new_conversation' | 'inbound' | 'escalation' | 'booking' | 'question' | 'draft' | 'error';
 
 export interface OwnerAlert {
     id: string;
@@ -267,6 +282,7 @@ export interface OutboxJob {
     emailThreadId?: string;
     templateName?: string;               // WhatsApp business-initiated (outside 24h window)
     templateParams?: string[];
+    media?: MessageMedia;
     sendAfter: number;                   // epoch ms
     attempts: number;
     lastError?: string;
@@ -287,7 +303,7 @@ export interface BrainResult {
 
 /** Channel adapters implement this. */
 export interface ChannelSender {
-    send(companyId: string, job: Pick<OutboxJob, 'to' | 'text' | 'subject' | 'emailThreadId' | 'templateName' | 'templateParams'>): Promise<{ providerId: string }>;
+    send(companyId: string, job: Pick<OutboxJob, 'to' | 'text' | 'subject' | 'emailThreadId' | 'templateName' | 'templateParams' | 'media'>): Promise<{ providerId: string }>;
 }
 
 export const normaliseAddress = (channel: Channel, address: string): string => {

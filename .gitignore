@@ -31,3 +31,4 @@ dist-ssr
 
 # Browser-automation scratch output
 .playwright-mcp/
+.whatsapp-setup.local

@@ -19,7 +19,8 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions/v1';
 
-import { agentPath, db, requireMember } from './conversations';
+import { agentPath, db, readSettings, requireMember } from './conversations';
+import { inboxForMember } from './inboxRouting';
 import { OwnerAlert, SalesAgentSettings, rtdbKey } from './types';
 
 /** One registered browser. `token` is the real thing; the RTDB key is a sanitised copy. */
@@ -44,6 +45,15 @@ const BODY_LIMIT = 200;
 const DRAFT_BODY_LIMIT = 450;
 
 const pushTokensPath = (companyId: string) => agentPath(companyId, 'pushTokens');
+
+const pushTitle = (alert: OwnerAlert, settings: SalesAgentSettings | null): string => {
+    if (alert.kind === 'inbound' || alert.kind === 'new_conversation') {
+        if (/\bwhatsapp\b/i.test(alert.text)) return 'WhatsApp';
+        if (/\bemail\b/i.test(alert.text)) return 'Email';
+        return 'Inbox';
+    }
+    return settings?.agentName || 'Dave';
+};
 
 /** The app is served from Hosting; the link has to be absolute for FCM to accept it. */
 const appBaseUrl = (): string =>
@@ -94,7 +104,7 @@ export const sendOwnerPush = async (
         if (!tokens.length) return 0;
 
         const link = alertLink(alert.convId);
-        const title = settings?.agentName || 'Dave';
+        const title = pushTitle(alert, settings);
         const body = alert.text.slice(0, alert.kind === 'draft' ? DRAFT_BODY_LIMIT : BODY_LIMIT);
 
         let delivered = 0;
@@ -165,6 +175,32 @@ export const sendOwnerPush = async (
         console.error(`Push alert for company ${companyId} could not be sent`, error);
         return 0;
     }
+};
+
+/**
+ * Same alert, every ledger that shares the Gmail / WhatsApp number.
+ *
+ * Incoming mail and WhatsApp are one number; Steve and Chris both have the
+ * PWA installed. Without this, only the home ledger's phones would chime.
+ */
+export const sendPushToCompanyAndInbox = async (
+    companyId: string,
+    settings: SalesAgentSettings | null,
+    alert: OwnerAlert
+): Promise<number> => {
+    let delivered = await sendOwnerPush(companyId, settings, alert);
+    try {
+        const inbox = await inboxForMember(companyId);
+        if (!inbox) return delivered;
+        for (const memberId of inbox.memberCompanyIds) {
+            if (memberId === companyId) continue;
+            const memberSettings = await readSettings(memberId);
+            delivered += await sendOwnerPush(memberId, memberSettings, alert);
+        }
+    } catch (error) {
+        console.error(`Inbox fan-out push for company ${companyId} failed`, error);
+    }
+    return delivered;
 };
 
 // --- Callables for the app --------------------------------------------------

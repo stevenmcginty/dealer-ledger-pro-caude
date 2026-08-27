@@ -17,7 +17,7 @@ import {
     readSettings,
 } from './conversations';
 import { sanitiseTemplateParam, sendWhatsAppTemplate, sendWhatsAppText } from './channels/whatsapp';
-import { sendOwnerPush } from './push';
+import { sendOwnerPush, sendPushToCompanyAndInbox } from './push';
 import { Conversation, OwnerAlert, OwnerAlertKind, SalesAgentSettings, stripUndefined } from './types';
 
 /** Approved template used when Steve has not messaged the number for over 24 hours. */
@@ -84,18 +84,26 @@ export const sendOwnerAlert = async (
     };
 
     let settings: SalesAgentSettings | null = null;
+    const skipWhatsApp = kind === 'inbound';
 
     try {
         settings = await readSettings(companyId);
-        await deliver(companyId, text, settings.agentName || 'Dave');
-        alert.deliveredVia = 'whatsapp';
+        if (!skipWhatsApp) {
+            await deliver(companyId, text, settings.agentName || 'Dave');
+            alert.deliveredVia = 'whatsapp';
+        } else {
+            alert.deliveredVia = 'none';
+        }
     } catch (error: any) {
         console.error(`Owner alert (${kind}) for company ${companyId} could not be delivered`, error);
         alert.deliveredVia = 'none';
         alert.error = error?.message || String(error);
     }
 
-    const pushedTo = await sendOwnerPush(companyId, settings, alert);
+    const fanOut = kind === 'new_conversation' || kind === 'inbound' || kind === 'escalation';
+    const pushedTo = fanOut
+        ? await sendPushToCompanyAndInbox(companyId, settings, alert)
+        : await sendOwnerPush(companyId, settings, alert);
     if (pushedTo > 0) {
         alert.pushedTo = pushedTo;
         if (alert.deliveredVia !== 'whatsapp') alert.deliveredVia = 'push';

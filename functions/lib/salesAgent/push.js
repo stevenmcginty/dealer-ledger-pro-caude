@@ -50,10 +50,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentUnregisterPush = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentRegisterPush = exports.sendOwnerPush = exports.alertLink = void 0;
+exports.salesAgentUnregisterPush = exports.salesAgentPushDebug = exports.salesAgentTestPush = exports.salesAgentRegisterPush = exports.sendPushToCompanyAndInbox = exports.sendOwnerPush = exports.alertLink = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const conversations_1 = require("./conversations");
+const inboxRouting_1 = require("./inboxRouting");
 const types_1 = require("./types");
 /** FCM refuses more than 500 tokens in one multicast. */
 const MULTICAST_LIMIT = 500;
@@ -66,6 +67,16 @@ const BODY_LIMIT = 200;
  */
 const DRAFT_BODY_LIMIT = 450;
 const pushTokensPath = (companyId) => (0, conversations_1.agentPath)(companyId, 'pushTokens');
+const pushTitle = (alert, settings) => {
+    if (alert.kind === 'inbound' || alert.kind === 'new_conversation') {
+        if (/\bwhatsapp\b/i.test(alert.text))
+            return 'WhatsApp';
+        if (/\bemail\b/i.test(alert.text))
+            return 'Email';
+        return 'Inbox';
+    }
+    return settings?.agentName || 'Dave';
+};
 /** The app is served from Hosting; the link has to be absolute for FCM to accept it. */
 const appBaseUrl = () => (process.env.SALES_AGENT_APP_URL || 'https://motor-ledger-pro.web.app').replace(/\/+$/, '');
 /**
@@ -106,7 +117,7 @@ const sendOwnerPush = async (companyId, settings, alert) => {
         if (!tokens.length)
             return 0;
         const link = (0, exports.alertLink)(alert.convId);
-        const title = settings?.agentName || 'Dave';
+        const title = pushTitle(alert, settings);
         const body = alert.text.slice(0, alert.kind === 'draft' ? DRAFT_BODY_LIMIT : BODY_LIMIT);
         let delivered = 0;
         const dead = [];
@@ -172,6 +183,31 @@ const sendOwnerPush = async (companyId, settings, alert) => {
     }
 };
 exports.sendOwnerPush = sendOwnerPush;
+/**
+ * Same alert, every ledger that shares the Gmail / WhatsApp number.
+ *
+ * Incoming mail and WhatsApp are one number; Steve and Chris both have the
+ * PWA installed. Without this, only the home ledger's phones would chime.
+ */
+const sendPushToCompanyAndInbox = async (companyId, settings, alert) => {
+    let delivered = await (0, exports.sendOwnerPush)(companyId, settings, alert);
+    try {
+        const inbox = await (0, inboxRouting_1.inboxForMember)(companyId);
+        if (!inbox)
+            return delivered;
+        for (const memberId of inbox.memberCompanyIds) {
+            if (memberId === companyId)
+                continue;
+            const memberSettings = await (0, conversations_1.readSettings)(memberId);
+            delivered += await (0, exports.sendOwnerPush)(memberId, memberSettings, alert);
+        }
+    }
+    catch (error) {
+        console.error(`Inbox fan-out push for company ${companyId} failed`, error);
+    }
+    return delivered;
+};
+exports.sendPushToCompanyAndInbox = sendPushToCompanyAndInbox;
 // --- Callables for the app --------------------------------------------------
 /** This device has been granted permission and wants the alerts. */
 exports.salesAgentRegisterPush = functions.https.onCall(async (data, context) => {

@@ -222,6 +222,7 @@ const handleInbound = async (msg, options = {}) => {
         providerId: msg.providerId,
         subject: msg.subject,
         createdAt: msg.receivedAt || Date.now(),
+        ...(msg.media ? { media: msg.media } : {}),
     });
     const patch = {
         lastInboundAt: msg.receivedAt || Date.now(),
@@ -265,6 +266,10 @@ const handleInbound = async (msg, options = {}) => {
             ? ' (not matched to a ledger car — in the shared fallback inbox)'
             : '';
         await (0, alerts_1.sendOwnerAlert)(companyId, 'new_conversation', conversation, `#${conversation.shortId} New ${msg.channel} enquiry from ${(0, alerts_1.describeCustomer)(conversation)}${unmatched}: ${text.slice(0, 200)}`);
+    }
+    else if (conversation.mode === 'agent') {
+        // Follow-up on a live thread: shade + PWA badge, not another WhatsApp to Steve.
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'inbound', conversation, `#${conversation.shortId} ${msg.channel} from ${(0, alerts_1.describeCustomer)(conversation)}: ${text.slice(0, 200)}`);
     }
     if (!settings.enabled)
         return;
@@ -396,7 +401,11 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
 };
 exports.runAgentTurn = runAgentTurn;
 // --- Draft & Approve --------------------------------------------------------
-/** Replies are held for approval unless Steve has turned that off. */
+/**
+ * Held for approval unless this ledger ticked Automatic reply.
+ * The home company of the thread is what counts, so Steve's tick does not
+ * send Chris's cars and the other way around.
+ */
 const needsApproval = (_conversation, settings) => settings.emailApprovalMode !== false;
 exports.needsApproval = needsApproval;
 /** A draft in an alert is a glance, not the whole email. */
@@ -638,7 +647,7 @@ exports.answerPendingQuestion = answerPendingQuestion;
 // --- Callables for the app --------------------------------------------------
 /** Take over, hand back, or park a conversation from the conversations screen. */
 exports.salesAgentSetMode = functions.https.onCall(async (data, context) => {
-    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
     const mode = String(data?.mode || '');
     if (!['agent', 'human', 'paused'].includes(mode)) {
@@ -654,16 +663,28 @@ exports.salesAgentSetMode = functions.https.onCall(async (data, context) => {
 exports.salesAgentSendReply = functions
     .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
     .https.onCall(async (data, context) => {
-    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
     const text = String(data?.text || '').trim();
-    if (!text)
+    const rawMedia = data?.media && typeof data.media === 'object' ? data.media : null;
+    const media = rawMedia?.url && (rawMedia.kind === 'image' || rawMedia.kind === 'video' || rawMedia.kind === 'document')
+        ? {
+            kind: rawMedia.kind,
+            url: String(rawMedia.url),
+            ...(rawMedia.mime ? { mime: String(rawMedia.mime) } : {}),
+            ...(rawMedia.filename ? { filename: String(rawMedia.filename) } : {}),
+        }
+        : undefined;
+    if (!text && !media)
         throw new functions.https.HttpsError('invalid-argument', 'There is nothing to send.');
     const conversation = await (0, conversations_1.getConversation)(companyId, convId);
     if (!conversation)
         throw new functions.https.HttpsError('not-found', 'That conversation no longer exists.');
     if (conversation.channel === 'whatsapp' && !(await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId))) {
         throw new functions.https.HttpsError('failed-precondition', 'WhatsApp is not live yet. The thread is here; nothing will be sent until Meta verification is on.');
+    }
+    if (media && conversation.channel !== 'whatsapp') {
+        throw new functions.https.HttpsError('failed-precondition', 'Photos, videos and files can only be sent on WhatsApp.');
     }
     const job = {
         id: 'immediate',
@@ -677,6 +698,7 @@ exports.salesAgentSendReply = functions
         sendAfter: Date.now(),
         attempts: 0,
         createdAt: Date.now(),
+        ...(media ? { media } : {}),
     };
     try {
         const { providerId } = await (0, outbox_1.sendNow)(job, 'owner');
@@ -691,7 +713,7 @@ exports.salesAgentSendReply = functions
 exports.salesAgentAnswerQuestion = functions
     .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
     .https.onCall(async (data, context) => {
-    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
     const answer = String(data?.answer || '').trim();
     if (!answer)
@@ -713,7 +735,7 @@ exports.salesAgentAnswerQuestion = functions
 exports.salesAgentInstruct = functions
     .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
     .https.onCall(async (data, context) => {
-    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
     const text = String(data?.text || '').trim();
     if (!text)
@@ -735,7 +757,7 @@ exports.salesAgentInstruct = functions
 exports.salesAgentApproveDraft = functions
     .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
     .https.onCall(async (data, context) => {
-    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
     const edited = data?.text === undefined ? undefined : String(data.text).trim();
     const signAs = data?.signAs === 'owner' ? 'owner' : 'agent';
@@ -749,7 +771,7 @@ exports.salesAgentApproveDraft = functions
 });
 /** Bin the draft. The conversation stays with the agent unless you also take it over. */
 exports.salesAgentDiscardDraft = functions.https.onCall(async (data, context) => {
-    const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
     try {
         const { had } = await (0, exports.discardDraft)(companyId, convId);

@@ -212,6 +212,27 @@ const SalesAgentSettingsPage = () => {
         }
     };
 
+    /**
+     * Automatic reply saves on its own, same as the master switch: ticking it
+     * and walking away should actually change what Dave does on the next message.
+     */
+    const handleToggleAutoReply = async (auto: boolean) => {
+        if (!companyId) return;
+        const holdForApproval = !auto;
+        setDraft(prev => ({ ...prev, emailApprovalMode: holdForApproval }));
+        try {
+            await saveSalesAgentSettings(companyId, { emailApprovalMode: holdForApproval });
+            toast.success(
+                auto
+                    ? `${draft.agentName || 'Dave'} will reply to new contacts himself.`
+                    : `${draft.agentName || 'Dave'} will draft replies for you to approve.`
+            );
+        } catch (err: any) {
+            setDraft(prev => ({ ...prev, emailApprovalMode: !holdForApproval }));
+            toast.error(err?.message || 'Could not change automatic reply.');
+        }
+    };
+
     /** The master switch saves on its own — nobody expects to press Save after it. */
     const handleToggleEnabled = async (next: boolean) => {
         if (!companyId) return;
@@ -543,12 +564,22 @@ const SalesAgentSettingsPage = () => {
                             onChange={next => edit('preferWhatsAppReply', next)}
                         />
 
-                        <Toggle
-                            label="Approve replies before they're sent"
-                            hint={`${draft.agentName || 'Dave'} drafts the reply and it waits in the notification bell for you to approve, edit, or send back for a rewrite. Applies to email now and to WhatsApp once that channel is sending.`}
-                            checked={draft.emailApprovalMode !== false}
-                            onChange={next => edit('emailApprovalMode', next)}
-                        />
+                        <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-brand-600 focus:ring-brand-500/40"
+                                checked={draft.emailApprovalMode === false}
+                                onChange={e => handleToggleAutoReply(e.target.checked)}
+                            />
+                            <span className="min-w-0">
+                                <span className="block text-sm font-medium text-gray-200">Automatic reply</span>
+                                <span className="block text-xs text-gray-500 mt-0.5">
+                                    When someone first writes in, {draft.agentName || 'Dave'} sends the reply himself
+                                    on this ledger. Untick and he still writes it, but it waits in the Agent Inbox
+                                    for you to approve. Steve and Chris each have their own copy of this.
+                                </span>
+                            </span>
+                        </label>
 
                         <div className="space-y-3">
                             <Toggle

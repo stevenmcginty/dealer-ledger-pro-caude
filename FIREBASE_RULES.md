@@ -61,12 +61,29 @@ These rules ensure that a user can only access their own company's data, that a 
           ".write": "auth != null && (auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || !data.exists())"
         },
 
-        // Everything else under the company (vehicles, receipts, todos, canvas,
-        // leads, membership map, etc.) is writable by company members or the admin.
-        // Note: RTDB rules do not allow revoking access at deeper levels, so the
-        // member write lives on each child rather than on $companyId itself.
+        "salesAgent": {
+          ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')",
+          "conversations": {
+            ".read": "auth != null && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).exists() && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).val() === root.child('salesAgentRouting').child('inboxMembers').child($companyId).val()",
+            ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || (root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).exists() && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).val() === root.child('salesAgentRouting').child('inboxMembers').child($companyId).val()))"
+          }
+        },
+
         "$other": {
           ".write": "auth != null && (root.child('companies').child($companyId).child('users').child(auth.uid).exists() || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        }
+      }
+    },
+
+    "salesAgentRouting": {
+      "inboxMembers": {
+        "$companyId": {
+          ".read": "auth != null && (root.child('users').child(auth.uid).child('companyId').val() == $companyId || auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42')"
+        }
+      },
+      "sharedInboxes": {
+        "$inboxId": {
+          ".read": "auth != null && (auth.uid == 'lxfhLVwuqxOFmBX1me8QUNMoBo42' || (root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).exists() && root.child('salesAgentRouting').child('inboxMembers').child(root.child('users').child(auth.uid).child('companyId').val()).val() == $inboxId))"
         }
       }
     },
@@ -101,7 +118,7 @@ These rules ensure that a user can only access their own company's data, that a 
 
 **Source of truth:** `storage.rules`
 
-These rules protect your file uploads. They ensure a user can only upload files into their own folder and can only view files that belong to their company, and they cap uploads at 25 MB of image or PDF content.
+These rules protect your file uploads. They ensure a user can only upload files into their own folder and can only view files that belong to their company, and they cap ordinary uploads at 25 MB of image or PDF content. WhatsApp attachments live under `{companyId}/{userId}/whatsapp/` and also allow MP4 video and office documents, capped at 16 MB.
 
 The `{companyId}` path segment can be trusted because the Realtime Database rules above pin `users/{uid}/companyId` — a signed-in user cannot repoint it at another company to reach that company's files.
 

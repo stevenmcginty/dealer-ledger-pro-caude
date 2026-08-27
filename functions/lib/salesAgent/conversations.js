@@ -46,7 +46,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.appendMessage = exports.findOrCreateConversation = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
+exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.appendMessage = exports.findOrCreateConversation = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const types_1 = require("./types");
@@ -91,6 +91,37 @@ const requireMember = async (context, companyId) => {
     return id;
 };
 exports.requireMember = requireMember;
+/**
+ * Same as requireMember, plus anyone on the shared Gmail / WhatsApp inbox.
+ *
+ * Steve and Chris do not share a ledger, but they share a number. Replies and
+ * read-state on a thread that landed in the other account have to work from
+ * either login or the shared inbox is read-only theatre.
+ */
+const requireInboxAccess = async (context, companyId) => {
+    try {
+        return await (0, exports.requireMember)(context, companyId);
+    }
+    catch (error) {
+        if (!context.auth || !(error instanceof functions.https.HttpsError) || error.code !== 'permission-denied') {
+            throw error;
+        }
+        const id = String(companyId || '').trim();
+        const userCompanySnap = await (0, exports.db)().ref(`users/${context.auth.uid}/companyId`).once('value');
+        const userCompany = String(userCompanySnap.val() || '').trim();
+        if (!id || !userCompany)
+            throw error;
+        const [mine, theirs] = await Promise.all([
+            (0, exports.db)().ref((0, exports.routingPath)(`inboxMembers/${userCompany}`)).once('value'),
+            (0, exports.db)().ref((0, exports.routingPath)(`inboxMembers/${id}`)).once('value'),
+        ]);
+        const inboxId = mine.val();
+        if (inboxId && inboxId === theirs.val())
+            return id;
+        throw error;
+    }
+};
+exports.requireInboxAccess = requireInboxAccess;
 const ACTIVITY_TYPES = {
     whatsapp: { in: 'WHATSAPP_IN', out: 'WHATSAPP_OUT' },
     sms: { in: 'SMS_IN', out: 'SMS_OUT' },

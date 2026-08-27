@@ -31,11 +31,10 @@ import { Channel, ChannelSender, OutboxJob } from './types';
 
 const MAX_ATTEMPTS = 3;
 
-const senders: Record<Channel, ChannelSender> = {
-    whatsapp: whatsappSender,
-    sms: twilioSender,
-    email: gmailSender,
-};
+// Resolved lazily: whatsapp.ts -> router.ts -> outbox.ts -> whatsapp.ts is a cycle,
+// so at module-load time whatsappSender can still be undefined.
+const senderFor = (channel: Channel): ChannelSender | undefined =>
+    ({ whatsapp: whatsappSender, sms: twilioSender, email: gmailSender } as Record<Channel, ChannelSender>)[channel];
 
 export type NewOutboxJob = Omit<OutboxJob, 'id' | 'attempts' | 'createdAt'>;
 
@@ -74,6 +73,9 @@ const applyWhatsAppWindow = async (job: OutboxJob): Promise<OutboxJob> => {
     if (job.channel !== 'whatsapp' || job.templateName) return job;
 
     const conversation = await getConversation(job.companyId, job.convId);
+    if (job.media && !withinCustomerServiceWindow(conversation?.lastCustomerMessageAt)) {
+        throw new Error('WhatsApp only accepts photos, videos and files within 24 hours of their last message.');
+    }
     if (withinCustomerServiceWindow(conversation?.lastCustomerMessageAt)) return job;
 
     console.warn(`Outbox ${job.id}: outside the 24h window, falling back to a template`);
@@ -103,7 +105,7 @@ export const sendNow = async (
     from: 'agent' | 'owner' = 'agent'
 ): Promise<{ providerId: string }> => {
     const prepared = await applyWhatsAppWindow(job);
-    const sender = senders[prepared.channel];
+    const sender = senderFor(prepared.channel);
 
     if (!sender) throw new Error(`No sender for channel ${prepared.channel}`);
 
@@ -114,6 +116,7 @@ export const sendNow = async (
         emailThreadId: prepared.emailThreadId,
         templateName: prepared.templateName,
         templateParams: prepared.templateParams,
+        media: prepared.media,
     });
 
     const conversation = await getConversation(prepared.companyId, prepared.convId);
@@ -126,6 +129,7 @@ export const sendNow = async (
             providerId,
             subject: prepared.subject,
             createdAt: Date.now(),
+            ...(prepared.media ? { media: prepared.media } : {}),
         });
 
         await updateConversation(prepared.companyId, conversation.id, { lastOutboundAt: Date.now() });

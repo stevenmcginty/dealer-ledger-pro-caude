@@ -274,7 +274,7 @@ export const showAlertNotification = async (alert: PushAlert): Promise<void> => 
             tag: alert.convId || alert.kind || 'dave',
             renotify: true,
             requireInteraction: isDraft || isQuestion,
-            vibrate: [80, 40, 80],
+            vibrate: [80, 40, 80, 40, 120],
             data: { convId: alert.convId, kind: alert.kind, url: alert.url },
             actions,
         } as NotificationOptions);

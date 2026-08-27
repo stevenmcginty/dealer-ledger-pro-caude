@@ -47,8 +47,9 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.templateFallbackFor = exports.renderFallbackTemplate = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplate = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
+exports.templateFallbackFor = exports.renderFallbackTemplate = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplate = exports.sendWhatsAppMedia = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
 const crypto = __importStar(require("crypto"));
+const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
 const conversations_1 = require("../conversations");
@@ -111,6 +112,47 @@ const sendWhatsAppText = async (companyId, to, text) => {
     return result.messages?.[0]?.id || '';
 };
 exports.sendWhatsAppText = sendWhatsAppText;
+const graphMediaId = async (companyId, media) => {
+    const priv = await (0, inboxRouting_1.readSendPrivate)(companyId);
+    const wa = priv.whatsapp;
+    if (!wa?.accessToken || !wa?.phoneNumberId) {
+        throw new Error('WhatsApp is not connected for this company');
+    }
+    const fileRes = await fetch(media.url);
+    if (!fileRes.ok) {
+        throw new Error(`Could not read the attachment (${fileRes.status}).`);
+    }
+    const bytes = Buffer.from(await fileRes.arrayBuffer());
+    const mime = media.mime || fileRes.headers.get('content-type') || 'application/octet-stream';
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', mime);
+    form.append('file', new Blob([new Uint8Array(bytes)], { type: mime }), media.filename || 'file');
+    const uploaded = await fetch(`${GRAPH}/${wa.phoneNumberId}/media`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${wa.accessToken}` },
+        body: form,
+    });
+    const json = (await uploaded.json().catch(() => ({})));
+    if (!uploaded.ok || !json.id) {
+        throw new Error(`WhatsApp media upload failed: ${json.error?.message || uploaded.status}`);
+    }
+    return json.id;
+};
+const sendWhatsAppMedia = async (companyId, to, media, caption) => {
+    const id = await graphMediaId(companyId, media);
+    const body = caption ? { id, caption } : { id };
+    if (media.kind === 'document' && media.filename)
+        body.filename = media.filename;
+    const result = await graphPost(companyId, {
+        recipient_type: 'individual',
+        to: (0, types_1.toE164)(to),
+        type: media.kind,
+        [media.kind]: body,
+    });
+    return result.messages?.[0]?.id || '';
+};
+exports.sendWhatsAppMedia = sendWhatsAppMedia;
 const sendWhatsAppTemplate = async (companyId, to, templateName, params = []) => {
     const components = params.length
         ? [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: (0, exports.sanitiseTemplateParam)(p) })) }]
@@ -146,7 +188,9 @@ exports.whatsappSender = {
         }
         const providerId = job.templateName
             ? await (0, exports.sendWhatsAppTemplate)(companyId, job.to, job.templateName, job.templateParams || [])
-            : await (0, exports.sendWhatsAppText)(companyId, job.to, job.text);
+            : job.media
+                ? await (0, exports.sendWhatsAppMedia)(companyId, job.to, job.media, job.text || undefined)
+                : await (0, exports.sendWhatsAppText)(companyId, job.to, job.text);
         return { providerId };
     },
 };
@@ -166,9 +210,9 @@ const textOf = (message) => {
             return message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '[selection]';
         case 'audio':
         case 'voice': return '[voice note]';
-        case 'image': return '[photo]';
-        case 'video': return '[video]';
-        case 'document': return '[document]';
+        case 'image': return message.image?.caption || '[photo]';
+        case 'video': return message.video?.caption || '[video]';
+        case 'document': return message.document?.caption || message.document?.filename || '[document]';
         case 'location': return '[location]';
         case 'sticker': return '[sticker]';
         case 'contacts': return '[contact card]';
@@ -199,6 +243,55 @@ const companyForVerifyToken = async (token) => {
     }
     return null;
 };
+const inboundKind = (type) => type === 'image' || type === 'video' || type === 'document' ? type : null;
+const webhookMediaOf = (message) => {
+    const kind = inboundKind(message.type);
+    if (!kind)
+        return null;
+    return message[kind] || null;
+};
+/** Copy a customer photo/video/file into our bucket so the inbox can play it. */
+const storeInboundMedia = async (companyId, providerId, message) => {
+    const kind = inboundKind(message.type);
+    const meta = webhookMediaOf(message);
+    if (!kind || !meta?.id)
+        return undefined;
+    try {
+        const priv = await (0, inboxRouting_1.readSendPrivate)(companyId);
+        const token = priv.whatsapp?.accessToken;
+        if (!token)
+            return undefined;
+        const lookup = await fetch(`${GRAPH}/${meta.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const looked = (await lookup.json().catch(() => ({})));
+        if (!lookup.ok || !looked.url)
+            return undefined;
+        const fileRes = await fetch(looked.url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!fileRes.ok)
+            return undefined;
+        const bytes = Buffer.from(await fileRes.arrayBuffer());
+        const mime = meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || 'application/octet-stream';
+        const filename = (meta.filename || `${kind}-${providerId}`).replace(/[^\w.\-]+/g, '_');
+        const tokenId = crypto.randomUUID();
+        const path = `${companyId}/salesAgent/whatsapp/${providerId}_${filename}`;
+        const file = admin.storage().bucket().file(path);
+        await file.save(bytes, {
+            resumable: false,
+            metadata: {
+                contentType: mime,
+                metadata: { firebaseStorageDownloadTokens: tokenId },
+            },
+        });
+        const bucket = admin.storage().bucket().name;
+        const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media&token=${tokenId}`;
+        return { kind, url, mime, filename };
+    }
+    catch (error) {
+        console.warn(`WhatsApp: could not store inbound ${kind} ${providerId}`, error);
+        return undefined;
+    }
+};
 const processChange = async (companyId, value) => {
     // Delivery receipts for our own outbound messages. Nothing to answer.
     if (!value.messages?.length)
@@ -209,6 +302,7 @@ const processChange = async (companyId, value) => {
             names.set(contact.wa_id, contact.profile.name);
     });
     for (const message of value.messages) {
+        const media = await storeInboundMedia(companyId, message.id, message);
         const inbound = {
             companyId,
             channel: 'whatsapp',
@@ -217,6 +311,7 @@ const processChange = async (companyId, value) => {
             providerId: message.id,
             name: names.get(message.from),
             receivedAt: Number(message.timestamp) * 1000 || Date.now(),
+            ...(media ? { media } : {}),
         };
         await markRead(companyId, message.id);
         try {
