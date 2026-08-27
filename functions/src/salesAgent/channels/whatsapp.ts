@@ -184,6 +184,18 @@ const ENQUIRY_FAMILY: TemplateVariant[] = [
     // window), and it reviews faster, so a strictly transactional wording is preferred
     // over the promotional ones below.
     {
+        name: 'enquiry_ack',
+        params: ([name, car]) => [name || 'there', car || 'car'],
+        render: ([name, car]) =>
+            `Hi ${name || 'there'}, this is Radlett Cars. We received your enquiry about the ${car || 'car'} but the email address you gave us is not accepting messages, so we are replying here instead. Please reply to this message and we will answer your questions.`,
+    },
+    {
+        name: 'enquiry_contact',
+        params: ([name, car]) => [name || 'there', car || 'car'],
+        render: ([name, car]) =>
+            `Hi ${name || 'there'}, this is Radlett Cars replying to your enquiry about the ${car || 'car'}. We could not reach you by email. Please reply to this message so we can help you with your enquiry.`,
+    },
+    {
         name: 'enquiry_update',
         params: ([name, car]) => [name || 'there', car || 'car', 'We have received it and the car is still available.'],
         render: ([name, car]) =>
@@ -601,7 +613,7 @@ export const salesAgentWhatsAppWebhook = functions
  * by the time the outbox reaches it. Kept here so the rule and the API that enforces it
  * stay in one file.
  */
-export const FALLBACK_TEMPLATE = 'enquiry_update';
+export const FALLBACK_TEMPLATE = 'enquiry_ack';
 
 /** The approved template's wording, for the thread record. */
 export const renderFallbackTemplate = (params: string[]): string =>
