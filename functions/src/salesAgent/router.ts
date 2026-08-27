@@ -446,13 +446,36 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         return;
     }
 
-    if (conversation.mode !== 'agent') {
+    // Paused means silent: no reply, no draft, just the alert.
+    if (conversation.mode === 'paused') {
         await sendOwnerAlert(
             companyId,
             'escalation',
             conversation,
-            `#${conversation.shortId} ${describeCustomer(conversation)} (you have this one): ${text.slice(0, 400)}`
+            `#${conversation.shortId} ${describeCustomer(conversation)} (paused): ${text.slice(0, 400)}`
         );
+        return;
+    }
+
+    /**
+     * Steve is answering this one himself — but "I'll answer it" is not "leave me
+     * a blank box". Dave still writes what he would have said and leaves it as a
+     * draft, so there is always something to send or edit rather than a cursor
+     * blinking at an empty compose bar. Nothing goes out on its own here: the
+     * draft-only flag holds it whatever the channel's approval setting says.
+     */
+    if (conversation.mode !== 'agent') {
+        try {
+            await runAgentTurn(companyId, conversation, { ...msg, text }, settings, { draftOnly: true });
+        } catch (error: any) {
+            console.error(`Draft for handed-over #${conversation.shortId} failed`, error);
+            await sendOwnerAlert(
+                companyId,
+                'escalation',
+                conversation,
+                `#${conversation.shortId} ${describeCustomer(conversation)} (you have this one): ${text.slice(0, 400)}`
+            );
+        }
         return;
     }
 
@@ -482,6 +505,12 @@ export interface AgentTurnOptions {
     simulate?: boolean;
     /** Where a held email draft came from, if this turn produces one. Default 'agent'. */
     draftSource?: 'agent' | 'instruction';
+    /**
+     * Write the reply down, never send it, whatever the channel's approval setting
+     * says. Used when Steve has taken the thread over: he still wants Dave's words
+     * ready to edit, but nothing may go out behind his back.
+     */
+    draftOnly?: boolean;
 }
 
 /**
@@ -637,7 +666,7 @@ export const runAgentTurn = async (
 
     // Draft & Approve (Steve, 26 Aug): nothing goes out under the dealership's name
     // until Steve has read it. WhatsApp uses the same hold once that channel is sending.
-    if (needsApproval(conversation, settings)) {
+    if (options.draftOnly || needsApproval(conversation, settings)) {
         const source = options.draftSource || 'agent';
         const customerText = (
             source === 'instruction'

@@ -24,7 +24,9 @@ import {
     SalesAgentSettings,
     normaliseAddress,
     rtdbKey,
-    toE164, stripUndefined } from './types';
+    toE164, stripUndefined,
+    DeliveryState,
+    DELIVERY_RANK } from './types';
 
 export const db = () => admin.database();
 
@@ -446,6 +448,14 @@ export const appendMessage = async (
     const clean = Object.fromEntries(Object.entries(stored).filter(([, v]) => v !== undefined));
     await ref.set(stripUndefined(clean));
 
+    // A delivery receipt arrives knowing only the provider's id, so the way back to
+    // the message it belongs to has to be written now, while we still have both.
+    if (message.direction === 'out' && message.providerId) {
+        await db()
+            .ref(agentPath(companyId, `outboundIndex/${rtdbKey(message.providerId)}`))
+            .set({ convId: conversation.id, messageId: stored.id, at: Date.now() });
+    }
+
     const leadId = conversation.contact?.leadId;
     if (leadId) {
         const type = ACTIVITY_TYPES[message.channel][message.direction];
@@ -453,6 +463,40 @@ export const appendMessage = async (
     }
 
     return stored;
+};
+
+/**
+ * Record how far an outbound message got.
+ *
+ * Receipts arrive out of order and more than once — Meta will happily send 'sent'
+ * after 'delivered' — so a state only ever moves forward. Returns false when the
+ * providerId belongs to no message we hold, which is normal for anything sent
+ * before this index existed.
+ */
+export const recordDelivery = async (
+    companyId: string,
+    providerId: string,
+    state: DeliveryState,
+    at: number,
+    error?: string
+): Promise<boolean> => {
+    if (!providerId) return false;
+
+    const snap = await db().ref(agentPath(companyId, `outboundIndex/${rtdbKey(providerId)}`)).once('value');
+    const ref = snap.val() as { convId?: string; messageId?: string } | null;
+    if (!ref?.convId || !ref?.messageId) return false;
+
+    const messageRef = db().ref(agentPath(companyId, `conversations/${ref.convId}/messages/${ref.messageId}`));
+    const current = (await messageRef.child('delivery').once('value')).val() as DeliveryState | null;
+    if (current && DELIVERY_RANK[current] >= DELIVERY_RANK[state]) return true;
+
+    await messageRef.update(stripUndefined({
+        delivery: state,
+        deliveryAt: at || Date.now(),
+        ...(error ? { deliveryError: error } : {}),
+    }));
+
+    return true;
 };
 
 export const readHistory = async (companyId: string, convId: string, limit = 40): Promise<AgentMessage[]> => {

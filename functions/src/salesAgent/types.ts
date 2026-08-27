@@ -227,7 +227,25 @@ export interface AgentMessage {
     subject?: string;
     media?: MessageMedia;
     createdAt: number;
+    /**
+     * How far an outbound message got. WhatsApp reports this back on the webhook;
+     * other channels stop at 'sent'. Without it the app cannot tell a delivered
+     * message from one still in flight, which is exactly what it looked like.
+     */
+    delivery?: DeliveryState;
+    deliveryAt?: number;
+    deliveryError?: string;
 }
+
+export type DeliveryState = 'sent' | 'delivered' | 'read' | 'failed';
+
+/** Later states never regress: a 'read' receipt must not be undone by a late 'sent'. */
+export const DELIVERY_RANK: Record<DeliveryState, number> = {
+    sent: 1,
+    delivered: 2,
+    read: 3,
+    failed: 4,
+};
 
 export interface InboundMessage {
     companyId: string;

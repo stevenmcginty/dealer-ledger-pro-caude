@@ -186,6 +186,8 @@ export interface MessageMedia {
     filename?: string;
 }
 
+export type DeliveryState = 'sent' | 'delivered' | 'read' | 'failed';
+
 export interface AgentMessage {
     id: string;
     direction: 'in' | 'out';
@@ -196,6 +198,10 @@ export interface AgentMessage {
     subject?: string;
     media?: MessageMedia;
     createdAt: number;
+    /** How far an outbound message got. WhatsApp reports delivered/read back; other channels stop at 'sent'. */
+    delivery?: DeliveryState;
+    deliveryAt?: number;
+    deliveryError?: string;
 }
 
 /** What `salesAgentSimulate` answers with. */

@@ -43,3 +43,24 @@ describe('agentTurnLimitReached', () => {
         assert.equal(agentTurnLimitReached(7, 6), true);
     });
 });
+
+/**
+ * Draft-only: Steve has taken the thread over, so nothing may send on its own —
+ * but he still wants Dave's words waiting for him rather than an empty box.
+ */
+describe('draftOnly holds regardless of the channel setting', () => {
+    /** Mirrors the gate in runAgentTurn. */
+    const holds = (draftOnly: boolean, conv: { channel?: string }, settings: Record<string, boolean>): boolean =>
+        draftOnly || needsApproval(conv, settings);
+
+    it('holds even where the channel is set to send automatically', () => {
+        const auto = { emailApprovalMode: false, whatsappApprovalMode: false };
+        assert.equal(holds(false, { channel: 'whatsapp' }, auto), false);
+        assert.equal(holds(true, { channel: 'whatsapp' }, auto), true);
+        assert.equal(holds(true, { channel: 'email' }, auto), true);
+    });
+
+    it('leaves normal approval behaviour alone when not set', () => {
+        assert.equal(holds(false, { channel: 'whatsapp' }, { emailApprovalMode: true }), true);
+    });
+});

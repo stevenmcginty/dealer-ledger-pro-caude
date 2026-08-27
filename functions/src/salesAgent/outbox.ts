@@ -127,6 +127,9 @@ export const sendNow = async (
             text: sentText || prepared.text,
             from: prepared.from || from,
             providerId,
+            // The provider took it. WhatsApp refines this to delivered/read on the
+            // webhook; email and SMS stop here.
+            ...(providerId ? { delivery: 'sent' as const, deliveryAt: Date.now() } : {}),
             subject: prepared.subject,
             createdAt: Date.now(),
             ...(prepared.media ? { media: prepared.media } : {}),

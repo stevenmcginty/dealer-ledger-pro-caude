@@ -18,9 +18,9 @@ import * as crypto from 'crypto';
 import * as functions from 'firebase-functions/v1';
 
 import { getCompanyIds } from '../../utils/companyIds';
-import { BRAIN_SECRETS, db, readPrivate, routingPath } from '../conversations';
+import { BRAIN_SECRETS, db, readPrivate, recordDelivery, routingPath } from '../conversations';
 import { isWhatsAppLiveFor, readSendPrivate } from '../inboxRouting';
-import { ChannelSender, InboundMessage, MessageMedia, OutboxJob, WhatsAppMediaKind, toE164 } from '../types';
+import { ChannelSender, DeliveryState, InboundMessage, MessageMedia, OutboxJob, WhatsAppMediaKind, toE164 } from '../types';
 import { handleInbound } from '../router';
 import { WHATSAPP_VIDEO_TARGET, compressVideoForWhatsApp } from './videoCompress';
 import { pruneCompanyWhatsApp, saveInboundWhatsAppFile } from '../whatsappStorage';
@@ -409,7 +409,15 @@ interface WebhookValue {
     metadata?: { phone_number_id?: string; display_phone_number?: string };
     contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
     messages?: WebhookMessage[];
-    statuses?: unknown[];
+    statuses?: WebhookStatus[];
+}
+
+/** Meta's receipt for one of our outbound messages. */
+interface WebhookStatus {
+    id?: string;
+    status?: string;
+    timestamp?: string;
+    errors?: Array<{ code?: number; title?: string; message?: string }>;
 }
 
 /**
@@ -508,8 +516,42 @@ const storeInboundMedia = async (
     }
 };
 
+/**
+ * Meta's receipts for messages we sent. Nothing to answer, but this is the only
+ * evidence that a message actually arrived — without recording it the app cannot
+ * tell a delivered WhatsApp from one still in flight.
+ */
+const processStatuses = async (companyId: string, statuses: WebhookStatus[]): Promise<void> => {
+    for (const status of statuses) {
+        const state = deliveryStateOf(status.status);
+        if (!state || !status.id) continue;
+
+        const at = Number(status.timestamp) * 1000 || Date.now();
+        const error = status.errors?.[0]
+            ? (status.errors[0].message || status.errors[0].title || `error ${status.errors[0].code}`)
+            : undefined;
+
+        try {
+            await recordDelivery(companyId, status.id, state, at, error);
+        } catch (err) {
+            console.warn(`WhatsApp: could not record ${state} for ${status.id}`, err);
+        }
+    }
+};
+
+const deliveryStateOf = (raw?: string): DeliveryState | null => {
+    switch (raw) {
+        case 'sent': return 'sent';
+        case 'delivered': return 'delivered';
+        case 'read': return 'read';
+        case 'failed': return 'failed';
+        default: return null;   // 'deleted', 'warning' and anything new: not a delivery state
+    }
+};
+
 const processChange = async (companyId: string, value: WebhookValue): Promise<void> => {
-    // Delivery receipts for our own outbound messages. Nothing to answer.
+    if (value.statuses?.length) await processStatuses(companyId, value.statuses);
+
     if (!value.messages?.length) return;
 
     const names = new Map<string, string>();
