@@ -140,6 +140,8 @@ export const buildSystemPrompt = (args: {
     settings: SalesAgentSettings;
     now?: Date;
     emailContext?: EmailContext;
+    /** Corrections the desk has made, oldest first, already formatted one per line. */
+    lessons?: string[];
 }): string => {
     const { conversation, settings, emailContext } = args;
     const owner = ownerNameOf(settings);
@@ -428,6 +430,17 @@ export const buildSystemPrompt = (args: {
         );
     }
 
+    if (args.lessons?.length) {
+        sections.push(
+            [
+                `WHAT ${owner.toUpperCase()} HAS PUT YOU RIGHT ON`,
+                `These are corrections ${owner} made to your work on real threads. They are standing instructions, not history. Read them before you answer and do not repeat the mistake:`,
+                ...args.lessons,
+                'The most common one is the car itself. If the enquiry does not name a car clearly enough for you to be certain which advert it is, say so and call ask_owner. Never assume it is a car you happen to have talked about before, and never talk about a car that has sold.',
+            ].join('\n'),
+        );
+    }
+
     sections.push(
         [
             'OUTPUT',
@@ -512,3 +525,4 @@ export const buildContents = (args: {
 
     return contents;
 };
+

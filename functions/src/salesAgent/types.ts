@@ -169,7 +169,7 @@ export interface Conversation {
      */
     routing?: {
         inboxId: string;
-        reason: 'existing' | 'owner' | 'fallback';
+        reason: 'existing' | 'owner' | 'fallback' | 'corrected';
         ownerCompanyId?: string;
     };
     partExOrFinance?: string;

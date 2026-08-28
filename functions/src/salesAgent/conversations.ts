@@ -325,7 +325,7 @@ export const indexContact = async (
     await db().ref(agentPath(companyId, `contactIndex/${key}`)).set(convId);
 };
 
-const lookupContactIndex = async (companyId: string, channel: Channel, address: string): Promise<string | null> => {
+export const lookupContactIndex = async (companyId: string, channel: Channel, address: string): Promise<string | null> => {
     if (!address) return null;
     const key = rtdbKey(normaliseAddress(channel, address));
     const snap = await db().ref(agentPath(companyId, `contactIndex/${key}`)).once('value');
@@ -334,7 +334,7 @@ const lookupContactIndex = async (companyId: string, channel: Channel, address: 
 
 /** Short ids are handed out per company and never reused, so a stale "TAKE OVER 8"
  *  can only ever hit the conversation it was printed for. */
-const allocateShortId = async (companyId: string): Promise<number> => {
+export const allocateShortId = async (companyId: string): Promise<number> => {
     const result = await db()
         .ref(agentPath(companyId, 'nextShortId'))
         .transaction(current => (typeof current === 'number' && current > 0 ? current + 1 : 1));

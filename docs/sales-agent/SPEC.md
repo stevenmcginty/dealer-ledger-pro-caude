@@ -80,6 +80,23 @@ The agent must NOT confirm a viewing/test-drive time on its own. When a customer
 ## Instructing Dave (Steve, 26 Aug)
 At any point the owner can tell Dave what to communicate — in the notification bell rewrite box, in the Agent Inbox ("Tell Dave what to say"), or on WhatsApp `TELL <n> <text>` — and Dave rephrases it in his own voice and carries on the qualification flow. Same mechanism as ANSWER (ownerAnswer injection) but does not require a pending question. Instructions show in the thread as a grey "You told Dave: …" line and are never fed to the model as customer turns. A rewrite while a draft is held comes back as a new draft to approve, not as a send.
 
+## Wrong car, and training Dave (Steve, 28 Aug)
+The failure: a generic "is this still available" with no reg and no stock number was matched to a Porsche that had already sold off Steve's ledger. The thread stayed with Steve, Dave talked about the sold car and offered a figure against its price, and Chris — who owns every Porsche actually for sale — never saw the lead.
+
+Two halves to the fix.
+
+**Stop guessing wrong.** `matchEnquiryStock` (thread placement) now prefers cars still for sale: a sold or reserved car keeps the thread only when it out-scores every available car outright, i.e. when the customer named it rather than merely matched its make. `attachVehicle` (the title on the thread) no longer pins a free-text hint to a car at all unless the match is better than 'weak', and a sold car only when the description is 'exact'. Registrations and stock ids are unaffected — those are exact and still win immediately.
+
+**Put it right in one place when it still gets it wrong.** "Wrong car" sits next to Details in the Agent Inbox thread header. It drops down a box; Steve writes what the right car is in his own words. `salesAgentCorrectThread` (`salesAgent/correction.ts`) then:
+1. resolves the car from the note (negations are stripped first — "it's the Boxster, **not** the Taycan" must not resolve to the Taycan — and the car already pinned is excluded), searching the credential company's index so the other dealer's stock is visible;
+2. re-pins `vehicleInterest`, or clears it and escalates when no car matches;
+3. bins the pending draft, which was written about the wrong car;
+4. **moves the whole conversation** to the owning ledger when the car is another member's — messages, delivery receipts, CRM lead, per-company and shared contact indexes, short id and Gmail ledger label all follow, and the thread gets `routing.reason = 'corrected'`. This is the only place a conversation changes company;
+5. records what Steve said as a **lesson** on both ledgers; and
+6. has Dave draft the reply again on the ledger that now owns it (skipped when that dealer has the agent off — Chris does).
+
+**Lessons** (`salesAgent/lessons.ts`) live at `companies/{id}/salesAgent/lessons`, last 40 kept, last 8 injected into every system prompt under "WHAT STEVE HAS PUT YOU RIGHT ON" as standing instructions, along with a fixed rule: if the enquiry does not identify a car clearly, say so and ask the owner rather than assuming.
+
 ## Inbox context (Steve, 27 Aug)
 On every email turn (`channels/gmailContext.ts`) the brain is also handed, best-effort and capped:
 - the rest of the Gmail thread the app never recorded (up to 12 messages);

@@ -39,6 +39,7 @@ import { describeCustomer, recordOwnerInbound, sendOwnerAlert } from './alerts';
 import { NewOutboxJob, enqueue, randomDelayMs, sendNow } from './outbox';
 import { isWithinSendHours, morningJitterMs, resolveSendHours, scheduleSendAfter } from './sendHours';
 import { handleOwnerCommand } from './ownerCommands';
+import { formatLessons, readLessons } from './lessons';
 import { registerWhatsAppRouting, renderFallbackTemplate, templateFallbackFor } from './channels/whatsapp';
 import { labelEmailThread } from './channels/gmail';
 import { registerTwilioRouting } from './channels/twilio';
@@ -138,8 +139,20 @@ const attachVehicle = async (companyId: string, conversation: Conversation, lead
         if (!item) {
             const text = lead.vehicle?.title || lead.vehicleHint;
             if (text) {
-                const hits = await searchStock(companyId, { text, includeReserved: true, limit: 1 });
-                item = hits[0] || null;
+                // Free text is a guess, so it is held to a standard the two exact
+                // routes above are not. Cars still on the forecourt are tried first
+                // and a loose word overlap is thrown away: a "still available?" with
+                // no reg in it must not pin the thread to a car that sold last year
+                // and then have Dave quote its price (Steve, 28 Aug).
+                const live = await searchStock(companyId, { text, limit: 1 });
+                item = live.find(hit => hit.matchQuality !== 'weak') || null;
+
+                if (!item) {
+                    // Nothing available fits. A car that has gone may still be the one
+                    // they mean, but only if they described it exactly.
+                    const gone = await searchStock(companyId, { text, includeReserved: true, limit: 1 });
+                    item = gone.find(hit => hit.matchQuality === 'exact') || null;
+                }
             }
         }
     } catch (error) {
@@ -597,7 +610,14 @@ export const runAgentTurn = async (
         })
         : undefined;
 
-    const result = await runBrain({ companyId, conversation, history, inbound, settings, emailContext });
+    // Everything the desk has put the agent right on, in front of it on every turn.
+    // Cheap (one bounded read) and the only thing standing between a correction and
+    // the same mistake next week.
+    const lessons = options.simulate
+        ? []
+        : formatLessons(await readLessons(companyId).catch(() => []));
+
+    const result = await runBrain({ companyId, conversation, history, inbound, settings, emailContext, lessons });
 
     // Silence guard (Steve, 26 Aug): in agent mode a customer message must never go unanswered.
     // If the brain came back empty without asking Steve or handing off, send a holding line and

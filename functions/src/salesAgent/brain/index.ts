@@ -53,6 +53,8 @@ export interface RunBrainInput {
     settings: SalesAgentSettings;
     /** What the Gmail inbox knows about this sender and how the owner writes. Email turns only. */
     emailContext?: EmailContext;
+    /** Corrections the desk has made, formatted one per line. See salesAgent/lessons.ts. */
+    lessons?: string[];
 }
 
 export interface BrainDeps {
@@ -397,7 +399,7 @@ const deriveSummary = (conversation: Conversation, inbound: InboundMessage): str
  * Throws only if the model call itself fails; the router owns error alerts.
  */
 export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Promise<BrainResult> => {
-    const { companyId, conversation, history, inbound, settings, emailContext } = input;
+    const { companyId, conversation, history, inbound, settings, emailContext, lessons } = input;
 
     // The bot is silent the moment it stops owning the conversation. No API call,
     // no tokens, no chance of the model talking over Steve.
@@ -420,7 +422,7 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
 
     const contents: Content[] = buildContents({ conversation, history, inbound, settings, emailContext });
     const config: GenerateContentConfig = {
-        systemInstruction: buildSystemPrompt({ conversation, settings, now: deps.now, emailContext }),
+        systemInstruction: buildSystemPrompt({ conversation, settings, now: deps.now, emailContext, lessons }),
         temperature: 0.6,
         maxOutputTokens: 1200,
         tools: [{ functionDeclarations: toolDeclarations }],

@@ -35,6 +35,7 @@ export { salesAgentGmailPush, salesAgentBackfillLeads, salesAgentReplayEmail } f
 export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRenewWatch } from './salesAgent/gmailAuth';
 export { salesAgentOutboxTick } from './salesAgent/outbox';
 export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentDraftNow, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSaveSharedInbox, salesAgentStartWhatsApp, salesAgentSimulate } from './salesAgent/router';
+export { salesAgentCorrectThread } from './salesAgent/correction';
 export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush, salesAgentPushDebug } from './salesAgent/push';
 export { pruneWhatsAppStorage } from './salesAgent/whatsappStorage';
 export { syncCompanyClaim, syncInboxClaims, refreshAuthClaims } from './auth/claims';

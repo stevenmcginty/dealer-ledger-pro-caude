@@ -162,7 +162,7 @@ export interface Conversation {
      */
     routing?: {
         inboxId: string;
-        reason: 'existing' | 'owner' | 'fallback';
+        reason: 'existing' | 'owner' | 'fallback' | 'corrected';
         ownerCompanyId?: string;
     };
 }
@@ -771,6 +771,36 @@ export const approvedSendMessage = (channelLabel: string, sendAfter?: number, ti
 };
 
 /** Throw the draft away. The conversation stays with the agent. */
+export interface ThreadCorrection {
+    ok: true;
+    vehicle?: { stockId: string; title: string; ownerCompanyId?: string; status: string };
+    moved: boolean;
+    toCompanyId?: string;
+    toName?: string;
+    /** Where the thread lives now. After a move both of these have changed. */
+    convId: string;
+    companyId: string;
+    redrafted: boolean;
+    message: string;
+}
+
+/**
+ * "Wrong car." Tell Dave which car the thread is really about, in your own words.
+ *
+ * It re-pins the thread, bins the draft it wrote about the wrong car, keeps what
+ * you said as a standing lesson, and — if the right car belongs to the other
+ * ledger on the shared inbox — moves the whole conversation over there and has
+ * Dave write it again from that side. The returned convId/companyId is where the
+ * thread has ended up, which is not where it started when it moved.
+ */
+export const correctThreadCar = (companyId: string, convId: string, note: string, stockId?: string) =>
+    call<{ companyId: string; convId: string; note: string; stockId?: string }, ThreadCorrection>(
+        'salesAgentCorrectThread',
+        { companyId, convId, note, ...(stockId ? { stockId } : {}) },
+        300000,
+        'That correction could not be applied.'
+    );
+
 export const discardAgentDraft = (companyId: string, convId: string) =>
     call<{ companyId: string; convId: string }, { ok: boolean; had: boolean }>(
         'salesAgentDiscardDraft',

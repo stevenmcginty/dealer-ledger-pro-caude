@@ -36,6 +36,7 @@ import {
     conversationEmail,
     conversationName,
     conversationPhone,
+    correctThreadCar,
     deleteAgentConversation,
     deleteAgentMessage,
     discardAgentDraft,
@@ -490,6 +491,9 @@ const AgentInboxPage = () => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [answerMode, setAnswerMode] = useState(true);
     const [detailsOpen, setDetailsOpen] = useState(false);
+    const [carFixOpen, setCarFixOpen] = useState(false);
+    const [carFixNote, setCarFixNote] = useState('');
+    const [carFixBusy, setCarFixBusy] = useState(false);
     const [showOther, setShowOther] = useState(readShowOtherLedger);
     const [selectedMsgKey, setSelectedMsgKey] = useState<string | null>(null);
     const [bannerCollapsed, setBannerCollapsed] = useState(false);
@@ -628,6 +632,8 @@ const AgentInboxPage = () => {
         setMenuOpen(false);
         setAnswerMode(true);
         setDetailsOpen(false);
+        setCarFixOpen(false);
+        setCarFixNote('');
         setSelectedMsgKey(null);
         setBannerCollapsed(false);
         setDrafting(null);
@@ -845,6 +851,35 @@ const AgentInboxPage = () => {
             setDraftBusy('');
         }
     }, [companyId, active, draftBusy, toast]);
+
+    /**
+     * "Wrong car." Put Dave right about which car this thread is about.
+     *
+     * The thread can come back on another ledger — that is the point of it — so the
+     * selection is dropped rather than left pointing at an id that no longer exists.
+     * The live subscription brings it back under the other dealer within the second.
+     */
+    const handleCarFix = useCallback(async () => {
+        if (!companyId || !active || carFixBusy) return;
+        const note = carFixNote.trim();
+        if (!note) return;
+
+        setCarFixBusy(true);
+        try {
+            const result = await correctThreadCar(homeOf(active, companyId), active.id, note);
+            setCarFixOpen(false);
+            setCarFixNote('');
+            if (result.moved) {
+                setActiveGroupId(null);
+                setActiveConvId(null);
+            }
+            toast.success(result.message);
+        } catch (err: any) {
+            toast.error(err?.message || 'That correction could not be applied.');
+        } finally {
+            setCarFixBusy(false);
+        }
+    }, [companyId, active, carFixNote, carFixBusy, toast]);
 
     /**
      * Ask the backend to draft a reply to whatever the customer is waiting on.
@@ -1142,6 +1177,17 @@ const AgentInboxPage = () => {
                                             Details
                                             <ChevronDownIcon className={`h-3 w-3 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
                                         </button>
+                                        <span className="text-[#8696a0]/50" aria-hidden>·</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCarFixOpen(o => !o)}
+                                            aria-expanded={carFixOpen}
+                                            title={`Tell ${agentName} this is the wrong car`}
+                                            className={`inline-flex items-center gap-1 text-[11px] font-medium ${carFixOpen ? 'text-amber-300' : 'text-[#8696a0] hover:text-amber-300'}`}
+                                        >
+                                            Wrong car
+                                            <ChevronDownIcon className={`h-3 w-3 transition-transform ${carFixOpen ? 'rotate-180' : ''}`} />
+                                        </button>
                                     </div>
                                 </div>
                                 <button
@@ -1155,6 +1201,44 @@ const AgentInboxPage = () => {
                                     <EllipsisVerticalIcon className="h-5 w-5" />
                                 </button>
                             </div>
+
+                            {carFixOpen && (
+                                <div className="mt-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2.5">
+                                    <p className="text-[12px] leading-snug text-[#e9edef]">
+                                        {active.vehicleInterest?.title
+                                            ? <>{agentName} has this down as the <span className="font-medium text-amber-200">{active.vehicleInterest.title}</span>. Which car is it really?</>
+                                            : <>Which car is this enquiry about?</>}
+                                    </p>
+                                    <textarea
+                                        value={carFixNote}
+                                        onChange={e => setCarFixNote(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleCarFix(); }
+                                        }}
+                                        rows={2}
+                                        autoFocus
+                                        placeholder="It's the black Boxster, not the Taycan. That one sold months ago."
+                                        className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-[13px] text-[#e9edef] placeholder:text-[#8696a0]/70 focus:border-amber-400/40 focus:outline-none"
+                                    />
+                                    <div className="mt-2 flex items-center justify-between gap-2">
+                                        <p className="text-[11px] leading-snug text-[#8696a0]">
+                                            {agentName} re-pins the thread, bins the draft and remembers this. If the car is the other ledger's, the thread goes to them.
+                                        </p>
+                                        <div className="flex flex-shrink-0 items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { setCarFixOpen(false); setCarFixNote(''); }}
+                                                className="text-[12px] font-medium text-[#8696a0] hover:text-white"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <Button size="sm" onClick={handleCarFix} disabled={carFixBusy || !carFixNote.trim()}>
+                                                {carFixBusy ? <Spinner className="h-3.5 w-3.5" /> : `Tell ${agentName}`}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {detailsOpen && (
                             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-black/25 px-3 py-2.5 text-[12px] text-[#e9edef]">
