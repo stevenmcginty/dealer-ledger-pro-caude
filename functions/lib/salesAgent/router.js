@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentSimulate = exports.salesAgentSaveSharedInbox = exports.salesAgentStartWhatsApp = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.answerPendingQuestion = exports.discardDraft = exports.approveDraft = exports.signAsOwner = exports.needsApproval = exports.runAgentTurn = exports.handleInbound = exports.BRAIN_SECRETS = void 0;
+exports.salesAgentSimulate = exports.salesAgentSaveSharedInbox = exports.salesAgentStartWhatsApp = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentDraftNow = exports.draftNow = exports.awaitingReply = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.answerPendingQuestion = exports.ownerOutsideWindowMessage = exports.discardDraft = exports.approveDraft = exports.signAsOwner = exports.needsApproval = exports.runAgentTurn = exports.handleInbound = exports.ledgerLabelName = exports.BRAIN_SECRETS = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const brain_1 = require("./brain");
 const prompt_1 = require("./brain/prompt");
@@ -60,7 +60,9 @@ const alerts_1 = require("./alerts");
 const outbox_1 = require("./outbox");
 const sendHours_1 = require("./sendHours");
 const ownerCommands_1 = require("./ownerCommands");
+const lessons_1 = require("./lessons");
 const whatsapp_1 = require("./channels/whatsapp");
+const gmail_1 = require("./channels/gmail");
 const twilio_1 = require("./channels/twilio");
 const leadParsers_1 = require("./channels/leadParsers");
 const inboxRouting_1 = require("./inboxRouting");
@@ -69,7 +71,7 @@ const types_1 = require("./types");
 const approval_1 = require("./approval");
 const gmailContext_1 = require("./channels/gmailContext");
 /** Template used to answer a missed call or a phone lead. */
-const MISSED_CALL_TEMPLATE = 'missed_call_followup';
+const MISSED_CALL_TEMPLATE = 'missed_call_update';
 /** Human-feel delay, then the next office-hours window if that lands after close. */
 const queueSendAfter = (settings, extraDelayMs = 0) => {
     const hours = (0, sendHours_1.resolveSendHours)(settings);
@@ -120,8 +122,19 @@ const attachVehicle = async (companyId, conversation, lead) => {
         if (!item) {
             const text = lead.vehicle?.title || lead.vehicleHint;
             if (text) {
-                const hits = await (0, search_1.searchStock)(companyId, { text, includeReserved: true, limit: 1 });
-                item = hits[0] || null;
+                // Free text is a guess, so it is held to a standard the two exact
+                // routes above are not. Cars still on the forecourt are tried first
+                // and a loose word overlap is thrown away: a "still available?" with
+                // no reg in it must not pin the thread to a car that sold last year
+                // and then have Dave quote its price (Steve, 28 Aug).
+                const live = await (0, search_1.searchStock)(companyId, { text, limit: 1 });
+                item = live.find(hit => hit.matchQuality !== 'weak') || null;
+                if (!item) {
+                    // Nothing available fits. A car that has gone may still be the one
+                    // they mean, but only if they described it exactly.
+                    const gone = await (0, search_1.searchStock)(companyId, { text, includeReserved: true, limit: 1 });
+                    item = gone.find(hit => hit.matchQuality === 'exact') || null;
+                }
             }
         }
     }
@@ -150,6 +163,26 @@ const attachVehicle = async (companyId, conversation, lead) => {
  * alert either way; the WhatsApp only goes out if he has asked for it, or if the call
  * was short enough that it clearly never got answered.
  */
+/**
+ * Name the ledger a thread belongs to, for the shared mailbox.
+ *
+ * `ownerName` is what a dealer calls himself; the dealership name is the next best
+ * thing, and a ledger that has set neither still gets a label rather than nothing.
+ */
+const ledgerLabelName = (settings) => {
+    const name = (settings.ownerName || '').trim() || (settings.dealershipName || '').trim();
+    return name ? `Lead: ${name}` : 'Lead: other ledger';
+};
+exports.ledgerLabelName = ledgerLabelName;
+const labelOwningLedger = async (companyId, emailThreadId) => {
+    try {
+        const settings = await (0, conversations_1.readSettings)(companyId);
+        await (0, gmail_1.labelEmailThread)(companyId, emailThreadId, (0, exports.ledgerLabelName)(settings), 'ledger');
+    }
+    catch (error) {
+        console.warn(`Could not label the owning ledger on ${emailThreadId}`, error.message);
+    }
+};
 /** The shade entry reads like the messaging app's own: the customer's name, then their words. */
 const customerPush = (conversation, channel, text) => {
     const via = channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'Email';
@@ -274,6 +307,12 @@ const handleInbound = async (msg, options = {}) => {
         emailSubject: msg.subject,
     });
     await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, msg.channel, msg.address);
+    // One mailbox, two dealers. Whose car this is has just been decided above, so say
+    // so in Gmail itself — otherwise both of them read every lead to find out whether
+    // it is theirs. Fire and forget: a label must never hold up answering a customer.
+    if (msg.channel === 'email' && msg.emailThreadId && inbox) {
+        void labelOwningLedger(companyId, msg.emailThreadId);
+    }
     if (lead?.kind === 'bounce') {
         await handleEmailBounce(companyId, conversation, settings, msg, lead);
         return;
@@ -337,8 +376,14 @@ const handleInbound = async (msg, options = {}) => {
             : '';
         await (0, alerts_1.sendOwnerAlert)(companyId, 'new_conversation', conversation, `#${conversation.shortId} New ${msg.channel} enquiry from ${(0, alerts_1.describeCustomer)(conversation)}${unmatched}: ${text.slice(0, 200)}`, customerPush(conversation, msg.channel, text));
     }
-    else if (conversation.mode === 'agent') {
+    else if (conversation.mode !== 'paused') {
         // Follow-up on a live thread: shade + PWA badge, not another WhatsApp to Steve.
+        //
+        // This used to fire only while the thread was Dave's. The effect was that the
+        // moment Steve took one over, every reply from that customer arrived in silence
+        // — no badge, no shade, nothing — which is the exact opposite of what taking a
+        // thread over means (29 Aug: a customer's "Ok" sat unseen). Paused threads are
+        // left out because they get their own alert further down.
         await (0, alerts_1.sendOwnerAlert)(companyId, 'inbound', conversation, `#${conversation.shortId} ${msg.channel} from ${(0, alerts_1.describeCustomer)(conversation)}: ${text.slice(0, 200)}`, customerPush(conversation, msg.channel, text));
     }
     if (!settings.enabled)
@@ -359,8 +404,18 @@ const handleInbound = async (msg, options = {}) => {
         await (0, alerts_1.sendOwnerAlert)(companyId, 'error', conversation, `#${conversation.shortId} A ${lead.source} lead arrived with no email and no phone number in it, so the agent cannot answer. Subject: ${msg.subject || '(none)'}`);
         return;
     }
+    // Paused means silent: no reply, no draft, just the alert.
+    if (conversation.mode === 'paused') {
+        await (0, alerts_1.sendOwnerAlert)(companyId, 'escalation', conversation, `#${conversation.shortId} ${(0, alerts_1.describeCustomer)(conversation)} (paused): ${text.slice(0, 400)}`);
+        return;
+    }
+    /**
+     * Steve is answering this one himself. Do not draft. He asked for Dave to
+     * stay quiet unless he taps Ask Dave in the inbox — auto-drafting on every
+     * inbound while he has the thread is how a prompt he never wanted kept
+     * covering the compose box. The inbound shade already fired above.
+     */
     if (conversation.mode !== 'agent') {
-        await (0, alerts_1.sendOwnerAlert)(companyId, 'escalation', conversation, `#${conversation.shortId} ${(0, alerts_1.describeCustomer)(conversation)} (you have this one): ${text.slice(0, 400)}`);
         return;
     }
     try {
@@ -387,6 +442,14 @@ exports.handleInbound = handleInbound;
  */
 const runAgentTurn = async (companyId, conversation, inbound, settings, options = {}) => {
     const history = await (0, conversations_1.readHistory)(companyId, conversation.id);
+    // What was already true before this turn. An escalation is news the first time and
+    // noise every time after: Dave kept reading a rude message from two days ago, at the
+    // top of the replayed history, and escalating and handing over again on every single
+    // inbound — five alerts in thirty seconds for one thread already sitting with Steve
+    // (29 Aug).
+    const wasEscalated = conversation.escalated === true;
+    const wasEscalationReason = conversation.escalationReason || '';
+    const wasWithAHuman = conversation.mode !== 'agent';
     if ((0, approval_1.agentTurnLimitReached)(history.filter(m => m.from === 'agent').length, settings.maxAgentTurns)) {
         await (0, conversations_1.updateConversation)(companyId, conversation.id, {
             mode: 'human',
@@ -414,7 +477,16 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
             inboundProviderId: inbound.providerId,
         })
         : undefined;
-    const result = await (0, brain_1.runBrain)({ companyId, conversation, history, inbound, settings, emailContext });
+    // Everything the desk has put the agent right on, in front of it on every turn.
+    // Cheap (one bounded read) and the only thing standing between a correction and
+    // the same mistake next week.
+    const lessons = options.simulate
+        ? []
+        : (0, lessons_1.formatLessons)(await (0, lessons_1.readLessons)(companyId).catch(() => []));
+    const result = await (0, brain_1.runBrain)({
+        companyId, conversation, history, inbound, settings, emailContext, lessons,
+        ...(options.draftOnly ? { draftOnly: true } : {}),
+    });
     // Silence guard (Steve, 26 Aug): in agent mode a customer message must never go unanswered.
     // If the brain came back empty without asking Steve or handing off, send a holding line and
     // flag it so a human sees it.
@@ -466,8 +538,15 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
     await (0, conversations_1.updateConversation)(companyId, conversation.id, patch);
     Object.assign(conversation, patch);
     if (!options.simulate) {
-        if (result.escalate) {
+        // Already escalated for this same reason, or already handed over: he knows.
+        const escalationIsNew = !!result.escalate
+            && (!wasEscalated || wasEscalationReason !== result.escalate.reason)
+            && !wasWithAHuman;
+        if (result.escalate && escalationIsNew) {
             await (0, alerts_1.sendOwnerAlert)(companyId, 'escalation', conversation, `#${conversation.shortId} ESCALATION (${result.escalate.reason}): ${result.escalate.ownerMessage}`);
+        }
+        else if (result.escalate) {
+            console.log(`#${conversation.shortId} escalation repeated (${result.escalate.reason}); not alerting again`);
         }
         if (result.askOwner) {
             await (0, alerts_1.sendOwnerAlert)(companyId, 'question', conversation, `#${conversation.shortId} ASK: ${result.askOwner.question}\nReply: ANSWER ${conversation.shortId} <text>`);
@@ -476,7 +555,8 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
             const booking = result.updates.booking;
             await (0, alerts_1.sendOwnerAlert)(companyId, 'booking', conversation, `#${conversation.shortId} BOOKING: ${booking.name} on ${booking.phone} wants ${booking.window} for ${conversation.vehicleInterest?.title || 'a viewing'}`);
         }
-        if (result.handoff) {
+        // Handing over a thread that is already yours is not an event.
+        if (result.handoff && !wasWithAHuman) {
             await (0, alerts_1.sendOwnerAlert)(companyId, 'escalation', conversation, `#${conversation.shortId} Handed over to you — the agent has stopped replying to ${(0, alerts_1.describeCustomer)(conversation)}.`);
         }
     }
@@ -485,7 +565,7 @@ const runAgentTurn = async (companyId, conversation, inbound, settings, options 
         return { reply };
     // Draft & Approve (Steve, 26 Aug): nothing goes out under the dealership's name
     // until Steve has read it. WhatsApp uses the same hold once that channel is sending.
-    if ((0, approval_1.needsApproval)(conversation, settings)) {
+    if (options.draftOnly || (0, approval_1.needsApproval)(conversation, settings)) {
         const source = options.draftSource || 'agent';
         const customerText = (source === 'instruction'
             ? conversation.pendingDraft?.customerText
@@ -589,10 +669,17 @@ const discardDraft = async (companyId, convId) => {
     if (!conversation)
         throw new Error(`Conversation ${convId} not found`);
     const had = !!conversation.pendingDraft;
-    if (had) {
-        await (0, conversations_1.updateConversation)(companyId, convId, { pendingDraft: null });
+    // Binning a draft has to mean something the next time the thread is opened, or
+    // the inbox cheerfully writes the same unwanted words again. Pinned to the
+    // message it was a reply to, so the veto lifts when the customer says something new.
+    const history = await (0, conversations_1.readHistory)(companyId, convId);
+    const lastCustomer = [...history].reverse().find(m => m.from === 'customer');
+    await (0, conversations_1.updateConversation)(companyId, convId, {
+        ...(had ? { pendingDraft: null } : {}),
+        draftDeclinedFor: lastCustomer?.id || `none:${Date.now()}`,
+    });
+    if (had)
         delete conversation.pendingDraft;
-    }
     return { had };
 };
 exports.discardDraft = discardDraft;
@@ -652,6 +739,18 @@ const deliverReply = async (companyId, conversation, settings, reply, inbound) =
         Object.assign(conversation, moved);
     }
 };
+/** Why "Me" could not go out, in words Steve can act on. */
+const ownerOutsideWindowMessage = (conversation) => {
+    const who = conversation.contact?.firstName || 'They';
+    const at = conversation.lastCustomerMessageAt;
+    const when = at
+        ? new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+        }).format(new Date(at))
+        : 'never';
+    return `Your words were not sent. ${who} last messaged on ${when}, over 24 hours ago, and WhatsApp only allows an approved opener after that. Send the opener from Dave, or reply by email.`;
+};
+exports.ownerOutsideWindowMessage = ownerOutsideWindowMessage;
 const enqueueOrSend = async (companyId, conversation, settings, text, via, from, extra) => {
     const sendAfter = extra?.sendAfter ?? Date.now();
     const live = settings.channels.whatsapp && await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId);
@@ -688,9 +787,18 @@ const enqueueOrSend = async (companyId, conversation, settings, text, via, from,
             ...(extra?.media && target.channel === 'whatsapp' ? { media: extra.media } : {}),
         };
         if (target.channel === 'whatsapp' && target.templateOnly && !extra?.media) {
+            // "Me" means the customer gets exactly these words. Outside the 24h window
+            // WhatsApp will not carry them, and quietly posting a canned opener over
+            // Steve's name instead is how a customer got told her email had bounced
+            // when it had not, twice (29 Aug). His own messages refuse; Dave's openers
+            // still fall back, because a template is what they are.
+            if (from === 'owner') {
+                skippedWhatsApp = (0, exports.ownerOutsideWindowMessage)(conversation);
+                continue;
+            }
             const fallback = (0, whatsapp_1.templateFallbackFor)(conversation.contact?.firstName, conversation.vehicleInterest?.title);
             Object.assign(job, fallback);
-            job.text = (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || []);
+            job.text = (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || [], { bounced: !!conversation.emailBounce });
         }
         try {
             if (sendAfter > Date.now() + 2000) {
@@ -830,12 +938,28 @@ exports.salesAgentSendReply = functions
     const settings = await (0, conversations_1.readSettings)(companyId);
     try {
         const result = await enqueueOrSend(companyId, conversation, settings, text || (media ? `[${media.kind}]` : ''), via, 'owner', { media });
-        await (0, conversations_1.updateConversation)(companyId, convId, { unread: 0 });
+        // Same contract as REPLY on WhatsApp: his words went out as written,
+        // Dave goes quiet, and a leftover draft must not sit there to be
+        // approved by accident.
+        await (0, conversations_1.updateConversation)(companyId, convId, {
+            unread: 0,
+            mode: 'human',
+            pendingDraft: null,
+            pendingQuestion: null,
+        });
+        // Nothing actually left the building. Returning ok here is what let the app
+        // say "message sent" while the customer got nothing, or got something Steve
+        // never wrote (29 Aug).
+        if (!result.sent.length) {
+            throw new functions.https.HttpsError('failed-precondition', result.skippedWhatsApp || 'That message could not be sent.');
+        }
         return { ok: true, sent: result.sent, skippedWhatsApp: result.skippedWhatsApp || null };
     }
     catch (error) {
+        if (error instanceof functions.https.HttpsError)
+            throw error;
         const message = error?.message || 'The message could not be sent.';
-        if (/not live/i.test(message) || /nowhere to send/i.test(message)) {
+        if (/not live/i.test(message) || /nowhere to send/i.test(message) || /not sent/i.test(message)) {
             throw new functions.https.HttpsError('failed-precondition', message);
         }
         throw new functions.https.HttpsError('unavailable', message);
@@ -903,6 +1027,75 @@ exports.salesAgentApproveDraft = functions
     }
     catch (error) {
         throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');
+    }
+});
+/**
+ * Is there a customer message sitting here that nobody has answered?
+ *
+ * The last message in the thread being from the customer is the whole test: an
+ * outbound after it means it was dealt with, and a draft already waiting means
+ * there is nothing to write.
+ */
+const awaitingReply = (messages) => {
+    const last = [...messages].reverse().find(m => m.from === 'customer' || m.direction === 'out');
+    return !!last && last.from === 'customer';
+};
+exports.awaitingReply = awaitingReply;
+/**
+ * Write a draft for a message that is already sitting there.
+ *
+ * Called when Steve taps Ask Dave, not when he merely opens a thread. Opening
+ * used to fire this automatically and covered the box he wanted to type in.
+ * Idempotent: an existing draft is returned rather than replaced.
+ */
+const draftNow = async (companyId, convId, force = false) => {
+    const settings = await (0, conversations_1.readSettings)(companyId);
+    const conversation = await (0, conversations_1.getConversation)(companyId, convId);
+    if (!conversation)
+        throw new Error(`Conversation ${convId} not found`);
+    if (conversation.pendingDraft && !force)
+        return { ok: true, drafted: false, reason: 'already-drafted' };
+    if (conversation.pendingQuestion)
+        return { ok: true, drafted: false, reason: 'agent-is-asking' };
+    if (conversation.mode === 'paused')
+        return { ok: true, drafted: false, reason: 'paused' };
+    const history = await (0, conversations_1.readHistory)(companyId, convId);
+    if (!(0, exports.awaitingReply)(history) && !force)
+        return { ok: true, drafted: false, reason: 'nothing-waiting' };
+    const lastCustomer = [...history].reverse().find(m => m.from === 'customer');
+    if (!lastCustomer)
+        return { ok: true, drafted: false, reason: 'nothing-waiting' };
+    // He has already read Dave's answer to this one and thrown it away.
+    if (conversation.draftDeclinedFor === lastCustomer.id && !force) {
+        return { ok: true, drafted: false, reason: 'declined' };
+    }
+    await (0, exports.runAgentTurn)(companyId, conversation, {
+        companyId,
+        channel: lastCustomer.channel || conversation.channel,
+        address: conversation.address,
+        text: lastCustomer.text || '',
+        providerId: `draft-now:${convId}:${lastCustomer.id}`,
+        receivedAt: lastCustomer.createdAt || Date.now(),
+        ...(conversation.emailSubject ? { subject: conversation.emailSubject } : {}),
+    }, settings, { draftOnly: true });
+    return { ok: true, drafted: true };
+};
+exports.draftNow = draftNow;
+/**
+ * Ask Dave to write a reply to whatever the customer last said, without sending it.
+ *
+ * Fired from the inbox Ask Dave control, not from merely opening a thread.
+ */
+exports.salesAgentDraftNow = functions
+    .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
+    .https.onCall(async (data, context) => {
+    const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
+    const convId = String(data?.convId || '');
+    try {
+        return await (0, exports.draftNow)(companyId, convId, data?.force === true);
+    }
+    catch (error) {
+        throw new functions.https.HttpsError('internal', error?.message || 'Dave could not draft a reply.');
     }
 });
 /** Bin the draft. The conversation stays with the agent unless you also take it over. */
@@ -1001,21 +1194,31 @@ exports.salesAgentStartWhatsApp = functions
  * Register who shares this Gmail / WhatsApp number. Tokens stay on the calling
  * company. Threads are placed on the member that owns the car.
  *
- * `whatsappLive` defaults off and stays off unless it is passed true — connecting
- * the Cloud API is not the same as sending.
+ * The other company is named by id — Steve is not logged into Chris's ledger,
+ * and must not have to be. Connecting the Cloud API is not the same as sending;
+ * `whatsappLive` stays off unless it is passed true.
  */
 exports.salesAgentSaveSharedInbox = functions.https.onCall(async (data, context) => {
     const companyId = await (0, conversations_1.requireMember)(context, data?.companyId);
     const members = Array.isArray(data?.memberCompanyIds) ? data.memberCompanyIds.map(String) : [];
     const existing = await (0, inboxRouting_1.inboxForMember)(companyId);
-    // Naming another company here hands it our tokens and lets its threads land in
-    // our ledger. Only someone who belongs to every company listed may do that.
-    for (const other of [...members, ...(data?.fallbackCompanyId ? [String(data.fallbackCompanyId)] : [])]) {
-        if (other !== companyId)
-            await (0, conversations_1.requireMember)(context, other);
-    }
+    const blocked = (0, inboxRouting_1.sharedInboxSaveBlocked)(companyId, existing);
+    if (blocked)
+        throw new functions.https.HttpsError('permission-denied', blocked);
     if (!members.length && !existing) {
         throw new functions.https.HttpsError('invalid-argument', 'Name at least one other Dealer Ledger Pro company that shares this inbox.');
+    }
+    const others = [...members, ...(data?.fallbackCompanyId ? [String(data.fallbackCompanyId)] : [])]
+        .map(id => String(id || '').trim())
+        .filter(id => id && id !== companyId);
+    for (const other of Array.from(new Set(others))) {
+        if (!(await (0, inboxRouting_1.companyLooksReal)(other))) {
+            throw new functions.https.HttpsError('not-found', `No Dealer Ledger Pro company exists for ${other}.`);
+        }
+        const theirs = await (0, inboxRouting_1.inboxForMember)(other);
+        if (theirs && theirs.credentialCompanyId !== companyId && theirs.id !== existing?.id) {
+            throw new functions.https.HttpsError('already-exists', 'That company already shares a different inbox. Remove it there first.');
+        }
     }
     try {
         const inbox = await (0, inboxRouting_1.saveSharedInbox)({

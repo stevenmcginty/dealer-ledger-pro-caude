@@ -46,8 +46,8 @@ describe('agentTurnLimitReached', () => {
 });
 
 /**
- * Draft-only: Steve has taken the thread over, so nothing may send on its own —
- * but he still wants Dave's words waiting for him rather than an empty box.
+ * Draft-only: Ask Dave / draftNow must still hold the reply even when the
+ * channel is set to send automatically. Human-mode inbound no longer auto-drafts.
  */
 describe('draftOnly holds regardless of the channel setting', () => {
     /** Mirrors the gate in runAgentTurn. */

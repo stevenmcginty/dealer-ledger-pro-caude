@@ -18,7 +18,7 @@ const whatsapp_1 = require("./channels/whatsapp");
 const push_1 = require("./push");
 const types_1 = require("./types");
 /** Approved template used when Steve has not messaged the number for over 24 hours. */
-exports.OWNER_ALERT_TEMPLATE = 'owner_alert';
+exports.OWNER_ALERT_TEMPLATE = 'owner_alert_v2';
 /** Set by the router every time a message arrives from the owner's number. */
 const recordOwnerInbound = async (companyId) => {
     await (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, 'ownerLastInboundAt')).set(Date.now());

@@ -757,8 +757,8 @@ export const sendAgentReply = (
 /**
  * Ask Dave to write a reply to whatever the customer last said, without sending it.
  *
- * For a thread opened with a message sitting in it and no draft yet — the webhook
- * only drafts messages that arrive from now on. Returns drafted:false with a reason
+ * Inbox Ask Dave control. The webhook still drafts inbound while Dave owns the
+ * thread; opening a conversation does not. Returns drafted:false with a reason
  * when there is nothing to write (already drafted, paused, nothing waiting).
  */
 export const draftNow = (companyId: string, convId: string, force = false) =>

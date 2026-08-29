@@ -47,7 +47,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.templateFallbackFor = exports.renderFallbackTemplate = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplate = exports.sendWhatsAppMedia = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
+exports.templateFallbackFor = exports.renderFallbackTemplate = exports.FALLBACK_TEMPLATE = exports.salesAgentWhatsAppWebhook = exports.withinCustomerServiceWindow = exports.whatsappSender = exports.sendWhatsAppTemplateResolved = exports.sendWhatsAppTemplate = exports.renderTemplateFamily = exports.resolveTemplate = exports.TEMPLATE_PENDING_MESSAGE = exports.isSendBlockedError = exports.accessBlockedMessage = exports.ACCESS_BLOCKED_MARKER = exports.isAccessBlockedCode = exports.approvedTemplateNames = exports.sendWhatsAppMedia = exports.sendWhatsAppText = exports.sanitiseTemplateParam = exports.companyForWhatsAppPhoneId = exports.registerWhatsAppRouting = void 0;
 const crypto = __importStar(require("crypto"));
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
@@ -96,7 +96,17 @@ const graphPost = async (companyId, body) => {
     });
     const json = (await response.json().catch(() => ({})));
     if (!response.ok || json.error) {
-        throw new Error(`WhatsApp send failed (${response.status}): ${json.error?.message || 'unknown error'}`);
+        const code = json.error?.code;
+        if (code === 132001)
+            throw new Error(exports.TEMPLATE_PENDING_MESSAGE);
+        if (code === 131047 || code === 131026) {
+            throw new Error('WhatsApp could not deliver: more than 24 hours since their last message, so only an approved opener can be sent.');
+        }
+        if ((0, exports.isAccessBlockedCode)(code))
+            throw new Error((0, exports.accessBlockedMessage)(json.error?.message, code));
+        // Meta's own code, kept in the text: without it every unknown failure reads the
+        // same and there is nothing to search their docs for (29 Aug).
+        throw new Error(`WhatsApp send failed (${response.status}${code ? `, Meta code ${code}` : ''}): ${json.error?.message || 'unknown error'}`);
     }
     return json;
 };
@@ -163,22 +173,188 @@ const sendWhatsAppMedia = async (companyId, to, media, caption) => {
     return result.messages?.[0]?.id || '';
 };
 exports.sendWhatsAppMedia = sendWhatsAppMedia;
-const sendWhatsAppTemplate = async (companyId, to, templateName, params = []) => {
-    const components = params.length
-        ? [{ type: 'body', parameters: params.map(p => ({ type: 'text', text: (0, exports.sanitiseTemplateParam)(p) })) }]
-        : [];
-    const result = await graphPost(companyId, {
-        to: (0, types_1.toE164)(to),
-        type: 'template',
-        template: {
-            name: templateName,
-            language: { code: TEMPLATE_LANGUAGE },
-            ...(components.length ? { components } : {}),
-        },
-    });
-    return result.messages?.[0]?.id || '';
+const ENQUIRY_FAMILY = [
+    // Cheapest wording that is TRUE first. Meta bills UTILITY well below MARKETING (and
+    // free inside the 24h window), so a transactional wording is preferred — but only
+    // among the ones that do not claim something that did not happen. The two
+    // bounce-worded variants below are equally cheap and were previously picked ahead
+    // of this one purely by list order.
+    {
+        name: 'enquiry_update',
+        params: ([name, car]) => [name || 'there', car || 'car', 'We have received it and the car is still available.'],
+        render: ([name, car]) => `Hi ${name || 'there'}, this is Radlett Cars replying to the enquiry you sent us about the ${car || 'car'}. We have received it and the car is still available. You can reply to this message with any questions about your enquiry.`,
+    },
+    {
+        name: 'enquiry_ack',
+        bounceOnly: true,
+        params: ([name, car]) => [name || 'there', car || 'car'],
+        render: ([name, car]) => `Hi ${name || 'there'}, this is Radlett Cars. We received your enquiry about the ${car || 'car'} but the email address you gave us is not accepting messages, so we are replying here instead. Please reply to this message and we will answer your questions.`,
+    },
+    {
+        name: 'enquiry_contact',
+        bounceOnly: true,
+        params: ([name, car]) => [name || 'there', car || 'car'],
+        render: ([name, car]) => `Hi ${name || 'there'}, this is Radlett Cars replying to your enquiry about the ${car || 'car'}. We could not reach you by email. Please reply to this message so we can help you with your enquiry.`,
+    },
+    {
+        name: 'enquiry_reply',
+        params: ([name, car]) => [name || 'there', car || 'car', "It's still available and ready to view."],
+        render: ([name, car]) => `Hi ${name || 'there'}, thanks for your enquiry about the ${car || 'car'}. It's still available and ready to view. Reply here with any questions or to arrange a viewing.`,
+    },
+    {
+        name: 'enquiry_followup',
+        params: ([name, car]) => [name || 'there', car || 'car'],
+        render: ([name, car]) => `Hi ${name || 'there'}, thanks for enquiring about the ${car || 'car'}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`,
+    },
+];
+const MISSED_CALL_FAMILY = [
+    {
+        name: 'missed_call_update',
+        params: ([dealer]) => [dealer || 'us'],
+        render: ([dealer]) => `Hi, this is ${dealer || 'us'}. We missed your call and are replying here instead. Please reply with the registration or name of the car you called about and we will send you the details.`,
+    },
+    {
+        name: 'missed_call_reply',
+        params: ([dealer]) => [dealer || 'us'],
+        render: ([dealer]) => `Hi, thanks for calling ${dealer || 'us'} earlier — sorry we missed you. Which car were you calling about? Reply here and we'll get straight back to you.`,
+    },
+    {
+        name: 'missed_call_followup',
+        params: ([dealer]) => [dealer || 'us'],
+        render: ([dealer]) => `Thanks for calling ${dealer || 'us'} earlier. Which car were you calling about?`,
+    },
+];
+const OWNER_ALERT_FAMILY = [
+    {
+        name: 'owner_alert_v2',
+        params: ([text]) => [text || '-'],
+        render: ([text]) => `Update from Dave, your sales assistant, about a customer conversation in the Agent Inbox: ${text} Open the inbox to reply.`,
+    },
+    { name: 'owner_alert', params: ([text]) => [text || '-'], render: ([text]) => text || '' },
+];
+const FAMILIES = [ENQUIRY_FAMILY, MISSED_CALL_FAMILY, OWNER_ALERT_FAMILY];
+const familyOf = (templateName) => FAMILIES.find(f => f.some(v => v.name === templateName)) || null;
+const approvedCache = new Map();
+const APPROVED_TTL_MS = 2 * 60000;
+/** Names of the templates Meta will actually deliver right now. Cached briefly per WABA. */
+const approvedTemplateNames = async (companyId) => {
+    const priv = await (0, inboxRouting_1.readSendPrivate)(companyId);
+    const wa = priv.whatsapp;
+    if (!wa?.accessToken || !wa?.businessAccountId)
+        return new Set();
+    const cached = approvedCache.get(wa.businessAccountId);
+    if (cached && Date.now() - cached.at < APPROVED_TTL_MS)
+        return cached.names;
+    const res = await fetch(`${GRAPH}/${wa.businessAccountId}/message_templates?fields=name,status,language&limit=200`, { headers: { Authorization: `Bearer ${wa.accessToken}` } });
+    const json = (await res.json().catch(() => ({})));
+    // A failed lookup is not an empty stock of templates. This used to swallow the
+    // error and hand back an empty set, so every Graph outage came out of the far end
+    // as "your opener is still awaiting Meta approval" — which is what Steve was told
+    // on the morning Meta blocked the app outright (29 Aug). Nothing is cached here:
+    // caching a failure would keep the wrong answer alive for two minutes after the
+    // problem cleared.
+    if (!res.ok || json.error) {
+        const code = json.error?.code;
+        if ((0, exports.isAccessBlockedCode)(code))
+            throw new Error((0, exports.accessBlockedMessage)(json.error?.message, code));
+        throw new Error(`Could not check which WhatsApp openers Meta has approved (${res.status}${code ? `, Meta code ${code}` : ''}): ${json.error?.message || 'unknown error'}`);
+    }
+    const names = new Set((json.data || [])
+        .filter(t => t.status === 'APPROVED' && (!t.language || t.language === TEMPLATE_LANGUAGE))
+        .map(t => t.name));
+    approvedCache.set(wa.businessAccountId, { at: Date.now(), names });
+    return names;
 };
+exports.approvedTemplateNames = approvedTemplateNames;
+/**
+ * Meta codes that mean the door is shut, not that the message was bad.
+ *
+ * 200 is the one that bit us: "API access blocked" on EVERY endpoint, reads included,
+ * because Meta had restricted the app itself. 190 is a dead or revoked token and 10 is
+ * a permission the app no longer holds. None of the three can come good by retrying a
+ * minute later; all three come good on their own the moment the account is put right,
+ * which is why the outbox parks these rather than binning the message.
+ */
+const isAccessBlockedCode = (code) => code === 200 || code === 190 || code === 10;
+exports.isAccessBlockedCode = isAccessBlockedCode;
+/**
+ * The phrase the outbox recognises, and the opening words Steve reads. One string
+ * doing both jobs on purpose: a separate marker prefix ends up on screen the first
+ * time somebody forgets to strip it, which is exactly what happened on 29 Aug.
+ */
+exports.ACCESS_BLOCKED_MARKER = 'Meta has blocked API access';
+/** Said the way Steve needs to read it: whose problem it is, and where to go. */
+const accessBlockedMessage = (metaMessage, code) => `${exports.ACCESS_BLOCKED_MARKER} for the WhatsApp app${code ? ` (code ${code}, "${metaMessage || 'API access blocked'}")` : ''}. `
+    + 'Nothing can be sent until that is cleared at developers.facebook.com — check the app '
+    + 'dashboard for a banner. Anything queued is being held, not lost.';
+exports.accessBlockedMessage = accessBlockedMessage;
+/**
+ * An error the outbox must not burn its retries on: the account cannot send at all,
+ * so trying again in a minute is pointless, and the message must be kept rather than
+ * dropped. Matched on the text because these travel up through channel adapters that
+ * only ever rethrow a plain `Error`, and an instanceof check does not survive that.
+ */
+const isSendBlockedError = (message) => (message || '').includes(exports.ACCESS_BLOCKED_MARKER) || (message || '').includes(exports.TEMPLATE_PENDING_MESSAGE);
+exports.isSendBlockedError = isSendBlockedError;
+exports.TEMPLATE_PENDING_MESSAGE = 'WhatsApp opener is still awaiting Meta approval (usually a few minutes for a new template). Try again shortly.';
+/**
+ * Pick the approved member of the requested template's family and shape the params for
+ * it. Throws a plain-English error when Meta has approved none of them.
+ */
+const resolveTemplate = async (companyId, templateName, canonicalParams, options = {}) => {
+    const family = familyOf(templateName);
+    if (!family)
+        return { name: templateName, params: canonicalParams, text: canonicalParams.join(' ') };
+    const approved = await (0, exports.approvedTemplateNames)(companyId);
+    const usable = family.filter(v => !v.bounceOnly || options.bounced);
+    const variant = usable.find(v => approved.has(v.name)) || family.find(v => approved.has(v.name));
+    if (!variant) {
+        approvedCache.clear();
+        throw new Error(exports.TEMPLATE_PENDING_MESSAGE);
+    }
+    return {
+        name: variant.name,
+        params: variant.params(canonicalParams).map(exports.sanitiseTemplateParam),
+        text: variant.render(canonicalParams),
+    };
+};
+exports.resolveTemplate = resolveTemplate;
+/** What the customer would read if this family were sent now with these params. */
+const renderTemplateFamily = (templateName, canonicalParams, options = {}) => {
+    const family = familyOf(templateName);
+    if (!family)
+        return canonicalParams.join(' ');
+    const usable = family.filter(v => !v.bounceOnly || options.bounced);
+    return (usable[0] || family[0]).render(canonicalParams);
+};
+exports.renderTemplateFamily = renderTemplateFamily;
+const sendWhatsAppTemplate = async (companyId, to, templateName, params = []) => (await (0, exports.sendWhatsAppTemplateResolved)(companyId, to, templateName, params)).providerId;
 exports.sendWhatsAppTemplate = sendWhatsAppTemplate;
+const sendWhatsAppTemplateResolved = async (companyId, to, templateName, params = []) => {
+    const resolved = await (0, exports.resolveTemplate)(companyId, templateName, params);
+    const components = resolved.params.length
+        ? [{ type: 'body', parameters: resolved.params.map(p => ({ type: 'text', text: p })) }]
+        : [];
+    let result;
+    try {
+        result = await graphPost(companyId, {
+            to: (0, types_1.toE164)(to),
+            type: 'template',
+            template: {
+                name: resolved.name,
+                language: { code: TEMPLATE_LANGUAGE },
+                ...(components.length ? { components } : {}),
+            },
+        });
+    }
+    catch (error) {
+        // Our idea of "approved" was stale. Forget it so the next try re-checks Meta.
+        approvedCache.clear();
+        throw error;
+    }
+    return { providerId: result.messages?.[0]?.id || '', text: resolved.text, name: resolved.name };
+};
+exports.sendWhatsAppTemplateResolved = sendWhatsAppTemplateResolved;
 /** Blue ticks. Not required, but a customer who can see the message was read is a
  *  customer who waits for the reply instead of ringing. */
 const markRead = async (companyId, messageId) => {
@@ -196,11 +372,13 @@ exports.whatsappSender = {
         if (!(await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId))) {
             throw new Error('WhatsApp is not live yet (Meta verification pending), so this message was not sent.');
         }
-        const providerId = job.templateName
-            ? await (0, exports.sendWhatsAppTemplate)(companyId, job.to, job.templateName, job.templateParams || [])
-            : job.media
-                ? await (0, exports.sendWhatsAppMedia)(companyId, job.to, job.media, job.text || undefined)
-                : await (0, exports.sendWhatsAppText)(companyId, job.to, job.text);
+        if (job.templateName) {
+            const sent = await (0, exports.sendWhatsAppTemplateResolved)(companyId, job.to, job.templateName, job.templateParams || []);
+            return { providerId: sent.providerId, text: sent.text };
+        }
+        const providerId = job.media
+            ? await (0, exports.sendWhatsAppMedia)(companyId, job.to, job.media, job.text || undefined)
+            : await (0, exports.sendWhatsAppText)(companyId, job.to, job.text);
         return { providerId };
     },
 };
@@ -294,8 +472,40 @@ const storeInboundMedia = async (companyId, providerId, message) => {
         return undefined;
     }
 };
+/**
+ * Meta's receipts for messages we sent. Nothing to answer, but this is the only
+ * evidence that a message actually arrived — without recording it the app cannot
+ * tell a delivered WhatsApp from one still in flight.
+ */
+const processStatuses = async (companyId, statuses) => {
+    for (const status of statuses) {
+        const state = deliveryStateOf(status.status);
+        if (!state || !status.id)
+            continue;
+        const at = Number(status.timestamp) * 1000 || Date.now();
+        const error = status.errors?.[0]
+            ? (status.errors[0].message || status.errors[0].title || `error ${status.errors[0].code}`)
+            : undefined;
+        try {
+            await (0, conversations_1.recordDelivery)(companyId, status.id, state, at, error);
+        }
+        catch (err) {
+            console.warn(`WhatsApp: could not record ${state} for ${status.id}`, err);
+        }
+    }
+};
+const deliveryStateOf = (raw) => {
+    switch (raw) {
+        case 'sent': return 'sent';
+        case 'delivered': return 'delivered';
+        case 'read': return 'read';
+        case 'failed': return 'failed';
+        default: return null; // 'deleted', 'warning' and anything new: not a delivery state
+    }
+};
 const processChange = async (companyId, value) => {
-    // Delivery receipts for our own outbound messages. Nothing to answer.
+    if (value.statuses?.length)
+        await processStatuses(companyId, value.statuses);
     if (!value.messages?.length)
         return;
     const names = new Map();
@@ -389,9 +599,9 @@ exports.salesAgentWhatsAppWebhook = functions
  * by the time the outbox reaches it. Kept here so the rule and the API that enforces it
  * stay in one file.
  */
-exports.FALLBACK_TEMPLATE = 'enquiry_followup';
+exports.FALLBACK_TEMPLATE = 'enquiry_ack';
 /** The approved template's wording, for the thread record. */
-const renderFallbackTemplate = (params) => `Hi ${params[0] || 'there'}, thanks for enquiring about the ${params[1] || 'car'}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`;
+const renderFallbackTemplate = (params, options = {}) => (0, exports.renderTemplateFamily)(exports.FALLBACK_TEMPLATE, params, options);
 exports.renderFallbackTemplate = renderFallbackTemplate;
 const templateFallbackFor = (firstName, vehicleTitle) => ({
     templateName: exports.FALLBACK_TEMPLATE,

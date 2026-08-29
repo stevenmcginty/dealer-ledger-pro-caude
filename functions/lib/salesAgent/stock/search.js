@@ -402,7 +402,7 @@ const rankStock = (items, query) => {
         b.total - a.total ||
         (a.item.price ?? 0) - (b.item.price ?? 0))
         .slice(0, limit)
-        .map(entry => ({ ...entry.item, matchQuality: entry.quality }));
+        .map(entry => ({ ...entry.item, matchQuality: entry.quality, matchScore: entry.total }));
 };
 exports.rankStock = rankStock;
 const readStock = async (companyId) => {
@@ -434,10 +434,18 @@ const matchEnquiryStock = (items, hint) => {
         .filter(hit => hit.matchQuality !== 'weak');
     if (!hits.length)
         return null;
-    const owners = new Set(hits.map(hit => hit.ownerCompanyId).filter(Boolean));
+    // A car that has gone only keeps the thread when the description clearly picks
+    // it out — when it beats every car still for sale outright. A customer who
+    // names the sold Taycan is asking about the sold Taycan. A customer who writes
+    // "have you still got the Porsche" is not, and used to be pinned to it anyway,
+    // which put the thread on the wrong dealer's ledger and had the agent quoting
+    // a car that went months ago (Steve, 28 Aug).
+    const live = hits.filter(hit => hit.status === 'available');
+    const considered = live.length && live[0].matchScore >= hits[0].matchScore ? live : hits;
+    const owners = new Set(considered.map(hit => hit.ownerCompanyId).filter(Boolean));
     if (owners.size > 1)
         return null;
-    return hits[0];
+    return considered[0];
 };
 exports.matchEnquiryStock = matchEnquiryStock;
 const matchEnquiryStockForCompany = async (companyId, hint) => (0, exports.matchEnquiryStock)(await (0, exports.readStock)(companyId), hint);

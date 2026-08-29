@@ -25,11 +25,13 @@ import {
     formatAgentTime,
     getGmailAuthUrl,
     runStockIndexNow,
+    SharedInboxMeta,
     saveSalesAgentPrivate,
     saveSalesAgentSettings,
     setConnectionFlag,
     subscribeToSalesAgentSettings,
     subscribeToSalesAgentStockMeta,
+    subscribeToSharedInbox,
 } from '../../services/salesAgentService';
 import AgentSimulator from './AgentSimulator';
 import PushNotificationsCard from './PushNotificationsCard';
@@ -154,6 +156,7 @@ const SalesAgentSettingsPage = () => {
         phoneNumberId: '', businessAccountId: '', accessToken: '', verifyToken: '', appSecret: '',
     });
     const [twilio, setTwilio] = useState<TwilioCredentials>({ accountSid: '', authToken: '', fromNumber: '' });
+    const [sharedInbox, setSharedInbox] = useState<SharedInboxMeta | null>(null);
 
     const dirtyRef = useRef(false);
     dirtyRef.current = dirty;
@@ -172,6 +175,13 @@ const SalesAgentSettingsPage = () => {
         if (!companyId) return;
         return subscribeToSalesAgentStockMeta(companyId, setStockMeta);
     }, [companyId]);
+
+    useEffect(() => {
+        if (!companyId) return;
+        return subscribeToSharedInbox(companyId, setSharedInbox);
+    }, [companyId]);
+
+    const usesSharedWhatsApp = !!(sharedInbox && sharedInbox.credentialCompanyId !== companyId);
 
     // Coming back from Google's consent screen. The refresh token was stored by
     // the function; all that is left is to record that it happened and tidy the
@@ -793,7 +803,7 @@ const SalesAgentSettingsPage = () => {
                     {/* WhatsApp */}
                     <Card padding="lg">
                         <Card.Header
-                            action={<Badge variant={connections.whatsapp ? 'success' : 'default'}>{connections.whatsapp ? 'Connected' : 'Not connected'}</Badge>}
+                            action={<Badge variant={usesSharedWhatsApp || connections.whatsapp ? 'success' : 'default'}>{usesSharedWhatsApp ? 'Shared number' : connections.whatsapp ? 'Connected' : 'Not connected'}</Badge>}
                         >
                             <span className="flex items-center gap-2">
                                 <ChatBubbleLeftRightIcon className="h-5 w-5 text-emerald-400" />
@@ -801,7 +811,12 @@ const SalesAgentSettingsPage = () => {
                             </span>
                         </Card.Header>
                         <Card.Body>
-                            {showWhatsApp ? (
+                            {usesSharedWhatsApp ? (
+                                <p className="text-sm text-gray-300 max-w-2xl">
+                                    This ledger uses the shared {sharedInbox?.name || 'Radlett'} number. You do not
+                                    paste Meta tokens here — send from the Agent Inbox and it goes out on that number.
+                                </p>
+                            ) : showWhatsApp ? (
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <Input

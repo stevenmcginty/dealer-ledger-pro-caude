@@ -343,6 +343,23 @@ const buildSystemPrompt = (args) => {
             '- They are context, not messages to reply to. Only the final message is the one you are answering.',
         ].join('\n'));
     }
+    if (args.lessons?.length) {
+        sections.push([
+            `WHAT ${owner.toUpperCase()} HAS PUT YOU RIGHT ON`,
+            `These are corrections ${owner} made to your work on real threads. They are standing instructions, not history. Read them before you answer and do not repeat the mistake:`,
+            ...args.lessons,
+            'The most common one is the car itself. If the enquiry does not name a car clearly enough for you to be certain which advert it is, say so and call ask_owner. Never assume it is a car you happen to have talked about before, and never talk about a car that has sold.',
+        ].join('\n'));
+    }
+    sections.push([
+        'WHAT YOU ARE ANSWERING',
+        'The transcript is there for context. You are answering the LAST message in it and nothing else.',
+        '- Anything further up has already been dealt with. Do not escalate, hand over, or apologise again for something said earlier in the thread.',
+        '- A rude or angry message the desk has already seen is old news. Judge the message in front of you on its own.',
+        conversation.escalated || conversation.mode !== 'agent'
+            ? `- ${owner} already has this thread: it has been escalated${conversation.escalationReason ? ` (${conversation.escalationReason})` : ''}. Do NOT call escalate_to_owner or request_handoff again unless something genuinely new has happened since.`
+            : '',
+    ].filter(Boolean).join('\n'));
     sections.push([
         'OUTPUT',
         'Reply with one JSON object and nothing else. No code fence, no commentary around it.',

@@ -25,7 +25,14 @@
  * company that owns the car. WhatsApp stays dark until SharedInbox.whatsappLive.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stripUndefined = exports.rtdbKey = exports.extractUkMobiles = exports.parseOutboundPhone = exports.toE164 = exports.normaliseAddress = void 0;
+exports.stripUndefined = exports.rtdbKey = exports.extractUkMobiles = exports.parseOutboundPhone = exports.toE164 = exports.normaliseAddress = exports.DELIVERY_RANK = void 0;
+/** Later states never regress: a 'read' receipt must not be undone by a late 'sent'. */
+exports.DELIVERY_RANK = {
+    sent: 1,
+    delivered: 2,
+    read: 3,
+    failed: 4,
+};
 const normaliseAddress = (channel, address) => {
     if (channel === 'email')
         return `email:${address.trim().toLowerCase()}`;

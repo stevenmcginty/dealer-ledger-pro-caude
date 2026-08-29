@@ -99,6 +99,31 @@ export const inboxForMember = async (companyId: string): Promise<SharedInbox | n
 };
 
 /**
+ * Who may change the shared inbox.
+ *
+ * Steve (the company that holds the Meta / Gmail tokens) lists the other
+ * ledgers by id. He is not a member of Chris's Dealer Ledger Pro, and requiring
+ * that is why Chris never got WhatsApp on his own login. A peer must not save
+ * either — that would move the credential company onto an account with no tokens
+ * and kill the number for everyone.
+ */
+export const sharedInboxSaveBlocked = (
+    callerCompanyId: string,
+    existing: Pick<SharedInbox, 'credentialCompanyId'> | null
+): string | null => {
+    if (existing && existing.credentialCompanyId !== callerCompanyId) {
+        return 'The other ledger owns this shared number. They add members from their settings.';
+    }
+    return null;
+};
+
+export const companyLooksReal = async (companyId: string): Promise<boolean> => {
+    if (!companyId) return false;
+    const snap = await db().ref(`companies/${companyId}`).once('value');
+    return snap.exists();
+};
+
+/**
  * Tokens for anything we send. A thread sitting in Chris's account still goes
  * out through Steve's connected Gmail / WhatsApp.
  */

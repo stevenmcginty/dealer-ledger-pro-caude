@@ -1,12 +1,14 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useData } from '../../hooks/useData';
 import { Card, Button, Badge, Input } from '../ui';
 import Spinner from '../common/Spinner';
 import { CalendarIcon, ExclamationTriangleIcon, CheckCircleIcon, PhoneIcon, ChatBubbleLeftRightIcon } from '../icons';
+import { SharedInboxMeta, subscribeToSharedInbox } from '../../services/salesAgentService';
 
 const IntegrationsPage = () => {
     const {
+        companyId,
         googleUser,
         handleGoogleSignIn,
         handleGoogleSignOut,
@@ -16,6 +18,12 @@ const IntegrationsPage = () => {
         crmSettings,
         updateCRMSettings,
     } = useData();
+    const [sharedInbox, setSharedInbox] = useState<SharedInboxMeta | null>(null);
+
+    useEffect(() => {
+        if (!companyId) return;
+        return subscribeToSharedInbox(companyId, setSharedInbox);
+    }, [companyId]);
 
     const [isConnecting, setIsConnecting] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -238,13 +246,27 @@ const IntegrationsPage = () => {
                                 <p className="text-sm text-gray-400">Send WhatsApp messages</p>
                             </div>
                         </div>
-                        <Badge variant={crmSettings?.whatsappConnected ? 'success' : 'default'}>
-                            {crmSettings?.whatsappConnected ? 'Connected' : 'Not Connected'}
+                        <Badge variant={sharedInbox || crmSettings?.whatsappConnected ? 'success' : 'default'}>
+                            {sharedInbox
+                                ? (sharedInbox.whatsappLive ? 'Shared · live' : 'Shared · not live')
+                                : crmSettings?.whatsappConnected ? 'Connected' : 'Not Connected'}
                         </Badge>
                     </div>
                 </Card.Header>
                 <Card.Body>
-                    {crmSettings?.whatsappConnected ? (
+                    {sharedInbox ? (
+                        <div className="space-y-2">
+                            <p className="text-white font-medium">
+                                Using the shared {sharedInbox.name || 'Radlett'} WhatsApp number
+                            </p>
+                            <p className="text-sm text-gray-400">
+                                {sharedInbox.credentialCompanyId === companyId
+                                    ? 'This ledger holds the Meta connection. The other Dealer Ledger Pro on this inbox sends through it too.'
+                                    : 'You do not connect WhatsApp here. Open Agent Inbox and send — it goes out on the shared number.'}
+                                {!sharedInbox.whatsappLive ? ' Sending is off until WhatsApp is marked live on the shared inbox.' : ''}
+                            </p>
+                        </div>
+                    ) : crmSettings?.whatsappConnected ? (
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
                                 <div className="flex-1">

@@ -47,12 +47,14 @@ import { ParsedLead, crmLeadSource, messageOrDefault } from './channels/leadPars
 import {
     bindInboxChannelsFromPrivate,
     claimSharedProviderId,
+    companyLooksReal,
     inboxForMember,
     isWhatsAppLiveFor,
     mirrorConversationContacts,
     ownerCompanyForWhatsApp,
     resolveConversationHome,
     saveSharedInbox,
+    sharedInboxSaveBlocked,
 } from './inboxRouting';
 import { startOutboundWhatsApp } from './startWhatsApp';
 import {
@@ -509,24 +511,12 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     }
 
     /**
-     * Steve is answering this one himself — but "I'll answer it" is not "leave me
-     * a blank box". Dave still writes what he would have said and leaves it as a
-     * draft, so there is always something to send or edit rather than a cursor
-     * blinking at an empty compose bar. Nothing goes out on its own here: the
-     * draft-only flag holds it whatever the channel's approval setting says.
+     * Steve is answering this one himself. Do not draft. He asked for Dave to
+     * stay quiet unless he taps Ask Dave in the inbox — auto-drafting on every
+     * inbound while he has the thread is how a prompt he never wanted kept
+     * covering the compose box. The inbound shade already fired above.
      */
     if (conversation.mode !== 'agent') {
-        try {
-            await runAgentTurn(companyId, conversation, { ...msg, text }, settings, { draftOnly: true });
-        } catch (error: any) {
-            console.error(`Draft for handed-over #${conversation.shortId} failed`, error);
-            await sendOwnerAlert(
-                companyId,
-                'escalation',
-                conversation,
-                `#${conversation.shortId} ${describeCustomer(conversation)} (you have this one): ${text.slice(0, 400)}`
-            );
-        }
         return;
     }
 
@@ -1205,7 +1195,15 @@ export const salesAgentSendReply = functions
 
         try {
             const result = await enqueueOrSend(companyId, conversation, settings, text || (media ? `[${media.kind}]` : ''), via, 'owner', { media });
-            await updateConversation(companyId, convId, { unread: 0 });
+            // Same contract as REPLY on WhatsApp: his words went out as written,
+            // Dave goes quiet, and a leftover draft must not sit there to be
+            // approved by accident.
+            await updateConversation(companyId, convId, {
+                unread: 0,
+                mode: 'human',
+                pendingDraft: null,
+                pendingQuestion: null,
+            });
 
             // Nothing actually left the building. Returning ok here is what let the app
             // say "message sent" while the customer got nothing, or got something Steve
@@ -1312,10 +1310,9 @@ export const awaitingReply = (
 /**
  * Write a draft for a message that is already sitting there.
  *
- * The webhook drafts as messages arrive, but only from the moment that shipped —
- * anything already waiting in the inbox would stay blank forever, and Steve opening
- * a thread expects Dave to have had a go at it. Idempotent: an existing draft is
- * returned rather than replaced, so opening a thread twice costs one brain call.
+ * Called when Steve taps Ask Dave, not when he merely opens a thread. Opening
+ * used to fire this automatically and covered the box he wanted to type in.
+ * Idempotent: an existing draft is returned rather than replaced.
  */
 export const draftNow = async (
     companyId: string,
@@ -1363,7 +1360,7 @@ export const draftNow = async (
 /**
  * Ask Dave to write a reply to whatever the customer last said, without sending it.
  *
- * Called when a thread is opened with an unanswered message and no draft.
+ * Fired from the inbox Ask Dave control, not from merely opening a thread.
  */
 export const salesAgentDraftNow = functions
     .runWith({ secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 120 })
@@ -1483,22 +1480,37 @@ export const salesAgentStartWhatsApp = functions
  * Register who shares this Gmail / WhatsApp number. Tokens stay on the calling
  * company. Threads are placed on the member that owns the car.
  *
- * `whatsappLive` defaults off and stays off unless it is passed true — connecting
- * the Cloud API is not the same as sending.
+ * The other company is named by id — Steve is not logged into Chris's ledger,
+ * and must not have to be. Connecting the Cloud API is not the same as sending;
+ * `whatsappLive` stays off unless it is passed true.
  */
 export const salesAgentSaveSharedInbox = functions.https.onCall(async (data, context) => {
     const companyId = await requireMember(context, data?.companyId);
     const members = Array.isArray(data?.memberCompanyIds) ? data.memberCompanyIds.map(String) : [];
     const existing = await inboxForMember(companyId);
 
-    // Naming another company here hands it our tokens and lets its threads land in
-    // our ledger. Only someone who belongs to every company listed may do that.
-    for (const other of [...members, ...(data?.fallbackCompanyId ? [String(data.fallbackCompanyId)] : [])]) {
-        if (other !== companyId) await requireMember(context, other);
-    }
+    const blocked = sharedInboxSaveBlocked(companyId, existing);
+    if (blocked) throw new functions.https.HttpsError('permission-denied', blocked);
 
     if (!members.length && !existing) {
         throw new functions.https.HttpsError('invalid-argument', 'Name at least one other Dealer Ledger Pro company that shares this inbox.');
+    }
+
+    const others = [...members, ...(data?.fallbackCompanyId ? [String(data.fallbackCompanyId)] : [])]
+        .map(id => String(id || '').trim())
+        .filter(id => id && id !== companyId);
+
+    for (const other of Array.from(new Set(others))) {
+        if (!(await companyLooksReal(other))) {
+            throw new functions.https.HttpsError('not-found', `No Dealer Ledger Pro company exists for ${other}.`);
+        }
+        const theirs = await inboxForMember(other);
+        if (theirs && theirs.credentialCompanyId !== companyId && theirs.id !== existing?.id) {
+            throw new functions.https.HttpsError(
+                'already-exists',
+                'That company already shares a different inbox. Remove it there first.'
+            );
+        }
     }
 
     try {

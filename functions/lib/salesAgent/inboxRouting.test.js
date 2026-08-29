@@ -101,4 +101,15 @@ const car = (ownerCompanyId) => ({
         node_assert_1.strict.equal(home.ownerCompanyId, 'someone-else');
     });
 });
+(0, node_test_1.describe)('sharedInboxSaveBlocked', () => {
+    (0, node_test_1.it)('lets the credential company add another ledger they do not belong to', () => {
+        node_assert_1.strict.equal((0, inboxRouting_1.sharedInboxSaveBlocked)(STEVE, inbox()), null);
+        node_assert_1.strict.equal((0, inboxRouting_1.sharedInboxSaveBlocked)(STEVE, null), null);
+    });
+    (0, node_test_1.it)('stops the other ledger from taking over the tokens', () => {
+        const message = (0, inboxRouting_1.sharedInboxSaveBlocked)(CHRIS, inbox());
+        node_assert_1.strict.ok(message);
+        node_assert_1.strict.match(message, /other ledger owns/i);
+    });
+});
 //# sourceMappingURL=inboxRouting.test.js.map

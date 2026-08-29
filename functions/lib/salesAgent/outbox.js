@@ -51,9 +51,14 @@ const companyIds_1 = require("../utils/companyIds");
 const conversations_1 = require("./conversations");
 const gmail_1 = require("./channels/gmail");
 const whatsapp_1 = require("./channels/whatsapp");
+const gmail_2 = require("./channels/gmail");
 const twilio_1 = require("./channels/twilio");
 const gmailAuth_1 = require("./gmailAuth");
 const MAX_ATTEMPTS = 3;
+/** How often a job held behind a blocked account tries again. */
+const HOLD_RETRY_MS = 15 * 60000;
+/** How long it is held before the message is too stale to be worth sending. */
+const HOLD_LIMIT_MS = 48 * 3600000;
 // Resolved lazily: whatsapp.ts -> router.ts -> outbox.ts -> whatsapp.ts is a cycle,
 // so at module-load time whatsappSender can still be undefined.
 const senderFor = (channel) => ({ whatsapp: whatsapp_1.whatsappSender, sms: twilio_1.twilioSender, email: gmail_1.gmailSender }[channel]);
@@ -86,23 +91,47 @@ exports.enqueue = enqueue;
  * instead of a message. Checking here, where every send passes through, means the rule
  * cannot be missed by a caller that forgot about it.
  */
+/** "28 Aug at 8:06 am" — so the refusal below says exactly when the door shut. */
+const whenTheyLastWrote = (at) => at
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        day: 'numeric',
+        month: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+    }).format(new Date(at))
+    : 'never';
 const applyWhatsAppWindow = async (job) => {
     if (job.channel !== 'whatsapp' || job.templateName)
         return job;
     const conversation = await (0, conversations_1.getConversation)(job.companyId, job.convId);
-    if (job.media && !(0, whatsapp_1.withinCustomerServiceWindow)(conversation?.lastCustomerMessageAt)) {
+    const lastAt = conversation?.lastCustomerMessageAt;
+    if (job.media && !(0, whatsapp_1.withinCustomerServiceWindow)(lastAt)) {
         throw new Error('WhatsApp only accepts photos, videos and files within 24 hours of their last message.');
     }
-    if ((0, whatsapp_1.withinCustomerServiceWindow)(conversation?.lastCustomerMessageAt))
+    if ((0, whatsapp_1.withinCustomerServiceWindow)(lastAt))
         return job;
+    /**
+     * Steve pressed "Me". The box above it promises the customer gets exactly his
+     * words, and outside the window WhatsApp will not carry them. Substituting a
+     * template here is the one thing we must not do: on 29 Aug he typed "Hello" and
+     * "test" and a stranger's canned opener went out over his name, twice, telling the
+     * customer her email had bounced when it had not. Refuse and say why. Dave's own
+     * openers still fall back to a template below, because that is what they are for.
+     */
+    if (job.from === 'owner') {
+        throw new Error(`WhatsApp will not carry your own words here: ${conversation?.contact?.firstName || 'they'} last messaged you on ${whenTheyLastWrote(lastAt)}, more than 24 hours ago, and Meta only allows an approved opener after that. `
+            + 'Nothing was sent. Send the opener from the Dave side, or reply by email.');
+    }
     console.warn(`Outbox ${job.id}: outside the 24h window, falling back to a template`);
+    const bounced = !!conversation?.emailBounce;
     const fallback = (0, whatsapp_1.templateFallbackFor)(conversation?.contact?.firstName, conversation?.vehicleInterest?.title);
     return {
         ...job,
         ...fallback,
         // What the thread shows has to be what the customer got, not the words that
         // could not be sent.
-        text: (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || []),
+        text: (0, whatsapp_1.renderFallbackTemplate)(fallback.templateParams || [], { bounced }),
     };
 };
 /**
@@ -116,7 +145,7 @@ const sendNow = async (job, from = 'agent') => {
     const sender = senderFor(prepared.channel);
     if (!sender)
         throw new Error(`No sender for channel ${prepared.channel}`);
-    const { providerId } = await sender.send(prepared.companyId, {
+    const { providerId, text: sentText } = await sender.send(prepared.companyId, {
         to: prepared.to,
         text: prepared.text,
         subject: prepared.subject,
@@ -130,14 +159,24 @@ const sendNow = async (job, from = 'agent') => {
         await (0, conversations_1.appendMessage)(prepared.companyId, conversation, {
             direction: 'out',
             channel: prepared.channel,
-            text: prepared.text,
+            text: sentText || prepared.text,
             from: prepared.from || from,
             providerId,
+            // The provider took it. WhatsApp refines this to delivered/read on the
+            // webhook; email and SMS stop here.
+            ...(providerId ? { delivery: 'sent', deliveryAt: Date.now() } : {}),
             subject: prepared.subject,
             createdAt: Date.now(),
             ...(prepared.media ? { media: prepared.media } : {}),
         });
         await (0, conversations_1.updateConversation)(prepared.companyId, conversation.id, { lastOutboundAt: Date.now() });
+        // Steve works out of Gmail as much as out of the app. If this customer also has
+        // an email thread, mark there that the conversation has moved to WhatsApp, so
+        // he does not sit waiting on a reply to an email nobody is going to answer.
+        if (prepared.channel === 'whatsapp' && conversation.emailThreadId) {
+            const settings = await (0, conversations_1.readSettings)(prepared.companyId);
+            await (0, gmail_2.labelEmailThread)(prepared.companyId, conversation.emailThreadId, `${settings.agentName || 'Dave'} · WhatsApp`, 'whatsapp');
+        }
     }
     return { providerId };
 };
@@ -148,13 +187,30 @@ const readDueJobs = async (companyId) => {
     const now = Date.now();
     return Object.entries(all)
         .map(([id, job]) => ({ ...job, id }))
-        .filter(job => (job.sendAfter || 0) <= now)
+        .filter(job => !job.gaveUp && (job.sendAfter || 0) <= now)
         .sort((a, b) => (a.sendAfter || 0) - (b.sendAfter || 0));
+};
+/**
+ * Tell Steve, but only once per job.
+ *
+ * A blocked account is rechecked every quarter of an hour for days. Alerting on every
+ * one of those would be its own outage.
+ */
+const alertOnce = async (companyId, job, text) => {
+    if (job.alertedAt)
+        return;
+    // Imported here rather than at the top: alerts.ts sends through the same
+    // channels this module drives, and the cycle only resolves at call time.
+    const { sendOwnerAlert } = await Promise.resolve().then(() => __importStar(require('./alerts')));
+    const conversation = await (0, conversations_1.getConversation)(companyId, job.convId);
+    await sendOwnerAlert(companyId, 'error', conversation, text);
+    await (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, `outbox/${job.id}`)).update({ alertedAt: Date.now() });
 };
 const drainCompany = async (companyId) => {
     const jobs = await readDueJobs(companyId);
     let sent = 0;
     let failed = 0;
+    let held = 0;
     for (const job of jobs) {
         const attempts = (job.attempts || 0) + 1;
         try {
@@ -164,18 +220,38 @@ const drainCompany = async (companyId) => {
         }
         catch (error) {
             const message = error?.message || String(error);
+            const ref = (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, `outbox/${job.id}`));
+            // The door is shut: the app is blocked, the token is dead, or the opener is
+            // still waiting on Meta. Three tries a minute apart cannot help, and binning
+            // the message is how a reply to a customer was lost on 29 Aug. Park it and
+            // keep knocking every quarter of an hour. The moment the account is put
+            // right the queue drains itself, with nothing lost and nothing sent twice.
+            if ((0, whatsapp_1.isSendBlockedError)(message)) {
+                const age = Date.now() - (job.createdAt || Date.now());
+                if (age > HOLD_LIMIT_MS) {
+                    // Days old now. Sending it would be worse than not sending it, but it
+                    // is still not ours to delete.
+                    await ref.update({ gaveUp: true, blocked: true, lastError: message });
+                    failed++;
+                    await alertOnce(companyId, job, `Gave up on a ${job.channel} message to ${job.to} after holding it ${Math.round(age / 3600000)}h: ${message}`);
+                    continue;
+                }
+                console.warn(`Outbox ${job.id} held (${Math.round(age / 60000)}m waiting): ${message}`);
+                await ref.update({ blocked: true, lastError: message, sendAfter: Date.now() + HOLD_RETRY_MS });
+                held++;
+                await alertOnce(companyId, job, `Holding a ${job.channel} message to ${job.to}: ${message}`);
+                continue;
+            }
             console.error(`Outbox ${job.id} attempt ${attempts} failed`, error);
             if (attempts >= MAX_ATTEMPTS) {
-                await (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, `outbox/${job.id}`)).remove();
+                // Kept, not deleted. A reply a customer is waiting on should not vanish
+                // because the third try happened to land badly.
+                await ref.update({ gaveUp: true, attempts, lastError: message });
                 failed++;
-                // Imported here rather than at the top: alerts.ts sends through the same
-                // channels this module drives, and the cycle only resolves at call time.
-                const { sendOwnerAlert } = await Promise.resolve().then(() => __importStar(require('./alerts')));
-                const conversation = await (0, conversations_1.getConversation)(companyId, job.convId);
-                await sendOwnerAlert(companyId, 'error', conversation, `Could not deliver a ${job.channel} reply to ${job.to} after ${MAX_ATTEMPTS} tries: ${message}`);
+                await alertOnce(companyId, job, `Could not deliver a ${job.channel} reply to ${job.to} after ${MAX_ATTEMPTS} tries: ${message}`);
             }
             else {
-                await (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, `outbox/${job.id}`)).update({
+                await ref.update({
                     attempts,
                     lastError: message,
                     // Back off a minute per attempt so a rate limit is not hammered.
@@ -184,7 +260,7 @@ const drainCompany = async (companyId) => {
             }
         }
     }
-    return { sent, failed };
+    return { sent, failed, held };
 };
 /**
  * Drain every company's queue.
@@ -200,6 +276,7 @@ exports.salesAgentOutboxTick = functions
     const companyIds = await (0, companyIds_1.getCompanyIds)();
     let sent = 0;
     let failed = 0;
+    let held = 0;
     for (const companyId of companyIds) {
         try {
             const settings = await (0, conversations_1.readSettings)(companyId);
@@ -208,6 +285,7 @@ exports.salesAgentOutboxTick = functions
             const result = await drainCompany(companyId);
             sent += result.sent;
             failed += result.failed;
+            held += result.held;
             // Cheap, and only worth doing once in a while.
             if (Math.random() < 0.02)
                 await (0, conversations_1.pruneSeenProviderIds)(companyId);
@@ -216,8 +294,8 @@ exports.salesAgentOutboxTick = functions
             console.error(`Outbox tick failed for company ${companyId}`, error);
         }
     }
-    if (sent || failed)
-        console.log(`Outbox: sent ${sent}, gave up on ${failed}`);
+    if (sent || failed || held)
+        console.log(`Outbox: sent ${sent}, gave up on ${failed}, holding ${held}`);
     return null;
 });
 //# sourceMappingURL=outbox.js.map

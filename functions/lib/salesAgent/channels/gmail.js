@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.gmailSender = exports.salesAgentGmailPush = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
+exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.salesAgentGmailPush = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
 const inboxRouting_1 = require("../inboxRouting");
@@ -425,18 +425,83 @@ exports.gmailSender = {
         return { providerId: sent.data.id || '' };
     },
 };
+/**
+ * Gmail only accepts colours from its own fixed palette and rejects anything else
+ * outright, so a label is worth more than its colour: a rejected colour falls back
+ * to a plain label rather than losing the label altogether.
+ */
+const LABEL_COLOURS = {
+    agent: '#16a766', // green  — Dave answered this one
+    whatsapp: '#43d692', // mint   — moved to WhatsApp
+    ledger: '#4a86e8', // blue   — fallback for a ledger label
+};
+/**
+ * Each dealer's label wants its own colour so the shared mailbox can be read at a
+ * glance. Derived from the label's own name rather than configured, so a third
+ * ledger joining picks up a colour without anyone choosing one — and the same
+ * dealer keeps the same colour forever. Values are from Gmail's fixed palette;
+ * anything else is rejected outright.
+ */
+const LEDGER_PALETTE = ['#4a86e8', '#a479e2', '#f691b3', '#ffad47', '#fad165', '#fb4c2f'];
+const ledgerColour = (labelName) => {
+    let hash = 0;
+    for (let i = 0; i < labelName.length; i += 1) {
+        hash = (hash * 31 + labelName.charCodeAt(i)) >>> 0;
+    }
+    return LEDGER_PALETTE[hash % LEDGER_PALETTE.length];
+};
+exports.ledgerColour = ledgerColour;
 /** Find or create a user label by display name; returns its id. */
-const ensureLabel = async (gmail, name) => {
+const ensureLabel = async (gmail, name, colour = LABEL_COLOURS.agent) => {
     const list = await gmail.users.labels.list({ userId: 'me' });
     const existing = (list.data.labels || []).find((l) => (l.name || '').toLowerCase() === name.toLowerCase());
     if (existing?.id)
         return existing.id;
-    const created = await gmail.users.labels.create({
-        userId: 'me',
-        requestBody: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show', color: { backgroundColor: '#16a765', textColor: '#ffffff' } },
-    });
-    return created.data.id || '';
+    const body = { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' };
+    try {
+        const created = await gmail.users.labels.create({
+            userId: 'me',
+            requestBody: { ...body, color: { backgroundColor: colour, textColor: '#ffffff' } },
+        });
+        return created.data.id || '';
+    }
+    catch (error) {
+        console.warn(`Gmail rejected the colour for label "${name}", creating it plain`, error.message);
+        const created = await gmail.users.labels.create({ userId: 'me', requestBody: body });
+        return created.data.id || '';
+    }
 };
+/**
+ * Put a label on a customer's email thread from outside the email channel.
+ *
+ * Steve lives in Gmail as much as in the app, so what happened to a customer has to
+ * be visible there too: that Dave answered, and that the conversation has moved to
+ * WhatsApp. Never throws — a label is a convenience and must not fail a send.
+ */
+const labelEmailThread = async (companyId, emailThreadId, name, kind = 'agent') => {
+    if (!emailThreadId || !name)
+        return false;
+    try {
+        const gmail = await (0, gmailAuth_1.gmailClientFor)(await (0, inboxRouting_1.credentialsCompanyId)(companyId));
+        if (!gmail)
+            return false;
+        const colour = kind === 'ledger' ? (0, exports.ledgerColour)(name) : LABEL_COLOURS[kind];
+        const labelId = await ensureLabel(gmail, name, colour);
+        if (!labelId)
+            return false;
+        await gmail.users.threads.modify({
+            userId: 'me',
+            id: emailThreadId,
+            requestBody: { addLabelIds: [labelId] },
+        });
+        return true;
+    }
+    catch (error) {
+        console.warn(`Could not label thread ${emailThreadId} "${name}"`, error.message);
+        return false;
+    }
+};
+exports.labelEmailThread = labelEmailThread;
 // --- Backfill ---------------------------------------------------------------
 const MAX_BACKFILL_MESSAGES = 300;
 /**

@@ -15,7 +15,7 @@
  * already mapped, which is how a single-dealer install behaves today.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.saveSharedInbox = exports.bindInboxChannelsFromPrivate = exports.ownerCompanyForWhatsApp = exports.resolveConversationHome = exports.pickHomeCompany = exports.mirrorConversationContacts = exports.backfillSharedContacts = exports.findExistingSharedContact = exports.claimSharedProviderId = exports.isWhatsAppLiveFor = exports.readSendPrivate = exports.credentialsCompanyId = exports.inboxForMember = exports.inboxById = void 0;
+exports.saveSharedInbox = exports.bindInboxChannelsFromPrivate = exports.ownerCompanyForWhatsApp = exports.resolveConversationHome = exports.pickHomeCompany = exports.mirrorConversationContacts = exports.backfillSharedContacts = exports.findExistingSharedContact = exports.claimSharedProviderId = exports.isWhatsAppLiveFor = exports.readSendPrivate = exports.credentialsCompanyId = exports.companyLooksReal = exports.sharedInboxSaveBlocked = exports.inboxForMember = exports.inboxById = void 0;
 const conversations_1 = require("./conversations");
 const search_1 = require("./stock/search");
 const types_1 = require("./types");
@@ -65,6 +65,29 @@ const inboxForMember = async (companyId) => {
     return inboxId ? (0, exports.inboxById)(inboxId) : null;
 };
 exports.inboxForMember = inboxForMember;
+/**
+ * Who may change the shared inbox.
+ *
+ * Steve (the company that holds the Meta / Gmail tokens) lists the other
+ * ledgers by id. He is not a member of Chris's Dealer Ledger Pro, and requiring
+ * that is why Chris never got WhatsApp on his own login. A peer must not save
+ * either — that would move the credential company onto an account with no tokens
+ * and kill the number for everyone.
+ */
+const sharedInboxSaveBlocked = (callerCompanyId, existing) => {
+    if (existing && existing.credentialCompanyId !== callerCompanyId) {
+        return 'The other ledger owns this shared number. They add members from their settings.';
+    }
+    return null;
+};
+exports.sharedInboxSaveBlocked = sharedInboxSaveBlocked;
+const companyLooksReal = async (companyId) => {
+    if (!companyId)
+        return false;
+    const snap = await (0, conversations_1.db)().ref(`companies/${companyId}`).once('value');
+    return snap.exists();
+};
+exports.companyLooksReal = companyLooksReal;
 /**
  * Tokens for anything we send. A thread sitting in Chris's account still goes
  * out through Steve's connected Gmail / WhatsApp.

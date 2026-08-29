@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { pickHomeCompany } from './inboxRouting';
+import { pickHomeCompany, sharedInboxSaveBlocked } from './inboxRouting';
 import type { SharedInbox, StockItem } from './types';
 
 const STEVE = 'company-steve';
@@ -115,5 +115,18 @@ describe('pickHomeCompany', () => {
         assert.equal(home.companyId, STEVE);
         assert.equal(home.reason, 'fallback');
         assert.equal(home.ownerCompanyId, 'someone-else');
+    });
+});
+
+describe('sharedInboxSaveBlocked', () => {
+    it('lets the credential company add another ledger they do not belong to', () => {
+        assert.equal(sharedInboxSaveBlocked(STEVE, inbox()), null);
+        assert.equal(sharedInboxSaveBlocked(STEVE, null), null);
+    });
+
+    it('stops the other ledger from taking over the tokens', () => {
+        const message = sharedInboxSaveBlocked(CHRIS, inbox());
+        assert.ok(message);
+        assert.match(message, /other ledger owns/i);
     });
 });

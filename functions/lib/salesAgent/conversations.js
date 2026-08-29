@@ -46,7 +46,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.appendMessage = exports.findOrCreateConversation = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
+exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.recordDelivery = exports.appendMessage = exports.findOrCreateConversation = exports.allocateShortId = exports.lookupContactIndex = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const types_1 = require("./types");
@@ -286,6 +286,7 @@ const lookupContactIndex = async (companyId, channel, address) => {
     const snap = await (0, exports.db)().ref((0, exports.agentPath)(companyId, `contactIndex/${key}`)).once('value');
     return snap.val() || null;
 };
+exports.lookupContactIndex = lookupContactIndex;
 /** Short ids are handed out per company and never reused, so a stale "TAKE OVER 8"
  *  can only ever hit the conversation it was printed for. */
 const allocateShortId = async (companyId) => {
@@ -294,6 +295,7 @@ const allocateShortId = async (companyId) => {
         .transaction(current => (typeof current === 'number' && current > 0 ? current + 1 : 1));
     return result.snapshot.val() || 1;
 };
+exports.allocateShortId = allocateShortId;
 /** Merge what we have just learned about somebody without wiping what we already knew. */
 const mergeContact = (existing, incoming) => {
     const merged = { ...existing };
@@ -318,7 +320,7 @@ const findOrCreateConversation = async (companyId, channel, address, contact, op
     if (contact.phone)
         candidates.push(['whatsapp', contact.phone], ['sms', contact.phone]);
     for (const [candidateChannel, candidateAddress] of candidates) {
-        const convId = await lookupContactIndex(companyId, candidateChannel, candidateAddress);
+        const convId = await (0, exports.lookupContactIndex)(companyId, candidateChannel, candidateAddress);
         if (!convId)
             continue;
         const existing = await (0, exports.getConversation)(companyId, convId);
@@ -335,7 +337,7 @@ const findOrCreateConversation = async (companyId, channel, address, contact, op
     }
     const ref = (0, exports.db)().ref((0, exports.agentPath)(companyId, 'conversations')).push();
     const id = ref.key;
-    const shortId = await allocateShortId(companyId);
+    const shortId = await (0, exports.allocateShortId)(companyId);
     const now = Date.now();
     const leadId = await (0, exports.findOrCreateLead)(companyId, contact, options.source || sourceForChannel(channel), options.vehicleOfInterest);
     const conversation = {
@@ -383,6 +385,13 @@ const appendMessage = async (companyId, conversation, message) => {
     // Undefined keys are rejected by RTDB rather than ignored.
     const clean = Object.fromEntries(Object.entries(stored).filter(([, v]) => v !== undefined));
     await ref.set((0, types_1.stripUndefined)(clean));
+    // A delivery receipt arrives knowing only the provider's id, so the way back to
+    // the message it belongs to has to be written now, while we still have both.
+    if (message.direction === 'out' && message.providerId) {
+        await (0, exports.db)()
+            .ref((0, exports.agentPath)(companyId, `outboundIndex/${(0, types_1.rtdbKey)(message.providerId)}`))
+            .set({ convId: conversation.id, messageId: stored.id, at: Date.now() });
+    }
     const leadId = conversation.contact?.leadId;
     if (leadId) {
         const type = ACTIVITY_TYPES[message.channel][message.direction];
@@ -391,6 +400,33 @@ const appendMessage = async (companyId, conversation, message) => {
     return stored;
 };
 exports.appendMessage = appendMessage;
+/**
+ * Record how far an outbound message got.
+ *
+ * Receipts arrive out of order and more than once — Meta will happily send 'sent'
+ * after 'delivered' — so a state only ever moves forward. Returns false when the
+ * providerId belongs to no message we hold, which is normal for anything sent
+ * before this index existed.
+ */
+const recordDelivery = async (companyId, providerId, state, at, error) => {
+    if (!providerId)
+        return false;
+    const snap = await (0, exports.db)().ref((0, exports.agentPath)(companyId, `outboundIndex/${(0, types_1.rtdbKey)(providerId)}`)).once('value');
+    const ref = snap.val();
+    if (!ref?.convId || !ref?.messageId)
+        return false;
+    const messageRef = (0, exports.db)().ref((0, exports.agentPath)(companyId, `conversations/${ref.convId}/messages/${ref.messageId}`));
+    const current = (await messageRef.child('delivery').once('value')).val();
+    if (current && types_1.DELIVERY_RANK[current] >= types_1.DELIVERY_RANK[state])
+        return true;
+    await messageRef.update((0, types_1.stripUndefined)({
+        delivery: state,
+        deliveryAt: at || Date.now(),
+        ...(error ? { deliveryError: error } : {}),
+    }));
+    return true;
+};
+exports.recordDelivery = recordDelivery;
 const readHistory = async (companyId, convId, limit = 40) => {
     const snap = await (0, exports.db)()
         .ref((0, exports.agentPath)(companyId, `conversations/${convId}/messages`))

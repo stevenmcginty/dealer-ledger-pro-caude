@@ -478,7 +478,7 @@ const AgentInboxPage = () => {
     const [draftText, setDraftText] = useState('');
     const [promptText, setPromptText] = useState('');
     const [draftBusy, setDraftBusy] = useState<'' | 'approve' | 'discard'>('');
-    const [replyMode, setReplyMode] = useState<'human' | 'agent'>('agent');
+    const [replyMode, setReplyMode] = useState<'human' | 'agent'>('human');
     const [sendVia, setSendVia] = useState<Exclude<SendVia, 'auto'>>('email');
     const [phrasingSince, setPhrasingSince] = useState<number | null>(null);
     const [pendingDelete, setPendingDelete] = useState<
@@ -490,7 +490,7 @@ const AgentInboxPage = () => {
     const [sendStatus, setSendStatus] = useState<string | null>(null);
     const [sendError, setSendError] = useState<InlineError | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [answerMode, setAnswerMode] = useState(true);
+    const [answerMode, setAnswerMode] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [carFixOpen, setCarFixOpen] = useState(false);
     const [carFixNote, setCarFixNote] = useState('');
@@ -498,9 +498,12 @@ const AgentInboxPage = () => {
     const [showOther, setShowOther] = useState(readShowOtherLedger);
     const [selectedMsgKey, setSelectedMsgKey] = useState<string | null>(null);
     const [bannerCollapsed, setBannerCollapsed] = useState(false);
+    /** Dave's draft card starts collapsed so the Me composer stays on screen. */
+    const [draftOpen, setDraftOpen] = useState(false);
+    /** Keyboard overlap on phones — visualViewport height, not layout height. */
+    const [kbInset, setKbInset] = useState(0);
     /** draftNow in flight ('working') or fell over ('failed') — never blocks typing. */
     const [drafting, setDrafting] = useState<null | 'working' | 'failed'>(null);
-    const draftTriedRef = useRef<Set<string>>(new Set());
 
     const toggleShowOther = useCallback(() => {
         setShowOther(on => {
@@ -512,6 +515,28 @@ const AgentInboxPage = () => {
     const threadRef = useRef<HTMLDivElement>(null);
     const replyBoxRef = useRef<HTMLTextAreaElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+
+    const growBox = (el: HTMLTextAreaElement | null) => {
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    };
+
+    useEffect(() => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const sync = () => {
+            const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+            setKbInset(inset > 40 ? inset : 0);
+        };
+        vv.addEventListener('resize', sync);
+        vv.addEventListener('scroll', sync);
+        sync();
+        return () => {
+            vv.removeEventListener('resize', sync);
+            vv.removeEventListener('scroll', sync);
+        };
+    }, []);
 
     /**
      * Bumped every time the database socket is bounced, and threaded through the
@@ -641,13 +666,15 @@ const AgentInboxPage = () => {
         setPhrasingSince(null);
         setSendError(null);
         setMenuOpen(false);
-        setAnswerMode(true);
+        setAnswerMode(false);
         setDetailsOpen(false);
         setCarFixOpen(false);
         setCarFixNote('');
         setSelectedMsgKey(null);
         setBannerCollapsed(false);
         setDrafting(null);
+        setDraftOpen(false);
+        setReplyMode('human');
         const unsubs = activeGroup.conversations.map(conv => {
             const home = homeOf(conv, companyId);
             void markConversationRead(home, conv.id).catch(() => undefined);
@@ -665,14 +692,20 @@ const AgentInboxPage = () => {
         // The prompt that produced this draft stays amendable, so a tweak-and-
         // re-run never means retyping. Unprompted drafts start with a blank prompt.
         setPromptText(active?.pendingDraft?.source === 'instruction' ? (active?.ownerAnswer?.answer || '') : '');
-        if (draftId) setPhrasingSince(null);
+        if (draftId) {
+            setPhrasingSince(null);
+            setReplyMode('human');
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [draftId]);
 
     useEffect(() => {
-        setReplyMode(active?.mode === 'agent' ? 'agent' : 'human');
         if (active) setSendVia(defaultSendVia(active));
-    }, [active?.id, active?.mode, active?.emailBounce?.at]);
+    }, [active?.id, active?.emailBounce?.at]);
+
+    useEffect(() => {
+        if (answerMode) replyBoxRef.current?.focus();
+    }, [answerMode]);
 
     const messages = useMemo(() => {
         if (!activeGroup) return [];
@@ -759,6 +792,7 @@ const AgentInboxPage = () => {
             setReply('');
             setAttachment(null);
             setSendError(null);
+            if (replyBoxRef.current) replyBoxRef.current.style.height = '';
             const sent = (result?.sent || []).map(ch => CHANNEL_LABELS[ch] || ch);
             toast.success(
                 result?.skippedWhatsApp
@@ -778,10 +812,12 @@ const AgentInboxPage = () => {
         if (!companyId || !active || !text || sending) return;
         setSending(true);
         setPhrasingSince(Date.now());
+        setDraftOpen(true);
         try {
             await instructAgent(homeOf(active, companyId), active.id, text);
             setReply('');
             setSendError(null);
+            if (replyBoxRef.current) replyBoxRef.current.style.height = '';
         } catch (err: any) {
             setPhrasingSince(null);
             setSendError(describeError(err, `Could not pass that on to ${agentName}.`));
@@ -899,6 +935,7 @@ const AgentInboxPage = () => {
      */
     const requestDraft = useCallback(async (conv: Conversation, force = false) => {
         if (!companyId) return;
+        setDraftOpen(true);
         setDrafting('working');
         try {
             await draftNow(homeOf(conv, companyId), conv.id, force);
@@ -907,18 +944,6 @@ const AgentInboxPage = () => {
             setDrafting('failed');
         }
     }, [companyId]);
-
-    // A thread opened with an unanswered customer message and no draft gets one
-    // written on the spot — once per thread, and never over Dave's own question.
-    useEffect(() => {
-        if (!companyId || !active) return;
-        if (active.pendingDraft || active.pendingQuestion || active.mode === 'paused') return;
-        if ((active.lastCustomerMessageAt || 0) <= (active.lastOutboundAt || 0)) return;
-        if (draftTriedRef.current.has(active.id)) return;
-        draftTriedRef.current.add(active.id);
-        void requestDraft(active);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active?.id, companyId]);
 
     /**
      * Run Dave again from the vetting card. With an amended prompt it follows
@@ -929,6 +954,7 @@ const AgentInboxPage = () => {
         if (!companyId || !active || sending) return;
         setSending(true);
         setPhrasingSince(Date.now());
+        setDraftOpen(true);
         try {
             if (text) {
                 await instructAgent(homeOf(active, companyId), active.id, text);
@@ -1009,7 +1035,13 @@ const AgentInboxPage = () => {
     const whatsappAlreadySent = messages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
     const whatsappNeedsOpener = !!phoneOnFile && !(active?.lastCustomerMessageAt);
     const asking = !!active?.pendingQuestion && answerMode;
-    const vetting = !asking && !!active?.pendingDraft;
+    const hasDraft = !!active?.pendingDraft;
+    const customerWaiting = !!(
+        active
+        && !hasDraft
+        && !active.pendingQuestion
+        && (active.lastCustomerMessageAt || 0) > (active.lastOutboundAt || 0)
+    );
     /** Where an approved draft will go out — WhatsApp once the email route is dead. */
     const draftChannel: Channel = active ? (bounced && phoneOnFile ? 'whatsapp' : active.channel) : 'email';
     const canChooseChannel = !!phoneOnFile && !!emailOnFile;
@@ -1020,14 +1052,17 @@ const AgentInboxPage = () => {
     ];
 
     return (
-        <div className="flex h-full min-h-0 bg-[#0b141a] text-[#e9edef]">
+        <div
+            className="flex h-full min-h-0 bg-[#0b141a] text-[#e9edef]"
+            style={kbInset ? { height: `calc(100% - ${kbInset}px)` } : undefined}
+        >
             <aside className={`min-h-0 w-full flex-col border-r border-white/5 bg-[#111b21] lg:flex lg:w-[22rem] xl:w-[26rem] ${activeGroup ? 'hidden lg:flex' : 'flex'}`}>
                 <div className="flex items-center justify-between gap-2 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <button
                             type="button"
                             onClick={() => setView('dashboard')}
-                            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white lg:hidden"
+                            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white lg:hidden"
                             aria-label="Back to the app"
                         >
                             <ArrowLeftIcon className="h-5 w-5" />
@@ -1044,7 +1079,7 @@ const AgentInboxPage = () => {
                     <button
                         type="button"
                         onClick={() => setComposeOpen(true)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#25d366] px-3 py-1.5 text-xs font-semibold text-[#111b21] hover:bg-[#20bd5a]"
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-[#25d366] px-3.5 text-xs font-semibold text-[#111b21] hover:bg-[#20bd5a]"
                     >
                         <PlusIcon className="h-4 w-4" />
                         WhatsApp
@@ -1131,11 +1166,11 @@ const AgentInboxPage = () => {
             <section className={`min-h-0 min-w-0 flex-1 flex-col ${activeGroup ? 'flex' : 'hidden lg:flex'}`}>
                 {active && activeGroup ? (
                     <>
-                        <div className="relative border-b border-white/5 bg-[#202c33] px-2 py-2 sm:px-3">
+                        <div className="relative border-b border-white/5 bg-[#202c33] px-2 py-1.5 sm:px-3 sm:py-2">
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => { setActiveGroupId(null); setActiveConvId(null); }}
-                                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white lg:hidden"
+                                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white lg:hidden"
                                     aria-label="Back to the list"
                                 >
                                     <ArrowLeftIcon className="h-5 w-5" />
@@ -1145,7 +1180,7 @@ const AgentInboxPage = () => {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
-                                        <h2 className="min-w-0 truncate text-[15px] font-semibold leading-tight text-white">{activeGroup.name}</h2>
+                                        <h2 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-white">{activeGroup.name}</h2>
                                         {active.escalated && !bounced && <Badge size="sm" variant="danger">Escalated</Badge>}
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-1.5 text-[12px] leading-tight text-[#8696a0]">
@@ -1173,32 +1208,12 @@ const AgentInboxPage = () => {
                                         ) : (
                                             <span className="truncate">{phoneOnFile ? displayUkPhone(phoneOnFile) : emailOnFile || active.address}</span>
                                         )}
-                                    </div>
-                                    <div className="mt-1 flex items-center gap-2">
-                                        <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium ${
+                                        <span className="text-[#8696a0]/40" aria-hidden>·</span>
+                                        <span className={`flex-shrink-0 font-medium ${
                                             active.mode === 'agent' ? 'text-sky-300' : active.mode === 'human' ? 'text-emerald-300' : 'text-amber-300'
                                         }`}>
-                                            <span className={`h-1.5 w-1.5 rounded-full ${
-                                                active.mode === 'agent' ? 'bg-sky-400' : active.mode === 'human' ? 'bg-emerald-400' : 'bg-amber-400'
-                                            }`} aria-hidden />
-                                            {active.mode === 'agent' ? `${agentName} is answering` : active.mode === 'human' ? 'You are answering' : 'Paused'}
+                                            {active.mode === 'agent' ? agentName : active.mode === 'human' ? 'You' : 'Paused'}
                                         </span>
-                                        <span className="text-[#8696a0]/50" aria-hidden>·</span>
-                                        <button type="button" onClick={() => setDetailsOpen(o => !o)} aria-expanded={detailsOpen} className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8696a0] hover:text-white">
-                                            Details
-                                            <ChevronDownIcon className={`h-3 w-3 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        <span className="text-[#8696a0]/50" aria-hidden>·</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setCarFixOpen(o => !o)}
-                                            aria-expanded={carFixOpen}
-                                            title={`Tell ${agentName} this is the wrong car`}
-                                            className={`inline-flex items-center gap-1 text-[11px] font-medium ${carFixOpen ? 'text-amber-300' : 'text-[#8696a0] hover:text-amber-300'}`}
-                                        >
-                                            Wrong car
-                                            <ChevronDownIcon className={`h-3 w-3 transition-transform ${carFixOpen ? 'rotate-180' : ''}`} />
-                                        </button>
                                     </div>
                                 </div>
                                 <button
@@ -1207,7 +1222,7 @@ const AgentInboxPage = () => {
                                     aria-haspopup="menu"
                                     aria-expanded={menuOpen}
                                     aria-label="Conversation options"
-                                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
+                                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
                                 >
                                     <EllipsisVerticalIcon className="h-5 w-5" />
                                 </button>
@@ -1325,6 +1340,14 @@ const AgentInboxPage = () => {
                                         {active.mode !== 'paused' && (
                                             <MenuItem onClick={() => { setMenuOpen(false); handleMode('paused'); }} disabled={changingMode}>Pause — send nothing</MenuItem>
                                         )}
+                                        <div className="my-1 border-t border-white/5" />
+                                        <MenuItem onClick={() => { setMenuOpen(false); setDetailsOpen(o => !o); setCarFixOpen(false); }}>
+                                            Details
+                                        </MenuItem>
+                                        <MenuItem onClick={() => { setMenuOpen(false); setCarFixOpen(true); setDetailsOpen(false); }}>
+                                            <CarIcon className="h-4 w-4 text-amber-300" />
+                                            Wrong car
+                                        </MenuItem>
                                         {(phoneOnFile || active.contact?.leadId) && <div className="my-1 border-t border-white/5" />}
                                         {phoneOnFile && (
                                             <a href={`tel:${phoneOnFile}`} role="menuitem" onClick={() => setMenuOpen(false)} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[#e9edef] hover:bg-white/5">
@@ -1467,9 +1490,89 @@ const AgentInboxPage = () => {
                         </div>
 
                         <div
-                            className="border-t border-white/5 bg-[#202c33] px-3 pt-2.5"
+                            className="border-t border-white/5 bg-[#202c33] px-3 pt-2"
                             style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
                         >
+                            {!asking && hasDraft && active.pendingDraft && (
+                                <div className="mb-2 overflow-hidden rounded-xl border border-amber-400/25 bg-amber-400/[0.06]">
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDraftOpen(o => !o)}
+                                            aria-expanded={draftOpen}
+                                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                        >
+                                            <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
+                                            <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-amber-200">
+                                                {draftOpen
+                                                    ? (active.pendingDraft.source === 'instruction'
+                                                        ? `${agentName}'s draft, from your prompt`
+                                                        : `${agentName} drafted this`)
+                                                    : (draftText || `${agentName} drafted a reply`)}
+                                            </span>
+                                            <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                                                Not sent
+                                            </span>
+                                            <ChevronDownIcon className={`h-3.5 w-3.5 flex-shrink-0 text-amber-300/80 transition-transform ${draftOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleApproveDraft}
+                                            disabled={!draftText.trim() || !!draftBusy}
+                                            className={`flex h-9 flex-shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[12px] font-semibold disabled:opacity-40 ${
+                                                draftChannel === 'email' ? 'bg-sky-600 text-white' : 'bg-[#25d366] text-[#111b21]'
+                                            }`}
+                                        >
+                                            {draftBusy === 'approve' ? <Spinner className="h-3.5 w-3.5" /> : 'Send'}
+                                        </button>
+                                    </div>
+                                    {draftOpen && (
+                                        <div className="border-t border-amber-400/15 px-2.5 pb-2.5 pt-2">
+                                            {bounced && active.pendingDraft.source === 'agent' && (
+                                                <p className="mb-2 text-[12px] leading-snug text-red-300">
+                                                    This may be a reply to the bounce notice, not the customer — read it before sending.
+                                                </p>
+                                            )}
+                                            <textarea
+                                                rows={3}
+                                                value={draftText}
+                                                onChange={e => setDraftText(e.target.value)}
+                                                aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
+                                                className="w-full resize-y rounded-xl border border-amber-400/25 bg-[#2a3942] px-3 py-2 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                                            />
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <input
+                                                    value={promptText}
+                                                    onChange={e => setPromptText(e.target.value)}
+                                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReprompt(); } }}
+                                                    placeholder={`Tell ${agentName} what to change…`}
+                                                    aria-label={`Your prompt to ${agentName} — amend it and run him again`}
+                                                    className="h-10 min-w-0 flex-1 rounded-full bg-black/35 px-3.5 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/30"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleReprompt}
+                                                    disabled={sending || !!draftBusy}
+                                                    title={promptText.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
+                                                    className="flex h-10 flex-shrink-0 items-center gap-1 rounded-full bg-[#005c4b] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
+                                                >
+                                                    {sending ? <Spinner className="h-3.5 w-3.5" /> : <SparklesIcon className="h-3.5 w-3.5" />}
+                                                    Redo
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDiscardDraft}
+                                                    disabled={!!draftBusy}
+                                                    className="flex h-10 flex-shrink-0 items-center justify-center rounded-full px-3 text-[12px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-white disabled:opacity-40"
+                                                >
+                                                    {draftBusy === 'discard' ? <Spinner className="h-3.5 w-3.5" /> : 'Bin'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {asking ? (
                                 <div className="mb-2 flex items-center justify-between gap-2">
                                     <p className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-amber-300">
@@ -1480,56 +1583,35 @@ const AgentInboxPage = () => {
                                         Reply to customer<span className="hidden sm:inline"> instead</span>
                                     </button>
                                 </div>
-                            ) : vetting && active.pendingDraft ? (
-                                <div className="mb-2 flex items-center justify-between gap-2">
-                                    <p className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-amber-300">
-                                        <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                                        <span className="truncate">
-                                            {active.pendingDraft.source === 'instruction'
-                                                ? `${agentName}'s draft, from your prompt`
-                                                : `${agentName} drafted this reply`}
-                                        </span>
-                                    </p>
-                                    <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                                        Not sent yet
-                                    </span>
-                                </div>
                             ) : (
-                                <>
-                                    <div className="mb-1.5 flex gap-1 rounded-full bg-black/35 p-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => setReplyMode('human')}
-                                            aria-pressed={replyMode === 'human'}
-                                            className={`flex h-9 flex-1 items-center justify-center rounded-full text-[13px] font-semibold transition-colors ${
-                                                replyMode === 'human'
-                                                    ? 'bg-[#2a3942] text-white shadow'
-                                                    : 'text-[#8696a0] hover:text-white'
-                                            }`}
-                                        >
-                                            Me
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { if (!attachment) setReplyMode('agent'); }}
-                                            aria-pressed={replyMode === 'agent'}
-                                            disabled={!!attachment}
-                                            className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors disabled:opacity-40 ${
-                                                replyMode === 'agent'
-                                                    ? 'bg-[#005c4b] text-white shadow'
-                                                    : 'text-[#8696a0] hover:text-white'
-                                            }`}
-                                        >
-                                            <SparklesIcon className="h-3.5 w-3.5" />
-                                            Ask {agentName}
-                                        </button>
-                                    </div>
-                                    <p className="mb-2 px-1 text-[11px] leading-tight text-[#8696a0]">
-                                        {replyMode === 'human'
-                                            ? 'You type it — the customer gets exactly your words.'
-                                            : `Prompt ${agentName} — his draft comes back for you to check first.`}
-                                    </p>
-                                </>
+                                <div className="mb-1.5 flex gap-1 rounded-full bg-black/35 p-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setReplyMode('human')}
+                                        aria-pressed={replyMode === 'human'}
+                                        className={`flex h-8 flex-1 items-center justify-center rounded-full text-[13px] font-semibold transition-colors ${
+                                            replyMode === 'human'
+                                                ? 'bg-[#2a3942] text-white shadow'
+                                                : 'text-[#8696a0] hover:text-white'
+                                        }`}
+                                    >
+                                        Me
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { if (!attachment) setReplyMode('agent'); }}
+                                        aria-pressed={replyMode === 'agent'}
+                                        disabled={!!attachment}
+                                        className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+                                            replyMode === 'agent'
+                                                ? 'bg-[#005c4b] text-white shadow'
+                                                : 'text-[#8696a0] hover:text-white'
+                                        }`}
+                                    >
+                                        <SparklesIcon className="h-3.5 w-3.5" />
+                                        Ask {agentName}
+                                    </button>
+                                </div>
                             )}
 
                             {phrasingSince && (
@@ -1546,18 +1628,18 @@ const AgentInboxPage = () => {
                                 </p>
                             )}
 
-                            {drafting === 'working' && !vetting && !asking && (
+                            {drafting === 'working' && !hasDraft && !asking && (
                                 <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
                                     <Spinner className="h-3.5 w-3.5" />
                                     {agentName} is writing a draft — or just type your own reply.
                                 </p>
                             )}
-                            {drafting === 'failed' && !vetting && !asking && (
+                            {drafting === 'failed' && !hasDraft && !asking && (
                                 <p className="mb-2 flex items-center gap-2 text-xs text-[#8696a0]">
                                     {agentName} could not draft a reply.
                                     <button
                                         type="button"
-                                        onClick={() => { if (active) void requestDraft(active); }}
+                                        onClick={() => { if (active) void requestDraft(active, true); }}
                                         className="font-semibold text-[#25d366] hover:underline"
                                     >
                                         Try again
@@ -1565,8 +1647,19 @@ const AgentInboxPage = () => {
                                 </p>
                             )}
 
-                            {!asking && !vetting && replyMode === 'human' && canChooseChannel && (
-                                <div className="mb-2 flex gap-1.5" role="radiogroup" aria-label="Send this on">
+                            {customerWaiting && !asking && replyMode === 'human' && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setReplyMode('agent'); if (active) void requestDraft(active, true); }}
+                                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-[#25d366]"
+                                >
+                                    <SparklesIcon className="h-3.5 w-3.5" />
+                                    Ask {agentName} to draft a reply
+                                </button>
+                            )}
+
+                            {!asking && replyMode === 'human' && canChooseChannel && (
+                                <div className="mb-1.5 flex gap-1" role="radiogroup" aria-label="Send this on">
                                     <button
                                         type="button"
                                         role="radio"
@@ -1574,11 +1667,11 @@ const AgentInboxPage = () => {
                                         onClick={() => setSendVia('email')}
                                         disabled={bounced || !!attachment}
                                         title={bounced ? 'Their email address bounces' : attachment ? 'Photos and files go by WhatsApp' : undefined}
-                                        className={`flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+                                        className={`flex h-8 flex-1 items-center justify-center gap-1 rounded-full text-[12px] font-semibold transition-colors disabled:opacity-40 ${
                                             sendVia === 'email' ? 'bg-sky-600 text-white' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
                                         }`}
                                     >
-                                        <EnvelopeIcon className="h-4 w-4" />
+                                        <EnvelopeIcon className="h-3.5 w-3.5" />
                                         <span className={bounced ? 'line-through' : ''}>Email</span>
                                     </button>
                                     <button
@@ -1586,11 +1679,11 @@ const AgentInboxPage = () => {
                                         role="radio"
                                         aria-checked={sendVia === 'whatsapp'}
                                         onClick={() => setSendVia('whatsapp')}
-                                        className={`flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition-colors ${
+                                        className={`flex h-8 flex-1 items-center justify-center gap-1 rounded-full text-[12px] font-semibold transition-colors ${
                                             sendVia === 'whatsapp' ? 'bg-[#25d366] text-[#111b21]' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
                                         }`}
                                     >
-                                        <WhatsAppIcon className="h-4 w-4" />
+                                        <WhatsAppIcon className="h-3.5 w-3.5" />
                                         WhatsApp
                                     </button>
                                     <button
@@ -1600,7 +1693,7 @@ const AgentInboxPage = () => {
                                         onClick={() => setSendVia('both')}
                                         disabled={bounced || !!attachment}
                                         title={bounced ? 'Their email address bounces' : attachment ? 'Photos and files go by WhatsApp' : undefined}
-                                        className={`flex h-11 flex-1 items-center justify-center rounded-xl text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+                                        className={`flex h-8 flex-1 items-center justify-center rounded-full text-[12px] font-semibold transition-colors disabled:opacity-40 ${
                                             sendVia === 'both' ? 'bg-[#005c4b] text-white' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
                                         }`}
                                     >
@@ -1609,7 +1702,7 @@ const AgentInboxPage = () => {
                                 </div>
                             )}
 
-                            {!asking && !vetting && replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
+                            {!asking && replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
                                 <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
                                     <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
                                         They have not WhatsApp&apos;d us yet — the first message must be the approved opener. Free text goes once they reply.
@@ -1645,11 +1738,11 @@ const AgentInboxPage = () => {
                                         ref={replyBoxRef}
                                         rows={1}
                                         value={answer}
-                                        onChange={e => setAnswer(e.target.value)}
+                                        onChange={e => { setAnswer(e.target.value); growBox(e.target); }}
                                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnswer(); } }}
                                         placeholder="Answer in your own words…"
                                         aria-label={`Your answer to ${agentName}`}
-                                        className="min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-sm text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                                        className="min-h-[44px] min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-sm text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-amber-400/40"
                                     />
                                     <button
                                         type="button"
@@ -1659,68 +1752,6 @@ const AgentInboxPage = () => {
                                     >
                                         {answering ? <Spinner className="h-4 w-4" /> : 'Send answer'}
                                     </button>
-                                </div>
-                            ) : vetting && active.pendingDraft ? (
-                                <div>
-                                    {bounced && active.pendingDraft.source === 'agent' && (
-                                        <p className="mb-2 text-[12px] leading-snug text-red-300">
-                                            This may be a reply to the bounce notice, not the customer — read it before sending.
-                                        </p>
-                                    )}
-                                    <textarea
-                                        rows={4}
-                                        value={draftText}
-                                        onChange={e => setDraftText(e.target.value)}
-                                        aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
-                                        className="w-full resize-y rounded-2xl border border-amber-400/25 bg-[#2a3942] px-4 py-3 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
-                                    />
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <input
-                                            value={promptText}
-                                            onChange={e => setPromptText(e.target.value)}
-                                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReprompt(); } }}
-                                            placeholder={`Tell ${agentName} what to change…`}
-                                            aria-label={`Your prompt to ${agentName} — amend it and run him again`}
-                                            className="h-11 min-w-0 flex-1 rounded-full bg-black/35 px-4 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/30"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleReprompt}
-                                            disabled={sending || !!draftBusy}
-                                            title={promptText.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
-                                            className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-full bg-[#005c4b] px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
-                                        >
-                                            {sending ? <Spinner className="h-4 w-4" /> : <SparklesIcon className="h-4 w-4" />}
-                                            Redo
-                                        </button>
-                                    </div>
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleApproveDraft}
-                                            disabled={!draftText.trim() || !!draftBusy}
-                                            className={`flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-[14px] font-semibold transition-colors disabled:opacity-40 ${
-                                                draftChannel === 'email' ? 'bg-sky-600 text-white' : 'bg-[#25d366] text-[#111b21]'
-                                            }`}
-                                        >
-                                            {draftBusy === 'approve' ? <Spinner className="h-4 w-4" /> : (
-                                                <>
-                                                    {draftChannel === 'email'
-                                                        ? <EnvelopeIcon className="h-4 w-4" aria-hidden />
-                                                        : <WhatsAppIcon className="h-4 w-4" aria-hidden />}
-                                                    Send · {CHANNEL_LABELS[draftChannel] || draftChannel}
-                                                </>
-                                            )}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleDiscardDraft}
-                                            disabled={!!draftBusy}
-                                            className="flex h-11 flex-shrink-0 items-center justify-center rounded-full px-4 text-[13px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-white disabled:opacity-40"
-                                        >
-                                            {draftBusy === 'discard' ? <Spinner className="h-4 w-4" /> : 'Discard'}
-                                        </button>
-                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex items-end gap-2">
@@ -1760,25 +1791,29 @@ const AgentInboxPage = () => {
                                         ref={replyBoxRef}
                                         rows={1}
                                         value={reply}
-                                        onChange={e => setReply(e.target.value)}
+                                        onChange={e => { setReply(e.target.value); growBox(e.target); }}
                                         onKeyDown={e => {
                                             if (e.key === 'Enter' && !e.shiftKey) {
                                                 e.preventDefault();
-                                                if (attachment || replyMode === 'human') handleSend(); else handleInstruct();
+                                                if (attachment || replyMode === 'human') handleSend();
+                                                else if (reply.trim()) handleInstruct();
+                                                else if (active) void requestDraft(active, true);
                                             }
                                         }}
                                         placeholder={replyMode === 'agent' && !attachment
-                                            ? `Prompt ${agentName}…`
-                                            : sendVia === 'both' ? 'Reply by email — and WhatsApp as well…'
-                                                : sendVia === 'whatsapp' ? 'Reply on WhatsApp…'
-                                                    : 'Reply by email…'}
-                                        aria-label={replyMode === 'agent' && !attachment ? `What to tell ${agentName} to say` : 'Your reply to the customer'}
-                                        className="min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-sm text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/40"
+                                            ? `Tell ${agentName} what to say…`
+                                            : 'Your words, exactly'}
+                                        aria-label={replyMode === 'agent' && !attachment ? `What to tell ${agentName} to say` : 'Your reply to the customer — sent exactly as typed'}
+                                        className="min-h-[44px] min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-[16px] leading-snug text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/40 sm:text-sm"
                                     />
                                     <button
                                         type="button"
-                                        onClick={attachment || replyMode === 'human' ? handleSend : handleInstruct}
-                                        disabled={(!reply.trim() && !attachment) || sending}
+                                        onClick={() => {
+                                            if (attachment || replyMode === 'human') handleSend();
+                                            else if (reply.trim()) handleInstruct();
+                                            else if (active) void requestDraft(active, true);
+                                        }}
+                                        disabled={sending || (replyMode === 'human' && !reply.trim() && !attachment)}
                                         className={`flex h-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
                                             attachment || replyMode === 'human'
                                                 ? sendVia === 'email'
@@ -1791,7 +1826,7 @@ const AgentInboxPage = () => {
                                         aria-label={
                                             attachment || replyMode === 'human'
                                                 ? sendVia === 'both' ? 'Send by email and WhatsApp' : sendVia === 'email' ? 'Send by email' : 'Send on WhatsApp'
-                                                : `Tell ${agentName}`
+                                                : reply.trim() ? `Tell ${agentName}` : `Ask ${agentName} to draft`
                                         }
                                     >
                                         {sending ? <Spinner className="h-4 w-4" /> : attachment || replyMode === 'human' ? (
@@ -1808,7 +1843,7 @@ const AgentInboxPage = () => {
                                         ) : (
                                             <>
                                                 <SparklesIcon className="h-4 w-4" />
-                                                <span>Ask {agentName}</span>
+                                                <span>{reply.trim() ? `Ask ${agentName}` : 'Draft'}</span>
                                             </>
                                         )}
                                     </button>

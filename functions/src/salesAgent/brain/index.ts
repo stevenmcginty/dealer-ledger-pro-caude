@@ -410,11 +410,9 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
     // The bot is silent the moment it stops owning the conversation. No API call,
     // no tokens, no chance of the model talking over Steve.
     //
-    // Except when the router has asked for a draft and nothing else. Handing a thread
-    // to Steve was never meant to leave him a blank compose box, but this guard sat in
-    // front of that and returned an empty reply every time, so the promised draft never
-    // appeared on a single handed-over thread (29 Aug). draftOnly turns are held by
-    // holdDraft and cannot reach the customer.
+    // Except an explicit Ask Dave (draftOnly). Human-mode inbound no longer
+    // auto-drafts — Steve types his own words unless he asks. draftOnly turns
+    // are held by holdDraft and cannot reach the customer.
     if (conversation.mode !== 'agent' && !(input.draftOnly && conversation.mode === 'human')) {
         return { reply: '', stage: conversation.stage, updates: {} };
     }

@@ -266,6 +266,43 @@ const ids = (items) => items.map(item => item.id);
         node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(clash, { title: 'porsche boxster' }), null);
     });
 });
+(0, node_test_1.describe)('the sold Porsche problem', () => {
+    /**
+     * 28 Aug: a bare "is this still available" landed on a Taycan that had sold off
+     * Steve's ledger, so the thread stayed with Steve and Dave talked about a car
+     * that was gone. The three Porsches actually for sale that day were all Chris's.
+     */
+    const STEVE = 'company-steve';
+    const CHRIS = 'company-chris';
+    const SITE = [
+        car({ id: 'taycan-sold', make: 'Porsche', model: 'Taycan', variant: '4S', title: 'Porsche Taycan Performance Plus 93.4kWh 4S', price: 41495, year: 2021, status: 'sold', ownerCompanyId: STEVE }),
+        car({ id: 'boxster-chris', make: 'Porsche', model: 'Boxster', variant: '2.7', title: 'Porsche Boxster 2.7', price: 9995, year: 2007, ownerCompanyId: CHRIS }),
+        car({ id: 'cayman-chris', make: 'Porsche', model: 'Cayman', variant: '2.9', title: 'Porsche Cayman 2.9', price: 15995, year: 2010, ownerCompanyId: CHRIS }),
+    ];
+    (0, node_test_1.it)('gives a vague enquiry to the dealer whose car is still for sale', () => {
+        const item = (0, search_1.matchEnquiryStock)(SITE, { text: 'porsche' });
+        node_assert_1.strict.equal(item?.ownerCompanyId, CHRIS);
+        node_assert_1.strict.equal(item?.status, 'available');
+    });
+    (0, node_test_1.it)('still picks the sold car when the customer names it outright', () => {
+        // All one dealer's, so the answer turns on the car and not on the ambiguity
+        // guard: somebody chasing the Taycan by name is asking about the Taycan.
+        const mine = SITE.map(item => ({ ...item, ownerCompanyId: STEVE }));
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(mine, { title: 'porsche taycan 4s' })?.id, 'taycan-sold');
+    });
+    (0, node_test_1.it)('prefers the car still for sale when the description fits both', () => {
+        const mine = SITE.map(item => ({ ...item, ownerCompanyId: STEVE }));
+        const item = (0, search_1.matchEnquiryStock)(mine, { text: 'porsche' });
+        node_assert_1.strict.equal(item?.status, 'available');
+    });
+    (0, node_test_1.it)('keeps refusing when the live cars belong to different dealers', () => {
+        const split = [
+            { ...SITE[1] },
+            { ...SITE[2], ownerCompanyId: STEVE },
+        ];
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(split, { text: 'porsche' }), null);
+    });
+});
 (0, node_test_1.describe)('a car that has already gone', () => {
     /** The Boxsters as they really are on the site: the 2007 is reserved. */
     const BOXSTERS = [

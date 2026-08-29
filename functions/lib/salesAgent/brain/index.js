@@ -327,10 +327,14 @@ const deriveSummary = (conversation, inbound) => {
  * Throws only if the model call itself fails; the router owns error alerts.
  */
 const runBrain = async (input, deps = {}) => {
-    const { companyId, conversation, history, inbound, settings, emailContext } = input;
+    const { companyId, conversation, history, inbound, settings, emailContext, lessons } = input;
     // The bot is silent the moment it stops owning the conversation. No API call,
     // no tokens, no chance of the model talking over Steve.
-    if (conversation.mode !== 'agent') {
+    //
+    // Except an explicit Ask Dave (draftOnly). Human-mode inbound no longer
+    // auto-drafts — Steve types his own words unless he asks. draftOnly turns
+    // are held by holdDraft and cannot reach the customer.
+    if (conversation.mode !== 'agent' && !(input.draftOnly && conversation.mode === 'human')) {
         return { reply: '', stage: conversation.stage, updates: {} };
     }
     const apiKey = deps.apiKey || process.env[exports.GEMINI_SECRET_NAME];
@@ -347,7 +351,7 @@ const runBrain = async (input, deps = {}) => {
     };
     const contents = (0, prompt_1.buildContents)({ conversation, history, inbound, settings, emailContext });
     const config = {
-        systemInstruction: (0, prompt_1.buildSystemPrompt)({ conversation, settings, now: deps.now, emailContext }),
+        systemInstruction: (0, prompt_1.buildSystemPrompt)({ conversation, settings, now: deps.now, emailContext, lessons }),
         temperature: 0.6,
         maxOutputTokens: 1200,
         tools: [{ functionDeclarations: tools_1.toolDeclarations }],
