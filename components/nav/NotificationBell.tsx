@@ -5,7 +5,12 @@ import { useData } from '../../hooks/useData';
 import DraftReviewCard, { QuestionReviewCard } from '../salesAgent/DraftReviewCard';
 import {
     Conversation,
+    OwnerAlert,
+    alertBody,
+    alertHeadline,
+    formatAgentTime,
     subscribeToAgentConversations,
+    subscribeToOwnerAlerts,
     subscribeToSalesAgentSettings,
 } from '../../services/salesAgentService';
 import { onDraftApproveRequest, onDraftReviewRequest } from '../../utils/agentInboxLink';
@@ -14,11 +19,39 @@ interface NotificationBellProps {
     notifications: Notification[];
 }
 
+/**
+ * When the bell was last opened. Anything the agent has raised since then counts
+ * as new, so the badge means "things you have not looked at" rather than "things
+ * still outstanding" — a customer message needs seeing once, not clearing.
+ */
+const SEEN_KEY = 'agentInbox.alertsSeenAt';
+
+const readSeenAt = (): number => {
+    try {
+        return Number(localStorage.getItem(SEEN_KEY) || 0) || 0;
+    } catch {
+        return 0;
+    }
+};
+
+const writeSeenAt = (at: number): void => {
+    try {
+        localStorage.setItem(SEEN_KEY, String(at));
+    } catch {
+        /* private window: the badge just stops persisting, which is survivable */
+    }
+};
+
+/** Alerts about work already done. The bell has its own cards for those. */
+const NOT_LISTED: ReadonlySet<OwnerAlert['kind']> = new Set(['draft', 'question']);
+
 const NotificationBell = ({ notifications }: NotificationBellProps) => {
     const { companyId } = useData();
     const [isOpen, setIsOpen] = useState(false);
     const [focusId, setFocusId] = useState('');
     const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [alerts, setAlerts] = useState<OwnerAlert[]>([]);
+    const [seenAt, setSeenAt] = useState(readSeenAt);
     const [agentName, setAgentName] = useState('Dave');
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -30,6 +63,14 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
     useEffect(() => {
         if (!companyId) return;
         return subscribeToSalesAgentSettings(companyId, settings => setAgentName(settings.agentName || 'Dave'));
+    }, [companyId]);
+
+    // Everything the agent has raised — a customer message included. The backend has
+    // written these all along; until now nothing read them, so a message arriving on a
+    // thread Steve had taken over showed nowhere in the app (29 Aug).
+    useEffect(() => {
+        if (!companyId) return;
+        return subscribeToOwnerAlerts(companyId, setAlerts);
     }, [companyId]);
 
     useEffect(() => onDraftReviewRequest(convId => {
@@ -63,9 +104,27 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
         [conversations]
     );
 
+    const listedAlerts = useMemo(
+        () => alerts.filter(alert => !NOT_LISTED.has(alert.kind)),
+        [alerts]
+    );
+    const unseenAlerts = useMemo(
+        () => listedAlerts.filter(alert => (alert.sentAt || 0) > seenAt),
+        [listedAlerts, seenAt]
+    );
+
+    // Opening the bell is the act of seeing them.
+    useEffect(() => {
+        if (!isOpen || !listedAlerts.length) return;
+        const newest = Math.max(...listedAlerts.map(alert => alert.sentAt || 0));
+        if (newest <= seenAt) return;
+        writeSeenAt(newest);
+        setSeenAt(newest);
+    }, [isOpen, listedAlerts, seenAt]);
+
     const motCount = notifications.length;
     const actionCount = drafts.length + questions.length;
-    const count = actionCount + motCount;
+    const count = actionCount + motCount + unseenAlerts.length;
     const waitingOnFocus = focusId && !drafts.some(c => c.id === focusId) && !questions.some(c => c.id === focusId);
 
     return (
@@ -124,9 +183,31 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
                             </div>
                         ))}
 
-                        {motCount > 0 && (
+                        {listedAlerts.length > 0 && (
                             <ul>
                                 <li className={`px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 ${actionCount > 0 ? 'border-t border-gray-700/60' : ''}`}>
+                                    Activity
+                                </li>
+                                {listedAlerts.slice(0, 20).map(alert => (
+                                    <li
+                                        key={alert.id}
+                                        className={`border-b border-gray-700/60 px-4 py-3 text-sm ${
+                                            (alert.sentAt || 0) > seenAt ? 'bg-sky-950/25' : ''
+                                        }`}
+                                    >
+                                        <div className="flex items-baseline justify-between gap-2">
+                                            <p className="min-w-0 truncate font-medium text-gray-200">{alertHeadline(alert)}</p>
+                                            <span className="flex-shrink-0 text-[11px] text-gray-500">{formatAgentTime(alert.sentAt)}</span>
+                                        </div>
+                                        <p className="mt-0.5 line-clamp-3 text-gray-400">{alertBody(alert)}</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+
+                        {motCount > 0 && (
+                            <ul>
+                                <li className="border-t border-gray-700/60 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                                     MOT reminders
                                 </li>
                                 {notifications.map(notif => (

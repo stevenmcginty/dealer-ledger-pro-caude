@@ -168,6 +168,31 @@ export interface Conversation {
 }
 
 /** One Gmail / one WhatsApp number shared by several ledger accounts. */
+export type OwnerAlertKind =
+    | 'new_conversation' | 'inbound' | 'escalation' | 'question' | 'booking' | 'draft' | 'error';
+
+/**
+ * One thing the agent wants Steve to know, as written by salesAgent/alerts.ts.
+ *
+ * These have been recorded on every alert since the agent shipped and read by
+ * nothing: the bell only ever listed conversations holding a draft, so a customer
+ * message arriving on a thread Steve had taken over — which produces no draft —
+ * showed nowhere in the app at all (29 Aug).
+ */
+export interface OwnerAlert {
+    id: string;
+    kind: OwnerAlertKind;
+    convId: string;
+    shortId: number;
+    text: string;
+    /** What the phone shade shows: the customer's name and their own words. */
+    push?: { title: string; body: string };
+    sentAt: number;
+    deliveredVia?: 'whatsapp' | 'push' | 'none';
+    pushedTo?: number;
+    error?: string;
+}
+
 export interface SharedInboxMeta {
     id: string;
     name?: string;
@@ -348,6 +373,37 @@ export const subscribeToAgentConversations = (
     ref.on('value', listener);
     return () => ref.off('value', listener);
 };
+
+/**
+ * The alert feed, newest first.
+ *
+ * Capped rather than paged: the bell is a "what needs me now" list, not a log,
+ * and the node is written to on every inbound message.
+ */
+export const subscribeToOwnerAlerts = (
+    companyId: string,
+    cb: (alerts: OwnerAlert[]) => void,
+    limit = 30
+) => {
+    const ref = db.ref(`${agentRoot(companyId)}/ownerAlerts`).orderByChild('sentAt').limitToLast(limit);
+    const listener = (snap: firebase.database.DataSnapshot) => {
+        const raw = (snap.val() || {}) as Record<string, OwnerAlert>;
+        const list = Object.keys(raw)
+            .map(id => ({ ...raw[id], id }))
+            .filter(alert => !!alert && !!alert.sentAt)
+            .sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0));
+        cb(list);
+    };
+    ref.on('value', listener);
+    return () => ref.off('value', listener);
+};
+
+/** What the bell shows for an alert: the customer's words where we have them. */
+export const alertHeadline = (alert: OwnerAlert): string =>
+    alert.push?.title || `#${alert.shortId || '?'}`;
+
+export const alertBody = (alert: OwnerAlert): string =>
+    alert.push?.body || alert.text || '';
 
 const asSharedInbox = (id: string, raw: Partial<SharedInboxMeta> | null): SharedInboxMeta | null => {
     if (!raw?.credentialCompanyId) return null;
