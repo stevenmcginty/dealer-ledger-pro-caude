@@ -180,29 +180,40 @@ interface TemplateVariant {
     params: (canonical: string[]) => string[];
     /** The exact wording the customer sees, for the thread record. */
     render: (canonical: string[]) => string;
+    /**
+     * This wording tells the customer we could not reach them by email. Only usable on
+     * a thread where that is actually true. Ashley was told her email was not accepting
+     * messages when nothing had bounced, because the cheapest variant happened to be
+     * worded that way and was picked for every opener going (29 Aug).
+     */
+    bounceOnly?: boolean;
 }
 
 const ENQUIRY_FAMILY: TemplateVariant[] = [
-    // Cheapest first. Meta bills UTILITY well below MARKETING (and free inside the 24h
-    // window), and it reviews faster, so a strictly transactional wording is preferred
-    // over the promotional ones below.
+    // Cheapest wording that is TRUE first. Meta bills UTILITY well below MARKETING (and
+    // free inside the 24h window), so a transactional wording is preferred — but only
+    // among the ones that do not claim something that did not happen. The two
+    // bounce-worded variants below are equally cheap and were previously picked ahead
+    // of this one purely by list order.
+    {
+        name: 'enquiry_update',
+        params: ([name, car]) => [name || 'there', car || 'car', 'We have received it and the car is still available.'],
+        render: ([name, car]) =>
+            `Hi ${name || 'there'}, this is Radlett Cars replying to the enquiry you sent us about the ${car || 'car'}. We have received it and the car is still available. You can reply to this message with any questions about your enquiry.`,
+    },
     {
         name: 'enquiry_ack',
+        bounceOnly: true,
         params: ([name, car]) => [name || 'there', car || 'car'],
         render: ([name, car]) =>
             `Hi ${name || 'there'}, this is Radlett Cars. We received your enquiry about the ${car || 'car'} but the email address you gave us is not accepting messages, so we are replying here instead. Please reply to this message and we will answer your questions.`,
     },
     {
         name: 'enquiry_contact',
+        bounceOnly: true,
         params: ([name, car]) => [name || 'there', car || 'car'],
         render: ([name, car]) =>
             `Hi ${name || 'there'}, this is Radlett Cars replying to your enquiry about the ${car || 'car'}. We could not reach you by email. Please reply to this message so we can help you with your enquiry.`,
-    },
-    {
-        name: 'enquiry_update',
-        params: ([name, car]) => [name || 'there', car || 'car', 'We have received it and the car is still available.'],
-        render: ([name, car]) =>
-            `Hi ${name || 'there'}, this is Radlett Cars replying to the enquiry you sent us about the ${car || 'car'}. We have received it and the car is still available. You can reply to this message with any questions about your enquiry.`,
     },
     {
         name: 'enquiry_reply',
@@ -311,22 +322,27 @@ export const approvedTemplateNames = async (companyId: string): Promise<Set<stri
 export const isAccessBlockedCode = (code?: number): boolean =>
     code === 200 || code === 190 || code === 10;
 
+/**
+ * The phrase the outbox recognises, and the opening words Steve reads. One string
+ * doing both jobs on purpose: a separate marker prefix ends up on screen the first
+ * time somebody forgets to strip it, which is exactly what happened on 29 Aug.
+ */
+export const ACCESS_BLOCKED_MARKER = 'Meta has blocked API access';
+
 /** Said the way Steve needs to read it: whose problem it is, and where to go. */
 export const accessBlockedMessage = (metaMessage?: string, code?: number): string =>
-    `${SEND_BLOCKED_PREFIX}Meta has blocked API access for the WhatsApp app${code ? ` (code ${code}` : ''}${code ? `, "${metaMessage || 'API access blocked'}")` : ''}. `
-    + 'Nothing can be sent or even read until that is cleared at developers.facebook.com. '
-    + 'Check the app dashboard for a banner, then business verification and the payment method. '
-    + 'Messages already queued are being held, not lost.';
+    `${ACCESS_BLOCKED_MARKER} for the WhatsApp app${code ? ` (code ${code}, "${metaMessage || 'API access blocked'}")` : ''}. `
+    + 'Nothing can be sent until that is cleared at developers.facebook.com — check the app '
+    + 'dashboard for a banner. Anything queued is being held, not lost.';
 
 /**
- * Marks an error the outbox must not burn its retries on. A prefix rather than a custom
- * Error subclass because these travel through channel adapters that only ever rethrow
- * `Error`, and an instanceof check does not survive that.
+ * An error the outbox must not burn its retries on: the account cannot send at all,
+ * so trying again in a minute is pointless, and the message must be kept rather than
+ * dropped. Matched on the text because these travel up through channel adapters that
+ * only ever rethrow a plain `Error`, and an instanceof check does not survive that.
  */
-export const SEND_BLOCKED_PREFIX = '[blocked] ';
-
 export const isSendBlockedError = (message: string): boolean =>
-    (message || '').startsWith(SEND_BLOCKED_PREFIX) || (message || '').includes(TEMPLATE_PENDING_MESSAGE);
+    (message || '').includes(ACCESS_BLOCKED_MARKER) || (message || '').includes(TEMPLATE_PENDING_MESSAGE);
 
 export const TEMPLATE_PENDING_MESSAGE =
     'WhatsApp opener is still awaiting Meta approval (usually a few minutes for a new template). Try again shortly.';
@@ -338,13 +354,15 @@ export const TEMPLATE_PENDING_MESSAGE =
 export const resolveTemplate = async (
     companyId: string,
     templateName: string,
-    canonicalParams: string[]
+    canonicalParams: string[],
+    options: { bounced?: boolean } = {}
 ): Promise<{ name: string; params: string[]; text: string }> => {
     const family = familyOf(templateName);
     if (!family) return { name: templateName, params: canonicalParams, text: canonicalParams.join(' ') };
 
     const approved = await approvedTemplateNames(companyId);
-    const variant = family.find(v => approved.has(v.name));
+    const usable = family.filter(v => !v.bounceOnly || options.bounced);
+    const variant = usable.find(v => approved.has(v.name)) || family.find(v => approved.has(v.name));
     if (!variant) {
         approvedCache.clear();
         throw new Error(TEMPLATE_PENDING_MESSAGE);
@@ -357,9 +375,15 @@ export const resolveTemplate = async (
 };
 
 /** What the customer would read if this family were sent now with these params. */
-export const renderTemplateFamily = (templateName: string, canonicalParams: string[]): string => {
+export const renderTemplateFamily = (
+    templateName: string,
+    canonicalParams: string[],
+    options: { bounced?: boolean } = {}
+): string => {
     const family = familyOf(templateName);
-    return family ? family[0].render(canonicalParams) : canonicalParams.join(' ');
+    if (!family) return canonicalParams.join(' ');
+    const usable = family.filter(v => !v.bounceOnly || options.bounced);
+    return (usable[0] || family[0]).render(canonicalParams);
 };
 
 export const sendWhatsAppTemplate = async (
@@ -708,8 +732,8 @@ export const salesAgentWhatsAppWebhook = functions
 export const FALLBACK_TEMPLATE = 'enquiry_ack';
 
 /** The approved template's wording, for the thread record. */
-export const renderFallbackTemplate = (params: string[]): string =>
-    renderTemplateFamily(FALLBACK_TEMPLATE, params);
+export const renderFallbackTemplate = (params: string[], options: { bounced?: boolean } = {}): string =>
+    renderTemplateFamily(FALLBACK_TEMPLATE, params, options);
 
 export const templateFallbackFor = (
     firstName?: string,

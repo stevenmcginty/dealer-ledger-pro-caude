@@ -938,6 +938,18 @@ const deliverReply = async (
     }
 };
 
+/** Why "Me" could not go out, in words Steve can act on. */
+export const ownerOutsideWindowMessage = (conversation: Conversation): string => {
+    const who = conversation.contact?.firstName || 'They';
+    const at = conversation.lastCustomerMessageAt;
+    const when = at
+        ? new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+        }).format(new Date(at))
+        : 'never';
+    return `Your words were not sent. ${who} last messaged on ${when}, over 24 hours ago, and WhatsApp only allows an approved opener after that. Send the opener from Dave, or reply by email.`;
+};
+
 const enqueueOrSend = async (
     companyId: string,
     conversation: Conversation,
@@ -984,12 +996,22 @@ const enqueueOrSend = async (
             ...(extra?.media && target.channel === 'whatsapp' ? { media: extra.media } : {}),
         };
         if (target.channel === 'whatsapp' && target.templateOnly && !extra?.media) {
+            // "Me" means the customer gets exactly these words. Outside the 24h window
+            // WhatsApp will not carry them, and quietly posting a canned opener over
+            // Steve's name instead is how a customer got told her email had bounced
+            // when it had not, twice (29 Aug). His own messages refuse; Dave's openers
+            // still fall back, because a template is what they are.
+            if (from === 'owner') {
+                skippedWhatsApp = ownerOutsideWindowMessage(conversation);
+                continue;
+            }
+
             const fallback = templateFallbackFor(
                 conversation.contact?.firstName,
                 conversation.vehicleInterest?.title
             );
             Object.assign(job, fallback);
-            job.text = renderFallbackTemplate(fallback.templateParams || []);
+            job.text = renderFallbackTemplate(fallback.templateParams || [], { bounced: !!conversation.emailBounce });
         }
 
         try {
@@ -1158,10 +1180,22 @@ export const salesAgentSendReply = functions
         try {
             const result = await enqueueOrSend(companyId, conversation, settings, text || (media ? `[${media.kind}]` : ''), via, 'owner', { media });
             await updateConversation(companyId, convId, { unread: 0 });
+
+            // Nothing actually left the building. Returning ok here is what let the app
+            // say "message sent" while the customer got nothing, or got something Steve
+            // never wrote (29 Aug).
+            if (!result.sent.length) {
+                throw new functions.https.HttpsError(
+                    'failed-precondition',
+                    result.skippedWhatsApp || 'That message could not be sent.'
+                );
+            }
+
             return { ok: true, sent: result.sent, skippedWhatsApp: result.skippedWhatsApp || null };
         } catch (error: any) {
+            if (error instanceof functions.https.HttpsError) throw error;
             const message = error?.message || 'The message could not be sent.';
-            if (/not live/i.test(message) || /nowhere to send/i.test(message)) {
+            if (/not live/i.test(message) || /nowhere to send/i.test(message) || /not sent/i.test(message)) {
                 throw new functions.https.HttpsError('failed-precondition', message);
             }
             throw new functions.https.HttpsError('unavailable', message);

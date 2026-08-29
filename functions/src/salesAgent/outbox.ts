@@ -76,17 +76,47 @@ export const enqueue = async (job: NewOutboxJob): Promise<string> => {
  * instead of a message. Checking here, where every send passes through, means the rule
  * cannot be missed by a caller that forgot about it.
  */
+/** "28 Aug at 8:06 am" — so the refusal below says exactly when the door shut. */
+const whenTheyLastWrote = (at?: number): string =>
+    at
+        ? new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/London',
+            day: 'numeric',
+            month: 'short',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(at))
+        : 'never';
+
 const applyWhatsAppWindow = async (job: OutboxJob): Promise<OutboxJob> => {
     if (job.channel !== 'whatsapp' || job.templateName) return job;
 
     const conversation = await getConversation(job.companyId, job.convId);
-    if (job.media && !withinCustomerServiceWindow(conversation?.lastCustomerMessageAt)) {
+    const lastAt = conversation?.lastCustomerMessageAt;
+
+    if (job.media && !withinCustomerServiceWindow(lastAt)) {
         throw new Error('WhatsApp only accepts photos, videos and files within 24 hours of their last message.');
     }
-    if (withinCustomerServiceWindow(conversation?.lastCustomerMessageAt)) return job;
+    if (withinCustomerServiceWindow(lastAt)) return job;
+
+    /**
+     * Steve pressed "Me". The box above it promises the customer gets exactly his
+     * words, and outside the window WhatsApp will not carry them. Substituting a
+     * template here is the one thing we must not do: on 29 Aug he typed "Hello" and
+     * "test" and a stranger's canned opener went out over his name, twice, telling the
+     * customer her email had bounced when it had not. Refuse and say why. Dave's own
+     * openers still fall back to a template below, because that is what they are for.
+     */
+    if (job.from === 'owner') {
+        throw new Error(
+            `WhatsApp will not carry your own words here: ${conversation?.contact?.firstName || 'they'} last messaged you on ${whenTheyLastWrote(lastAt)}, more than 24 hours ago, and Meta only allows an approved opener after that. `
+            + 'Nothing was sent. Send the opener from the Dave side, or reply by email.'
+        );
+    }
 
     console.warn(`Outbox ${job.id}: outside the 24h window, falling back to a template`);
 
+    const bounced = !!conversation?.emailBounce;
     const fallback = templateFallbackFor(
         conversation?.contact?.firstName,
         conversation?.vehicleInterest?.title
@@ -97,7 +127,7 @@ const applyWhatsAppWindow = async (job: OutboxJob): Promise<OutboxJob> => {
         ...fallback,
         // What the thread shows has to be what the customer got, not the words that
         // could not be sent.
-        text: renderFallbackTemplate(fallback.templateParams || []),
+        text: renderFallbackTemplate(fallback.templateParams || [], { bounced }),
     };
 };
 
