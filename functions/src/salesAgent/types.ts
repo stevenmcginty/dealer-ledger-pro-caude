@@ -331,6 +331,12 @@ export interface OutboxJob {
     attempts: number;
     lastError?: string;
     createdAt: number;
+    /** Held because the account cannot send at all, not because this message is bad. */
+    blocked?: boolean;
+    /** Stopped trying. Kept in the queue regardless: deleting a customer reply loses it. */
+    gaveUp?: boolean;
+    /** When the owner was told about this job, so a long hold alerts once and not hourly. */
+    alertedAt?: number;
 }
 
 /** What brain returns for the router to act on */

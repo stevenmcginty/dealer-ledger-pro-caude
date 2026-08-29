@@ -24,13 +24,19 @@ import {
     updateConversation,
 } from './conversations';
 import { gmailSender } from './channels/gmail';
-import { renderFallbackTemplate, templateFallbackFor, whatsappSender, withinCustomerServiceWindow } from './channels/whatsapp';
+import { isSendBlockedError, renderFallbackTemplate, templateFallbackFor, whatsappSender, withinCustomerServiceWindow } from './channels/whatsapp';
 import { labelEmailThread } from './channels/gmail';
 import { twilioSender } from './channels/twilio';
 import { GMAIL_SECRETS } from './gmailAuth';
 import { Channel, ChannelSender, OutboxJob } from './types';
 
 const MAX_ATTEMPTS = 3;
+
+/** How often a job held behind a blocked account tries again. */
+const HOLD_RETRY_MS = 15 * 60_000;
+
+/** How long it is held before the message is too stale to be worth sending. */
+const HOLD_LIMIT_MS = 48 * 3_600_000;
 
 // Resolved lazily: whatsapp.ts -> router.ts -> outbox.ts -> whatsapp.ts is a cycle,
 // so at module-load time whatsappSender can still be undefined.
@@ -162,14 +168,31 @@ const readDueJobs = async (companyId: string): Promise<OutboxJob[]> => {
 
     return Object.entries(all)
         .map(([id, job]) => ({ ...job, id }))
-        .filter(job => (job.sendAfter || 0) <= now)
+        .filter(job => !job.gaveUp && (job.sendAfter || 0) <= now)
         .sort((a, b) => (a.sendAfter || 0) - (b.sendAfter || 0));
 };
 
-const drainCompany = async (companyId: string): Promise<{ sent: number; failed: number }> => {
+/**
+ * Tell Steve, but only once per job.
+ *
+ * A blocked account is rechecked every quarter of an hour for days. Alerting on every
+ * one of those would be its own outage.
+ */
+const alertOnce = async (companyId: string, job: OutboxJob, text: string): Promise<void> => {
+    if (job.alertedAt) return;
+    // Imported here rather than at the top: alerts.ts sends through the same
+    // channels this module drives, and the cycle only resolves at call time.
+    const { sendOwnerAlert } = await import('./alerts');
+    const conversation = await getConversation(companyId, job.convId);
+    await sendOwnerAlert(companyId, 'error', conversation, text);
+    await db().ref(agentPath(companyId, `outbox/${job.id}`)).update({ alertedAt: Date.now() });
+};
+
+const drainCompany = async (companyId: string): Promise<{ sent: number; failed: number; held: number }> => {
     const jobs = await readDueJobs(companyId);
     let sent = 0;
     let failed = 0;
+    let held = 0;
 
     for (const job of jobs) {
         const attempts = (job.attempts || 0) + 1;
@@ -180,24 +203,50 @@ const drainCompany = async (companyId: string): Promise<{ sent: number; failed: 
             sent++;
         } catch (error: any) {
             const message = error?.message || String(error);
+            const ref = db().ref(agentPath(companyId, `outbox/${job.id}`));
+
+            // The door is shut: the app is blocked, the token is dead, or the opener is
+            // still waiting on Meta. Three tries a minute apart cannot help, and binning
+            // the message is how a reply to a customer was lost on 29 Aug. Park it and
+            // keep knocking every quarter of an hour. The moment the account is put
+            // right the queue drains itself, with nothing lost and nothing sent twice.
+            if (isSendBlockedError(message)) {
+                const age = Date.now() - (job.createdAt || Date.now());
+
+                if (age > HOLD_LIMIT_MS) {
+                    // Days old now. Sending it would be worse than not sending it, but it
+                    // is still not ours to delete.
+                    await ref.update({ gaveUp: true, blocked: true, lastError: message });
+                    failed++;
+                    await alertOnce(
+                        companyId,
+                        job,
+                        `Gave up on a ${job.channel} message to ${job.to} after holding it ${Math.round(age / 3_600_000)}h: ${message}`
+                    );
+                    continue;
+                }
+
+                console.warn(`Outbox ${job.id} held (${Math.round(age / 60_000)}m waiting): ${message}`);
+                await ref.update({ blocked: true, lastError: message, sendAfter: Date.now() + HOLD_RETRY_MS });
+                held++;
+                await alertOnce(companyId, job, `Holding a ${job.channel} message to ${job.to}: ${message}`);
+                continue;
+            }
+
             console.error(`Outbox ${job.id} attempt ${attempts} failed`, error);
 
             if (attempts >= MAX_ATTEMPTS) {
-                await db().ref(agentPath(companyId, `outbox/${job.id}`)).remove();
+                // Kept, not deleted. A reply a customer is waiting on should not vanish
+                // because the third try happened to land badly.
+                await ref.update({ gaveUp: true, attempts, lastError: message });
                 failed++;
-
-                // Imported here rather than at the top: alerts.ts sends through the same
-                // channels this module drives, and the cycle only resolves at call time.
-                const { sendOwnerAlert } = await import('./alerts');
-                const conversation = await getConversation(companyId, job.convId);
-                await sendOwnerAlert(
+                await alertOnce(
                     companyId,
-                    'error',
-                    conversation,
+                    job,
                     `Could not deliver a ${job.channel} reply to ${job.to} after ${MAX_ATTEMPTS} tries: ${message}`
                 );
             } else {
-                await db().ref(agentPath(companyId, `outbox/${job.id}`)).update({
+                await ref.update({
                     attempts,
                     lastError: message,
                     // Back off a minute per attempt so a rate limit is not hammered.
@@ -207,7 +256,7 @@ const drainCompany = async (companyId: string): Promise<{ sent: number; failed: 
         }
     }
 
-    return { sent, failed };
+    return { sent, failed, held };
 };
 
 /**
@@ -224,6 +273,7 @@ export const salesAgentOutboxTick = functions
         const companyIds = await getCompanyIds();
         let sent = 0;
         let failed = 0;
+        let held = 0;
 
         for (const companyId of companyIds) {
             try {
@@ -233,6 +283,7 @@ export const salesAgentOutboxTick = functions
                 const result = await drainCompany(companyId);
                 sent += result.sent;
                 failed += result.failed;
+                held += result.held;
 
                 // Cheap, and only worth doing once in a while.
                 if (Math.random() < 0.02) await pruneSeenProviderIds(companyId);
@@ -241,6 +292,6 @@ export const salesAgentOutboxTick = functions
             }
         }
 
-        if (sent || failed) console.log(`Outbox: sent ${sent}, gave up on ${failed}`);
+        if (sent || failed || held) console.log(`Outbox: sent ${sent}, gave up on ${failed}, holding ${held}`);
         return null;
     });

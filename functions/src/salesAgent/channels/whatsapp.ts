@@ -81,7 +81,10 @@ const graphPost = async (companyId: string, body: Record<string, unknown>): Prom
         if (code === 131047 || code === 131026) {
             throw new Error('WhatsApp could not deliver: more than 24 hours since their last message, so only an approved opener can be sent.');
         }
-        throw new Error(`WhatsApp send failed (${response.status}): ${json.error?.message || 'unknown error'}`);
+        if (isAccessBlockedCode(code)) throw new Error(accessBlockedMessage(json.error?.message, code));
+        // Meta's own code, kept in the text: without it every unknown failure reads the
+        // same and there is nothing to search their docs for (29 Aug).
+        throw new Error(`WhatsApp send failed (${response.status}${code ? `, Meta code ${code}` : ''}): ${json.error?.message || 'unknown error'}`);
     }
 
     return json;
@@ -268,7 +271,25 @@ export const approvedTemplateNames = async (companyId: string): Promise<Set<stri
         `${GRAPH}/${wa.businessAccountId}/message_templates?fields=name,status,language&limit=200`,
         { headers: { Authorization: `Bearer ${wa.accessToken}` } }
     );
-    const json = (await res.json().catch(() => ({}))) as { data?: TemplateStatus[] };
+    const json = (await res.json().catch(() => ({}))) as {
+        data?: TemplateStatus[];
+        error?: { message?: string; code?: number };
+    };
+
+    // A failed lookup is not an empty stock of templates. This used to swallow the
+    // error and hand back an empty set, so every Graph outage came out of the far end
+    // as "your opener is still awaiting Meta approval" — which is what Steve was told
+    // on the morning Meta blocked the app outright (29 Aug). Nothing is cached here:
+    // caching a failure would keep the wrong answer alive for two minutes after the
+    // problem cleared.
+    if (!res.ok || json.error) {
+        const code = json.error?.code;
+        if (isAccessBlockedCode(code)) throw new Error(accessBlockedMessage(json.error?.message, code));
+        throw new Error(
+            `Could not check which WhatsApp openers Meta has approved (${res.status}${code ? `, Meta code ${code}` : ''}): ${json.error?.message || 'unknown error'}`
+        );
+    }
+
     const names = new Set(
         (json.data || [])
             .filter(t => t.status === 'APPROVED' && (!t.language || t.language === TEMPLATE_LANGUAGE))
@@ -277,6 +298,35 @@ export const approvedTemplateNames = async (companyId: string): Promise<Set<stri
     approvedCache.set(wa.businessAccountId, { at: Date.now(), names });
     return names;
 };
+
+/**
+ * Meta codes that mean the door is shut, not that the message was bad.
+ *
+ * 200 is the one that bit us: "API access blocked" on EVERY endpoint, reads included,
+ * because Meta had restricted the app itself. 190 is a dead or revoked token and 10 is
+ * a permission the app no longer holds. None of the three can come good by retrying a
+ * minute later; all three come good on their own the moment the account is put right,
+ * which is why the outbox parks these rather than binning the message.
+ */
+export const isAccessBlockedCode = (code?: number): boolean =>
+    code === 200 || code === 190 || code === 10;
+
+/** Said the way Steve needs to read it: whose problem it is, and where to go. */
+export const accessBlockedMessage = (metaMessage?: string, code?: number): string =>
+    `${SEND_BLOCKED_PREFIX}Meta has blocked API access for the WhatsApp app${code ? ` (code ${code}` : ''}${code ? `, "${metaMessage || 'API access blocked'}")` : ''}. `
+    + 'Nothing can be sent or even read until that is cleared at developers.facebook.com. '
+    + 'Check the app dashboard for a banner, then business verification and the payment method. '
+    + 'Messages already queued are being held, not lost.';
+
+/**
+ * Marks an error the outbox must not burn its retries on. A prefix rather than a custom
+ * Error subclass because these travel through channel adapters that only ever rethrow
+ * `Error`, and an instanceof check does not survive that.
+ */
+export const SEND_BLOCKED_PREFIX = '[blocked] ';
+
+export const isSendBlockedError = (message: string): boolean =>
+    (message || '').startsWith(SEND_BLOCKED_PREFIX) || (message || '').includes(TEMPLATE_PENDING_MESSAGE);
 
 export const TEMPLATE_PENDING_MESSAGE =
     'WhatsApp opener is still awaiting Meta approval (usually a few minutes for a new template). Try again shortly.';
