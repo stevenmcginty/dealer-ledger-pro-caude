@@ -56,6 +56,7 @@ import {
     subscribeToSharedInbox,
     uploadWhatsAppFile,
 } from '../../services/salesAgentService';
+import { onDatabaseResume } from '../../services/firebase';
 import {
     onAgentConversationRequest,
     takeConversationFromUrl,
@@ -512,10 +513,20 @@ const AgentInboxPage = () => {
     const replyBoxRef = useRef<HTMLTextAreaElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
+    /**
+     * Bumped every time the database socket is bounced, and threaded through the
+     * dependency list of every subscription below so they are all torn down and
+     * re-attached. Bouncing the socket alone is not enough: a listener attached
+     * before the bounce can keep the snapshot it had and never fire again, which
+     * is a thread that looks frozen while sends still work.
+     */
+    const [resumeTick, setResumeTick] = useState(0);
+    useEffect(() => onDatabaseResume(() => setResumeTick(tick => tick + 1)), []);
+
     useEffect(() => {
         if (!companyId) return;
         return subscribeToAgentConversations(companyId, setOwn);
-    }, [companyId]);
+    }, [companyId, resumeTick]);
 
     useEffect(() => {
         if (!companyId) return;
@@ -528,7 +539,7 @@ const AgentInboxPage = () => {
             return;
         }
         return subscribeToAgentConversationsAcross(inbox.memberCompanyIds, setShared);
-    }, [inbox]);
+    }, [inbox, resumeTick]);
 
     useEffect(() => {
         if (!companyId) return;
@@ -646,7 +657,7 @@ const AgentInboxPage = () => {
             });
         });
         return () => unsubs.forEach(stop => stop());
-    }, [companyId, activeGroup?.id]);
+    }, [companyId, activeGroup?.id, resumeTick]);
 
     const draftId = active?.pendingDraft?.id || '';
     useEffect(() => {

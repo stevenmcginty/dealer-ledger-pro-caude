@@ -74,14 +74,52 @@ function watchResumeReconnect() {
     window.addEventListener('online', () => reconnectDatabase());
 }
 
-/** Drop and reopen the RTDB socket. Safe to call when db isn't up yet. */
+/**
+ * Screens that must re-read after the socket is bounced.
+ *
+ * A bounced socket is not the same thing as a screen that has caught up. A view
+ * built from a `.on('value')` that was attached before the bounce can sit on the
+ * snapshot it had and never hear another word, which is how a thread came back
+ * from a phone-switch frozen: messages kept arriving in the database, sends kept
+ * working (they are HTTPS callables, nothing to do with the socket), and the
+ * conversation on screen stopped dead (29 Aug).
+ */
+type ResumeListener = () => void;
+const resumeListeners = new Set<ResumeListener>();
+
+/** Called after every reconnect. Returns an unsubscribe. */
+export function onDatabaseResume(listener: ResumeListener): () => void {
+    resumeListeners.add(listener);
+    return () => resumeListeners.delete(listener);
+}
+
+/**
+ * Drop and reopen the RTDB socket. Safe to call when db isn't up yet.
+ *
+ * goOnline is deliberately not called in the same tick as goOffline: back to back
+ * the pair can be collapsed and the socket never actually comes back, which leaves
+ * every listener silently dead.
+ */
 export function reconnectDatabase() {
     try {
         if (!dbInitialized) initDatabase();
         if (!dbInstance || typeof dbInstance.goOffline !== 'function') return;
         dbInstance.goOffline();
-        dbInstance.goOnline();
-        console.log('[Firebase] RTDB socket bounced');
+        setTimeout(() => {
+            try {
+                dbInstance.goOnline();
+                console.log('[Firebase] RTDB socket bounced');
+            } catch (error) {
+                console.warn('[Firebase] RTDB goOnline failed:', error);
+            }
+            resumeListeners.forEach(listener => {
+                try {
+                    listener();
+                } catch (error) {
+                    console.warn('[Firebase] resume listener failed:', error);
+                }
+            });
+        }, 150);
     } catch (error) {
         console.warn('[Firebase] RTDB reconnect failed:', error);
     }
