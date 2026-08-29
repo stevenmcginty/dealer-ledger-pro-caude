@@ -46,7 +46,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.recordDelivery = exports.appendMessage = exports.findOrCreateConversation = exports.allocateShortId = exports.lookupContactIndex = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
+exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.applyCustomerReaction = exports.recordDelivery = exports.appendMessage = exports.findOrCreateConversation = exports.allocateShortId = exports.lookupContactIndex = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const types_1 = require("./types");
@@ -427,6 +427,28 @@ const recordDelivery = async (companyId, providerId, state, at, error) => {
     return true;
 };
 exports.recordDelivery = recordDelivery;
+/**
+ * Pin a customer's emoji onto the message they tapped. Uses the same outboundIndex
+ * as delivery receipts. Returns false when we never sent that message (typed on the
+ * phone, or they reacted to one of their own) — the router then stores a standalone
+ * reaction bubble so the emoji is still visible.
+ */
+const applyCustomerReaction = async (companyId, targetProviderId, emoji, at) => {
+    if (!targetProviderId)
+        return false;
+    const snap = await (0, exports.db)().ref((0, exports.agentPath)(companyId, `outboundIndex/${(0, types_1.rtdbKey)(targetProviderId)}`)).once('value');
+    const ref = snap.val();
+    if (!ref?.convId || !ref?.messageId)
+        return false;
+    const trimmed = (emoji || '').trim();
+    await (0, exports.db)()
+        .ref((0, exports.agentPath)(companyId, `conversations/${ref.convId}/messages/${ref.messageId}`))
+        .update(trimmed
+        ? { customerReaction: trimmed, customerReactionAt: at || Date.now() }
+        : { customerReaction: null, customerReactionAt: null });
+    return true;
+};
+exports.applyCustomerReaction = applyCustomerReaction;
 const readHistory = async (companyId, convId, limit = 40) => {
     const snap = await (0, exports.db)()
         .ref((0, exports.agentPath)(companyId, `conversations/${convId}/messages`))

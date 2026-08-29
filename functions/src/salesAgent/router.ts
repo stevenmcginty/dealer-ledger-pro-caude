@@ -23,6 +23,7 @@ import { getStockItem, searchStock } from './stock/search';
 import {
     BRAIN_SECRETS,
     appendMessage,
+    applyCustomerReaction,
     claimProviderId,
     findOrCreateConversation,
     getConversation,
@@ -341,6 +342,8 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     if (msg.channel === 'whatsapp') {
         const ownerCompanyId = await ownerCompanyForWhatsApp(inbox, msg.address, credentialCompanyId);
         if (ownerCompanyId) {
+            // A thumbs-up on an owner alert is not TAKE OVER / ANSWER.
+            if (msg.kind === 'reaction') return;
             await recordOwnerInbound(ownerCompanyId);
             const ownerSettings = await readSettings(ownerCompanyId);
             await handleOwnerCommand(ownerCompanyId, ownerSettings, msg.text || '');
@@ -384,6 +387,34 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     }
 
     const text = lead ? messageOrDefault(lead, conversation.vehicleInterest?.title) : msg.text;
+
+    if (msg.kind === 'reaction') {
+        const pinned = msg.reactionTo
+            ? await applyCustomerReaction(companyId, msg.reactionTo, text || null, msg.receivedAt || Date.now())
+            : false;
+
+        if (!pinned && text) {
+            await appendMessage(companyId, conversation, {
+                direction: 'in',
+                channel: msg.channel,
+                text,
+                from: 'customer',
+                kind: 'reaction',
+                providerId: msg.providerId,
+                createdAt: msg.receivedAt || Date.now(),
+            });
+        }
+
+        // Visible in the thread; not a customer turn. Do not refresh the 24h window,
+        // ping Steve, or ask Dave to reply to a thumbs-up.
+        if (text) {
+            await updateConversation(companyId, conversation.id, {
+                lastInboundAt: msg.receivedAt || Date.now(),
+                unread: (conversation.unread || 0) + 1,
+            });
+        }
+        return;
+    }
 
     await appendMessage(companyId, conversation, {
         direction: 'in',

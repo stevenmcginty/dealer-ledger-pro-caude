@@ -224,6 +224,11 @@ export interface AgentMessage {
     providerId?: string;
     subject?: string;
     media?: MessageMedia;
+    /** WhatsApp emoji tap, stored as its own bubble when we cannot pin it on the original. */
+    kind?: 'reaction';
+    /** Emoji a customer tapped onto this outbound message. */
+    customerReaction?: string;
+    customerReactionAt?: number;
     createdAt: number;
     /** How far an outbound message got. WhatsApp reports delivered/read back; other channels stop at 'sent'. */
     delivery?: DeliveryState;
@@ -963,6 +968,17 @@ export const bounceNoticeText = (message: AgentMessage): string | null => {
     return text.startsWith(BOUNCE_NOTICE_PREFIX)
         ? text.slice(BOUNCE_NOTICE_PREFIX.length).trim()
         : null;
+};
+
+/** True when this bubble is a WhatsApp emoji reaction, not a real customer turn. */
+export const isReactionMessage = (message: AgentMessage): boolean =>
+    message.kind === 'reaction' || (message.text || '').trim() === '[reaction]';
+
+/** The emoji they tapped, or null for the old placeholder-only bubbles. */
+export const reactionEmojiOf = (message: AgentMessage): string | null => {
+    if (message.kind !== 'reaction') return null;
+    const emoji = (message.text || '').trim();
+    return emoji || null;
 };
 
 export const conversationPhone = (conv: Conversation): string | undefined => {

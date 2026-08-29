@@ -202,4 +202,23 @@ describe('inbox context', () => {
         assert.ok(blob.includes('Can I book Friday 12:00?'));
     });
 
+    it('skips WhatsApp reactions in the transcript so Dave does not answer a thumbs-up', () => {
+        const contents = buildContents({
+            conversation: baseConv,
+            history: [
+                { id: 'm1', direction: 'out', channel: 'whatsapp', from: 'agent', text: 'See you at the gate.', createdAt: 1 },
+                { id: 'm2', direction: 'in', channel: 'whatsapp', from: 'customer', kind: 'reaction', text: '👍', createdAt: 2 },
+                { id: 'm3', direction: 'in', channel: 'whatsapp', from: 'customer', text: '[reaction]', createdAt: 3 },
+                { id: 'm4', direction: 'in', channel: 'whatsapp', from: 'customer', text: 'On my way', createdAt: 4 },
+            ],
+            settings,
+            inbound: { companyId: 'company-1', channel: 'whatsapp', address: '+447700900123', text: 'Parking now', providerId: 'w1', receivedAt: Date.now() },
+        });
+        const blob = contents.map(c => (c.parts?.[0] as { text?: string })?.text || '').join('\n');
+        assert.ok(!blob.includes('👍'));
+        assert.ok(!blob.includes('[reaction]'));
+        assert.ok(blob.includes('On my way'));
+        assert.ok(blob.includes('Parking now'));
+    });
+
 });

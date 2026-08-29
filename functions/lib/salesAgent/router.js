@@ -282,6 +282,9 @@ const handleInbound = async (msg, options = {}) => {
     if (msg.channel === 'whatsapp') {
         const ownerCompanyId = await (0, inboxRouting_1.ownerCompanyForWhatsApp)(inbox, msg.address, credentialCompanyId);
         if (ownerCompanyId) {
+            // A thumbs-up on an owner alert is not TAKE OVER / ANSWER.
+            if (msg.kind === 'reaction')
+                return;
             await (0, alerts_1.recordOwnerInbound)(ownerCompanyId);
             const ownerSettings = await (0, conversations_1.readSettings)(ownerCompanyId);
             await (0, ownerCommands_1.handleOwnerCommand)(ownerCompanyId, ownerSettings, msg.text || '');
@@ -318,6 +321,31 @@ const handleInbound = async (msg, options = {}) => {
         return;
     }
     const text = lead ? (0, leadParsers_1.messageOrDefault)(lead, conversation.vehicleInterest?.title) : msg.text;
+    if (msg.kind === 'reaction') {
+        const pinned = msg.reactionTo
+            ? await (0, conversations_1.applyCustomerReaction)(companyId, msg.reactionTo, text || null, msg.receivedAt || Date.now())
+            : false;
+        if (!pinned && text) {
+            await (0, conversations_1.appendMessage)(companyId, conversation, {
+                direction: 'in',
+                channel: msg.channel,
+                text,
+                from: 'customer',
+                kind: 'reaction',
+                providerId: msg.providerId,
+                createdAt: msg.receivedAt || Date.now(),
+            });
+        }
+        // Visible in the thread; not a customer turn. Do not refresh the 24h window,
+        // ping Steve, or ask Dave to reply to a thumbs-up.
+        if (text) {
+            await (0, conversations_1.updateConversation)(companyId, conversation.id, {
+                lastInboundAt: msg.receivedAt || Date.now(),
+                unread: (conversation.unread || 0) + 1,
+            });
+        }
+        return;
+    }
     await (0, conversations_1.appendMessage)(companyId, conversation, {
         direction: 'in',
         channel: msg.channel,

@@ -500,6 +500,8 @@ export const buildContents = (args: {
         // have the agent answering Steve's words as though the customer had said them.
         if (message.from === 'owner' && text.startsWith(OWNER_INSTRUCTION_PREFIX)) continue;
         if (message.from === 'owner' && text.startsWith(BOUNCE_NOTICE_PREFIX)) continue;
+        // Emoji taps are acknowledgements, not turns to answer.
+        if (message.kind === 'reaction' || text === '[reaction]') continue;
         if (message.from === 'agent') {
             contents.push({ role: 'model', parts: [{ text }] });
         } else if (message.from === 'owner') {

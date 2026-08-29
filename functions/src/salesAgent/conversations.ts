@@ -499,6 +499,35 @@ export const recordDelivery = async (
     return true;
 };
 
+/**
+ * Pin a customer's emoji onto the message they tapped. Uses the same outboundIndex
+ * as delivery receipts. Returns false when we never sent that message (typed on the
+ * phone, or they reacted to one of their own) — the router then stores a standalone
+ * reaction bubble so the emoji is still visible.
+ */
+export const applyCustomerReaction = async (
+    companyId: string,
+    targetProviderId: string,
+    emoji: string | null,
+    at: number
+): Promise<boolean> => {
+    if (!targetProviderId) return false;
+
+    const snap = await db().ref(agentPath(companyId, `outboundIndex/${rtdbKey(targetProviderId)}`)).once('value');
+    const ref = snap.val() as { convId?: string; messageId?: string } | null;
+    if (!ref?.convId || !ref?.messageId) return false;
+
+    const trimmed = (emoji || '').trim();
+    await db()
+        .ref(agentPath(companyId, `conversations/${ref.convId}/messages/${ref.messageId}`))
+        .update(trimmed
+            ? { customerReaction: trimmed, customerReactionAt: at || Date.now() }
+            : { customerReaction: null, customerReactionAt: null }
+        );
+
+    return true;
+};
+
 export const readHistory = async (companyId: string, convId: string, limit = 40): Promise<AgentMessage[]> => {
     const snap = await db()
         .ref(agentPath(companyId, `conversations/${convId}/messages`))

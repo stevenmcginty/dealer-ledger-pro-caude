@@ -400,6 +400,9 @@ const buildContents = (args) => {
             continue;
         if (message.from === 'owner' && text.startsWith(exports.BOUNCE_NOTICE_PREFIX))
             continue;
+        // Emoji taps are acknowledgements, not turns to answer.
+        if (message.kind === 'reaction' || text === '[reaction]')
+            continue;
         if (message.from === 'agent') {
             contents.push({ role: 'model', parts: [{ text }] });
         }

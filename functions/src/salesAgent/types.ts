@@ -232,6 +232,11 @@ export interface AgentMessage {
     providerId?: string;                 // WhatsApp wamid / Twilio SID / Gmail message id (dedupe)
     subject?: string;
     media?: MessageMedia;
+    /** WhatsApp emoji tap, stored as its own bubble when we cannot pin it on the original. */
+    kind?: 'reaction';
+    /** Emoji a customer tapped onto this outbound message. */
+    customerReaction?: string;
+    customerReactionAt?: number;
     createdAt: number;
     /**
      * How far an outbound message got. WhatsApp reports this back on the webhook;
@@ -266,6 +271,10 @@ export interface InboundMessage {
     /** The whole email as readable text (capped), so the brain reads what the parser did not. */
     fullText?: string;
     media?: MessageMedia;
+    /** WhatsApp reaction webhooks. `text` is the emoji; empty means they removed it. */
+    kind?: 'reaction';
+    /** wamid of the message they tapped. */
+    reactionTo?: string;
     receivedAt: number;
 }
 

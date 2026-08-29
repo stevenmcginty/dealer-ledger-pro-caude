@@ -183,5 +183,23 @@ const prompt_1 = require("./prompt");
         node_assert_1.strict.ok(!blob.includes('Email bounced.'));
         node_assert_1.strict.ok(blob.includes('Can I book Friday 12:00?'));
     });
+    (0, node_test_1.it)('skips WhatsApp reactions in the transcript so Dave does not answer a thumbs-up', () => {
+        const contents = (0, prompt_1.buildContents)({
+            conversation: baseConv,
+            history: [
+                { id: 'm1', direction: 'out', channel: 'whatsapp', from: 'agent', text: 'See you at the gate.', createdAt: 1 },
+                { id: 'm2', direction: 'in', channel: 'whatsapp', from: 'customer', kind: 'reaction', text: '👍', createdAt: 2 },
+                { id: 'm3', direction: 'in', channel: 'whatsapp', from: 'customer', text: '[reaction]', createdAt: 3 },
+                { id: 'm4', direction: 'in', channel: 'whatsapp', from: 'customer', text: 'On my way', createdAt: 4 },
+            ],
+            settings,
+            inbound: { companyId: 'company-1', channel: 'whatsapp', address: '+447700900123', text: 'Parking now', providerId: 'w1', receivedAt: Date.now() },
+        });
+        const blob = contents.map(c => c.parts?.[0]?.text || '').join('\n');
+        node_assert_1.strict.ok(!blob.includes('👍'));
+        node_assert_1.strict.ok(!blob.includes('[reaction]'));
+        node_assert_1.strict.ok(blob.includes('On my way'));
+        node_assert_1.strict.ok(blob.includes('Parking now'));
+    });
 });
 //# sourceMappingURL=brain.test.js.map

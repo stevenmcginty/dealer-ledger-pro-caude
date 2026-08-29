@@ -36,6 +36,8 @@ import {
     conversationEmail,
     conversationName,
     conversationPhone,
+    isReactionMessage,
+    reactionEmojiOf,
     correctThreadCar,
     deleteAgentConversation,
     deleteAgentMessage,
@@ -387,6 +389,32 @@ const MessageBubble: React.FC<{
         );
     }
 
+    if (isReactionMessage(message)) {
+        const emoji = reactionEmojiOf(message);
+        return (
+            <div className="group flex justify-start" onClick={onToggleSelect}>
+                <div className="flex items-end gap-1">
+                    <div className="rounded-2xl rounded-tl-sm bg-[#202c33] px-2.5 py-1.5 shadow">
+                        {mixed && (
+                            <div className="mb-1">
+                                <ChannelChip channel={message.channel} />
+                            </div>
+                        )}
+                        {emoji ? (
+                            <p className="text-[22px] leading-none" aria-label={`Reacted ${emoji}`}>{emoji}</p>
+                        ) : (
+                            <p className="text-[13px] text-[#e9edef]">Reacted</p>
+                        )}
+                        <p className="mt-1 text-[10px] text-[#8696a0]">
+                            {formatAgentTime(message.createdAt)}
+                        </p>
+                    </div>
+                    {deleteBtn('Delete this reaction')}
+                </div>
+            </div>
+        );
+    }
+
     const bubble = !mine
         ? 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
         : fromOwner
@@ -406,7 +434,7 @@ const MessageBubble: React.FC<{
                     </p>
                 )}
                 <div className={`flex items-end gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
-                    <div className={`rounded-2xl px-3 py-2 shadow ${bubble}`}>
+                    <div className={`relative rounded-2xl px-3 py-2 shadow ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
                         {mixed && (
                             <div className="mb-1">
                                 <ChannelChip channel={message.channel} />
@@ -447,6 +475,14 @@ const MessageBubble: React.FC<{
                             <p className="mt-0.5 text-right text-[10px] font-medium text-red-300">
                                 Not delivered{message.deliveryError ? ` — ${message.deliveryError}` : ''}
                             </p>
+                        )}
+                        {message.customerReaction && (
+                            <span
+                                className={`absolute -bottom-3 ${mine ? 'left-2' : 'right-2'} rounded-full bg-[#1f2c33] px-1.5 py-0.5 text-[15px] leading-none shadow ring-2 ring-[#0b141a]`}
+                                title={`Reacted ${message.customerReaction}`}
+                            >
+                                {message.customerReaction}
+                            </span>
                         )}
                     </div>
                     {deleteBtn('Delete this message')}

@@ -24,6 +24,7 @@ import { ChannelSender, DeliveryState, InboundMessage, MessageMedia, OutboxJob, 
 import { handleInbound } from '../router';
 import { WHATSAPP_VIDEO_TARGET, compressVideoForWhatsApp } from './videoCompress';
 import { pruneCompanyWhatsApp, saveInboundWhatsAppFile } from '../whatsappStorage';
+import { whatsappInboundText } from './whatsappInbound';
 
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -477,6 +478,7 @@ interface WebhookMessage {
     image?: WebhookMedia;
     video?: WebhookMedia;
     document?: WebhookMedia;
+    reaction?: { message_id?: string; emoji?: string };
 }
 
 interface WebhookValue {
@@ -493,29 +495,6 @@ interface WebhookStatus {
     timestamp?: string;
     errors?: Array<{ code?: number; title?: string; message?: string }>;
 }
-
-/**
- * Not everything is text. A voice note or a photo still needs to reach the brain as
- * something, or the customer gets silence — a placeholder lets the agent say "I can't
- * play voice notes, what were you after?" rather than nothing at all.
- */
-const textOf = (message: WebhookMessage): string => {
-    switch (message.type) {
-        case 'text': return message.text?.body || '';
-        case 'button': return message.button?.text || '[button]';
-        case 'interactive':
-            return message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '[selection]';
-        case 'audio':
-        case 'voice': return '[voice note]';
-        case 'image': return message.image?.caption || '[photo]';
-        case 'video': return message.video?.caption || '[video]';
-        case 'document': return message.document?.caption || message.document?.filename || '[document]';
-        case 'location': return '[location]';
-        case 'sticker': return '[sticker]';
-        case 'contacts': return '[contact card]';
-        default: return `[${message.type}]`;
-    }
-};
 
 /** Meta signs the raw bytes, so the parsed body cannot be re-serialised and checked. */
 const signatureValid = (appSecret: string, rawBody: Buffer, header?: string): boolean => {
@@ -639,11 +618,15 @@ const processChange = async (companyId: string, value: WebhookValue): Promise<vo
             companyId,
             channel: 'whatsapp',
             address: toE164(message.from),
-            text: textOf(message),
+            text: whatsappInboundText(message),
             providerId: message.id,
             name: names.get(message.from),
             receivedAt: Number(message.timestamp) * 1000 || Date.now(),
             ...(media ? { media } : {}),
+            ...(message.type === 'reaction' ? {
+                kind: 'reaction' as const,
+                ...(message.reaction?.message_id ? { reactionTo: message.reaction.message_id } : {}),
+            } : {}),
         };
 
         await markRead(companyId, message.id);

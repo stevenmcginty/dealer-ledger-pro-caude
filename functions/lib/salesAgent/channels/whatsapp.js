@@ -57,6 +57,7 @@ const types_1 = require("../types");
 const router_1 = require("../router");
 const videoCompress_1 = require("./videoCompress");
 const whatsappStorage_1 = require("../whatsappStorage");
+const whatsappInbound_1 = require("./whatsappInbound");
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 /** Meta only accepts approved languages; Steve's templates are submitted as en_GB. */
@@ -385,28 +386,6 @@ exports.whatsappSender = {
 /** Enqueue-time helper for the router: is free text still allowed? */
 const withinCustomerServiceWindow = (lastCustomerMessageAt) => !!lastCustomerMessageAt && Date.now() - lastCustomerMessageAt < 24 * 3600000;
 exports.withinCustomerServiceWindow = withinCustomerServiceWindow;
-/**
- * Not everything is text. A voice note or a photo still needs to reach the brain as
- * something, or the customer gets silence — a placeholder lets the agent say "I can't
- * play voice notes, what were you after?" rather than nothing at all.
- */
-const textOf = (message) => {
-    switch (message.type) {
-        case 'text': return message.text?.body || '';
-        case 'button': return message.button?.text || '[button]';
-        case 'interactive':
-            return message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '[selection]';
-        case 'audio':
-        case 'voice': return '[voice note]';
-        case 'image': return message.image?.caption || '[photo]';
-        case 'video': return message.video?.caption || '[video]';
-        case 'document': return message.document?.caption || message.document?.filename || '[document]';
-        case 'location': return '[location]';
-        case 'sticker': return '[sticker]';
-        case 'contacts': return '[contact card]';
-        default: return `[${message.type}]`;
-    }
-};
 /** Meta signs the raw bytes, so the parsed body cannot be re-serialised and checked. */
 const signatureValid = (appSecret, rawBody, header) => {
     if (!header?.startsWith('sha256='))
@@ -519,11 +498,15 @@ const processChange = async (companyId, value) => {
             companyId,
             channel: 'whatsapp',
             address: (0, types_1.toE164)(message.from),
-            text: textOf(message),
+            text: (0, whatsappInbound_1.whatsappInboundText)(message),
             providerId: message.id,
             name: names.get(message.from),
             receivedAt: Number(message.timestamp) * 1000 || Date.now(),
             ...(media ? { media } : {}),
+            ...(message.type === 'reaction' ? {
+                kind: 'reaction',
+                ...(message.reaction?.message_id ? { reactionTo: message.reaction.message_id } : {}),
+            } : {}),
         };
         await markRead(companyId, message.id);
         try {
