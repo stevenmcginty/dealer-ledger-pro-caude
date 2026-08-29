@@ -443,6 +443,18 @@ export const buildSystemPrompt = (args: {
 
     sections.push(
         [
+            'WHAT YOU ARE ANSWERING',
+            'The transcript is there for context. You are answering the LAST message in it and nothing else.',
+            '- Anything further up has already been dealt with. Do not escalate, hand over, or apologise again for something said earlier in the thread.',
+            '- A rude or angry message the desk has already seen is old news. Judge the message in front of you on its own.',
+            conversation.escalated || conversation.mode !== 'agent'
+                ? `- ${owner} already has this thread: it has been escalated${conversation.escalationReason ? ` (${conversation.escalationReason})` : ''}. Do NOT call escalate_to_owner or request_handoff again unless something genuinely new has happened since.`
+                : '',
+        ].filter(Boolean).join('\n'),
+    );
+
+    sections.push(
+        [
             'OUTPUT',
             'Reply with one JSON object and nothing else. No code fence, no commentary around it.',
             '{"reply": "...", "summary": "...", "updates": {...}}',

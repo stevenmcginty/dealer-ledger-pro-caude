@@ -580,6 +580,15 @@ export const runAgentTurn = async (
 ): Promise<{ reply: string }> => {
     const history = await readHistory(companyId, conversation.id);
 
+    // What was already true before this turn. An escalation is news the first time and
+    // noise every time after: Dave kept reading a rude message from two days ago, at the
+    // top of the replayed history, and escalating and handing over again on every single
+    // inbound — five alerts in thirty seconds for one thread already sitting with Steve
+    // (29 Aug).
+    const wasEscalated = conversation.escalated === true;
+    const wasEscalationReason = conversation.escalationReason || '';
+    const wasWithAHuman = conversation.mode !== 'agent';
+
     if (agentTurnLimitReached(
         history.filter(m => m.from === 'agent').length,
         settings.maxAgentTurns
@@ -684,13 +693,20 @@ export const runAgentTurn = async (
     Object.assign(conversation, patch);
 
     if (!options.simulate) {
-        if (result.escalate) {
+        // Already escalated for this same reason, or already handed over: he knows.
+        const escalationIsNew = !!result.escalate
+            && (!wasEscalated || wasEscalationReason !== result.escalate.reason)
+            && !wasWithAHuman;
+
+        if (result.escalate && escalationIsNew) {
             await sendOwnerAlert(
                 companyId,
                 'escalation',
                 conversation,
                 `#${conversation.shortId} ESCALATION (${result.escalate.reason}): ${result.escalate.ownerMessage}`
             );
+        } else if (result.escalate) {
+            console.log(`#${conversation.shortId} escalation repeated (${result.escalate.reason}); not alerting again`);
         }
 
         if (result.askOwner) {
@@ -712,7 +728,8 @@ export const runAgentTurn = async (
             );
         }
 
-        if (result.handoff) {
+        // Handing over a thread that is already yours is not an event.
+        if (result.handoff && !wasWithAHuman) {
             await sendOwnerAlert(
                 companyId,
                 'escalation',
