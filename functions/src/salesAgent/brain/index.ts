@@ -55,6 +55,12 @@ export interface RunBrainInput {
     emailContext?: EmailContext;
     /** Corrections the desk has made, formatted one per line. See salesAgent/lessons.ts. */
     lessons?: string[];
+    /**
+     * Write the reply but never send it. The only reason a turn is allowed to run on a
+     * thread the agent does not own: Steve has taken it over and still wants something
+     * in the box to send or edit.
+     */
+    draftOnly?: boolean;
 }
 
 export interface BrainDeps {
@@ -403,7 +409,13 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
 
     // The bot is silent the moment it stops owning the conversation. No API call,
     // no tokens, no chance of the model talking over Steve.
-    if (conversation.mode !== 'agent') {
+    //
+    // Except when the router has asked for a draft and nothing else. Handing a thread
+    // to Steve was never meant to leave him a blank compose box, but this guard sat in
+    // front of that and returned an empty reply every time, so the promised draft never
+    // appeared on a single handed-over thread (29 Aug). draftOnly turns are held by
+    // holdDraft and cannot reach the customer.
+    if (conversation.mode !== 'agent' && !(input.draftOnly && conversation.mode === 'human')) {
         return { reply: '', stage: conversation.stage, updates: {} };
     }
 

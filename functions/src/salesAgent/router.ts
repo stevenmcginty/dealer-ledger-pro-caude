@@ -449,8 +449,14 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
             `#${conversation.shortId} New ${msg.channel} enquiry from ${describeCustomer(conversation)}${unmatched}: ${text.slice(0, 200)}`,
             customerPush(conversation, msg.channel, text)
         );
-    } else if (conversation.mode === 'agent') {
+    } else if (conversation.mode !== 'paused') {
         // Follow-up on a live thread: shade + PWA badge, not another WhatsApp to Steve.
+        //
+        // This used to fire only while the thread was Dave's. The effect was that the
+        // moment Steve took one over, every reply from that customer arrived in silence
+        // — no badge, no shade, nothing — which is the exact opposite of what taking a
+        // thread over means (29 Aug: a customer's "Ok" sat unseen). Paused threads are
+        // left out because they get their own alert further down.
         await sendOwnerAlert(
             companyId,
             'inbound',
@@ -617,7 +623,10 @@ export const runAgentTurn = async (
         ? []
         : formatLessons(await readLessons(companyId).catch(() => []));
 
-    const result = await runBrain({ companyId, conversation, history, inbound, settings, emailContext, lessons });
+    const result = await runBrain({
+        companyId, conversation, history, inbound, settings, emailContext, lessons,
+        ...(options.draftOnly ? { draftOnly: true } : {}),
+    });
 
     // Silence guard (Steve, 26 Aug): in agent mode a customer message must never go unanswered.
     // If the brain came back empty without asking Steve or handing off, send a holding line and
