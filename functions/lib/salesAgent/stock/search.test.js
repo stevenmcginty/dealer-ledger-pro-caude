@@ -345,4 +345,21 @@ const ids = (items) => items.map(item => item.id);
         node_assert_1.strict.ok(!hits.some(h => h.id === 'a'));
     });
 });
+(0, node_test_1.describe)('a follow-up that names a different car', () => {
+    const ASTRA = car({ id: 'astra', make: 'Vauxhall', model: 'Astra GTC', variant: '1.4 i Turbo', title: 'Vauxhall Astra GTC 1.4 i Turbo', reg: 'BV17OSY', description: 'Hope you like it. Chris and Steve will be happy to help.' });
+    const TAYCAN = car({ id: 'taycan', make: 'Porsche', model: 'Taycan', variant: '4S', title: 'Porsche Taycan 4S', status: 'sold' });
+    const MX5_LIVE = car({ id: 'mx5-live', make: 'Mazda', model: 'MX-5', variant: 'Convertible', title: 'Mazda MX-5 Convertible', ownerCompanyId: 'steve' });
+    const MX5_GONE = car({ id: 'mx5-gone', make: 'Mazda', model: 'MX-5', variant: '1.5 SKYACTIV-G Sport Nav', title: 'Mazda MX-5 1.5 SKYACTIV-G Sport Nav', status: 'sold', ownerCompanyId: 'chris', description: 'Hope all is well with this lovely car, would suit anyone, possible to view today.' });
+    const STOCK = [ASTRA, TAYCAN, MX5_LIVE, MX5_GONE];
+    (0, node_test_1.it)('"would it be possible to view the MX5 today" is the MX-5 for sale, not the Astra', () => {
+        const text = 'Hi Chris / Steve, Hope all is well! Would it be possible to view the MX5 today? Thanks';
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(STOCK, { text })?.id, 'mx5-live');
+        node_assert_1.strict.deepEqual((0, search_1.rankStock)(STOCK, { text, includeHidden: true, limit: 5 }).filter(h => h.matchQuality !== 'weak').map(h => h.id), ['mx5-live']);
+    });
+    (0, node_test_1.it)('a chatty message with no car in it names nothing', () => {
+        for (const text of ['Can I come and see it tomorrow?', 'Is the roof operating ok?', 'Hope all is well!']) {
+            node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(STOCK, { text }), null, text);
+        }
+    });
+});
 //# sourceMappingURL=search.test.js.map

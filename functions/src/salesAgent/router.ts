@@ -19,7 +19,7 @@ import * as functions from 'firebase-functions/v1';
 import { runBrain } from './brain';
 import { BOUNCE_NOTICE_PREFIX, OWNER_INSTRUCTION_PREFIX, OWNER_INSTRUCTION_QUESTION } from './brain/prompt';
 import { contactPhone, resolveSendTargets, type SendVia } from './sendTargets';
-import { getStockItem, searchStock } from './stock/search';
+import { carWordsOnly, getStockItem, rankStock, readStock, searchStock } from './stock/search';
 import {
     BRAIN_SECRETS,
     appendMessage,
@@ -188,6 +188,63 @@ const attachVehicle = async (companyId: string, conversation: Conversation, lead
 
     await updateConversation(companyId, conversation.id, { vehicleInterest });
     conversation.vehicleInterest = vehicleInterest;
+};
+
+/**
+ * A customer on a live thread who names a different car is now asking about that
+ * car. The thread used to stay pinned to the first one forever, so Tobias asking
+ * to view the MX-5 sat in the inbox as a Z4 enquiry and looked like a mix-up of
+ * two people (Steve, 30 Aug).
+ *
+ * Only the words they wrote this time count — not the subject line, which still
+ * carries the old car in a reply. The match has to be a car for sale and has to
+ * be unambiguous, otherwise the thread keeps the car it had.
+ */
+const switchVehicleIfNamed = async (
+    credentialCompanyId: string,
+    companyId: string,
+    conversation: Conversation,
+    msg: InboundMessage,
+    lead?: ParsedLead
+): Promise<void> => {
+    const current = conversation.vehicleInterest;
+    if (!current?.stockId) return;
+    if (lead && lead.kind !== 'enquiry') return;
+
+    const body = ((lead ? lead.message : msg.text) || '').trim();
+    if (!body) return;
+
+    // One car for sale, named clearly. "The Mazda" when two are in must not move
+    // the thread, and neither must a car that has gone.
+    let item: StockItem | null = null;
+    try {
+        const stock = await readStock(credentialCompanyId);
+        const text = carWordsOnly(stock, body);
+        const hits = text
+            ? rankStock(stock, { text, includeHidden: true, limit: 5 }).filter(hit => hit.matchQuality !== 'weak')
+            : [];
+        item = hits.length === 1 ? hits[0] : null;
+    } catch (error) {
+        console.error(`Stock lookup failed for company ${credentialCompanyId}`, error);
+        return;
+    }
+    if (!item || item.id === current.stockId) return;
+
+    const vehicleInterest: Conversation['vehicleInterest'] = {
+        stockId: item.id,
+        title: item.title,
+        ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+        ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
+    };
+    await updateConversation(companyId, conversation.id, { vehicleInterest });
+    conversation.vehicleInterest = vehicleInterest;
+
+    await sendOwnerAlert(
+        companyId,
+        'inbound',
+        conversation,
+        `#${conversation.shortId} ${describeCustomer(conversation)} is now asking about the ${item.title} (was ${current.title || 'another car'}).`
+    );
 };
 
 /**
@@ -490,6 +547,10 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         conversation.vehicleInterest = vehicleInterest;
     } else if (lead) {
         await attachVehicle(companyId, conversation, lead);
+    }
+
+    if (!isNew) {
+        await switchVehicleIfNamed(credentialCompanyId, companyId, conversation, msg, lead);
     }
 
     // The master switch. Bookkeeping and the new-lead ping still happen when Dave

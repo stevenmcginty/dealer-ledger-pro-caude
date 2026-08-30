@@ -60,7 +60,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.describeStockItem = exports.getStockItem = exports.countStock = exports.searchStock = exports.matchEnquiryStockForCompany = exports.matchEnquiryStock = exports.readStock = exports.rankStock = exports.broadenQueryText = exports.normaliseQueryText = void 0;
+exports.describeStockItem = exports.getStockItem = exports.countStock = exports.searchStock = exports.matchEnquiryStockForCompany = exports.matchEnquiryStock = exports.carWordsOnly = exports.readStock = exports.rankStock = exports.broadenQueryText = exports.normaliseQueryText = void 0;
 const admin = __importStar(require("firebase-admin"));
 const db = () => admin.database();
 const DEFAULT_LIMIT = 5;
@@ -276,12 +276,20 @@ const aliasHits = (item, alias) => {
 };
 /** Letters and digits only, so "370z" lands on a model the site prints as "370 Z". */
 const squash = (value) => lower(value).replace(/[^a-z0-9]/g, '');
-/** A loose token that lands on what the car actually is, rather than on its blurb. */
-const identityToken = (item, token) => lower(item.make).includes(token) ||
-    lower(item.model).includes(token) ||
+/**
+ * A loose token that lands on what the car actually is, rather than on its blurb.
+ *
+ * Make and model are matched as whole words and never on two letters: "all" sits
+ * inside "Vauxhall", "can" inside "Taycan" and "be" inside half the plates on the
+ * forecourt, which made "would it be possible to view the MX5" a close match on
+ * an Astra (Steve, 30 Aug). Model codes with a digit ("370z") still match loosely,
+ * and the two-letter names people really use ("z4", "vw") are aliases.
+ */
+const identityToken = (item, token) => token.length >= 3 && (wordIn(lower(item.make), token) ||
+    wordIn(lower(item.model), token) ||
     wordIn(lower(item.variant), token) ||
     lower(item.reg).replace(/\s+/g, '').includes(token) ||
-    (token.length >= 3 && /\d/.test(token) && /[a-z]/.test(token) && (squash(item.model).includes(token) || squash(item.title).includes(token)));
+    (token.length >= 3 && /\d/.test(token) && /[a-z]/.test(token) && (squash(item.model).includes(token) || squash(item.title).includes(token))));
 const identityOf = (item, q) => q.aliases.some(alias => aliasHits(item, alias)) || q.tokens.some(token => identityToken(item, token));
 const colourHits = (item, q) => q.colours.some(spelling => lower(item.colour).includes(spelling));
 const facetHits = (item, facet) => {
@@ -413,6 +421,33 @@ const readStock = async (companyId) => {
     return Object.values(raw).filter(item => !!item);
 };
 exports.readStock = readStock;
+/**
+ * Just the words in a message that name a car: nicknames, makes, models, variants,
+ * plates, years and colours. Everything else is dropped.
+ *
+ * A whole email used to go through the matcher, and every filler word scored a
+ * point on any advert whose blurb happened to use it. A sold MX-5 with a chatty
+ * description then outranked the one for sale, and "would it be possible to view
+ * the MX5 today" came back as "we do not know" (Tobias, 30 Aug).
+ */
+const carWordsOnly = (items, text) => {
+    const q = (0, exports.normaliseQueryText)(text);
+    const parts = [];
+    for (const alias of q.aliases)
+        parts.push(alias.phrase);
+    for (const year of q.years)
+        parts.push(String(year));
+    for (const colour of q.colours)
+        parts.push(colour);
+    for (const facet of q.facets)
+        parts.push(facet.words[0]);
+    for (const token of q.tokens) {
+        if (items.some(item => identityToken(item, token)))
+            parts.push(token);
+    }
+    return parts.join(' ').trim();
+};
+exports.carWordsOnly = carWordsOnly;
 const matchEnquiryStock = (items, hint) => {
     if (hint.stockId) {
         const exact = items.find(item => item.id === hint.stockId);
@@ -427,7 +462,7 @@ const matchEnquiryStock = (items, hint) => {
                 return exact;
         }
     }
-    const text = (hint.title || hint.text || '').trim();
+    const text = (0, exports.carWordsOnly)(items, hint.title || hint.text);
     if (!text)
         return null;
     const hits = (0, exports.rankStock)(items, { text, includeReserved: true, includeHidden: true, limit: 5 })

@@ -162,6 +162,52 @@ const attachVehicle = async (companyId, conversation, lead) => {
     conversation.vehicleInterest = vehicleInterest;
 };
 /**
+ * A customer on a live thread who names a different car is now asking about that
+ * car. The thread used to stay pinned to the first one forever, so Tobias asking
+ * to view the MX-5 sat in the inbox as a Z4 enquiry and looked like a mix-up of
+ * two people (Steve, 30 Aug).
+ *
+ * Only the words they wrote this time count — not the subject line, which still
+ * carries the old car in a reply. The match has to be a car for sale and has to
+ * be unambiguous, otherwise the thread keeps the car it had.
+ */
+const switchVehicleIfNamed = async (credentialCompanyId, companyId, conversation, msg, lead) => {
+    const current = conversation.vehicleInterest;
+    if (!current?.stockId)
+        return;
+    if (lead && lead.kind !== 'enquiry')
+        return;
+    const body = ((lead ? lead.message : msg.text) || '').trim();
+    if (!body)
+        return;
+    // One car for sale, named clearly. "The Mazda" when two are in must not move
+    // the thread, and neither must a car that has gone.
+    let item = null;
+    try {
+        const stock = await (0, search_1.readStock)(credentialCompanyId);
+        const text = (0, search_1.carWordsOnly)(stock, body);
+        const hits = text
+            ? (0, search_1.rankStock)(stock, { text, includeHidden: true, limit: 5 }).filter(hit => hit.matchQuality !== 'weak')
+            : [];
+        item = hits.length === 1 ? hits[0] : null;
+    }
+    catch (error) {
+        console.error(`Stock lookup failed for company ${credentialCompanyId}`, error);
+        return;
+    }
+    if (!item || item.id === current.stockId)
+        return;
+    const vehicleInterest = {
+        stockId: item.id,
+        title: item.title,
+        ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+        ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
+    };
+    await (0, conversations_1.updateConversation)(companyId, conversation.id, { vehicleInterest });
+    conversation.vehicleInterest = vehicleInterest;
+    await (0, alerts_1.sendOwnerAlert)(companyId, 'inbound', conversation, `#${conversation.shortId} ${(0, alerts_1.describeCustomer)(conversation)} is now asking about the ${item.title} (was ${current.title || 'another car'}).`);
+};
+/**
  * A missed call or a CarGurus phone lead: a number and nothing else.
  *
  * Messaging a stranger who rang once is a judgement call, not a default. Steve gets the
@@ -410,6 +456,9 @@ const handleInbound = async (msg, options = {}) => {
     }
     else if (lead) {
         await attachVehicle(companyId, conversation, lead);
+    }
+    if (!isNew) {
+        await switchVehicleIfNamed(credentialCompanyId, companyId, conversation, msg, lead);
     }
     // The master switch. Bookkeeping and the new-lead ping still happen when Dave
     // is off, so a car routed to Chris is not silent in his inbox.
