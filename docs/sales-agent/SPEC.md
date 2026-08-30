@@ -43,9 +43,11 @@ radlettcarsales.com is shared by more than one Dealer Ledger Pro company (Steve;
 Steve and Chris share radlettcars@gmail.com and one WhatsApp Business number. They do not share a ledger. A `SharedInbox` (salesAgentRouting/sharedInboxes/{id}, saved via `salesAgentSaveSharedInbox`) names the companies, the company that holds the tokens (`credentialCompanyId`), and a fallback (Steve, when we cannot tell whose car it is).
 
 Inbound still lands on the credential company first (Gmail watch / WhatsApp webhook). Before a conversation is created, `resolveConversationHome`:
-1. If this person already has a thread in any member account, that thread wins (sticky — we never move it).
+1. If this person already has a thread in any member account, that thread wins (sticky — we never move it). **Email identity is the customer's email.** A mobile scraped from the body is not, and neither is a Cazoo/CarGurus/website noreply — those glued two different people onto one thread (Steve, 30 Aug: a Z4 Cazoo lead and a separate MX-5 email). WhatsApp still matches on the number, so an email lead who answers the follow-up stays on the same conversation.
 2. Else match the car (stock id, then reg, then exact/close description, including hidden cars so Chris's stock is visible). If `ownerCompanyId` is a member, the thread is created in that company's Agent Inbox and CRM.
 3. Else fallback inbox, tagged `routing.reason = 'fallback'`.
+
+When two people still land on one thread, **Different person** (next to Wrong car) pulls the stray email into its own lead and re-matches the car, so it can move to the other ledger.
 
 Sending (email, WhatsApp, owner alerts) reads tokens from the credential company, not the home company. Email leads with a mobile still get both an email reply and a WhatsApp `enquiry_followup` template, but the WhatsApp is queued only when `SharedInbox.whatsappLive === true` **and** `settings.channels.whatsapp`. Connecting the Cloud API does not start sending. The mobile is indexed on the thread either way, so a later inbound WhatsApp finds the email conversation. Owner commands (`TAKE OVER 12`) match each member's `ownerAlertNumber`, so Chris's personal mobile talks to Chris's short ids.
 

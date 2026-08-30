@@ -15,8 +15,9 @@
  * already mapped, which is how a single-dealer install behaves today.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.saveSharedInbox = exports.bindInboxChannelsFromPrivate = exports.ownerCompanyForWhatsApp = exports.resolveConversationHome = exports.pickHomeCompany = exports.mirrorConversationContacts = exports.backfillSharedContacts = exports.findExistingSharedContact = exports.claimSharedProviderId = exports.isWhatsAppLiveFor = exports.readSendPrivate = exports.credentialsCompanyId = exports.companyLooksReal = exports.sharedInboxSaveBlocked = exports.inboxForMember = exports.inboxById = void 0;
+exports.saveSharedInbox = exports.bindInboxChannelsFromPrivate = exports.ownerCompanyForWhatsApp = exports.resolveConversationHome = exports.pickHomeCompany = exports.mirrorConversationContacts = exports.backfillSharedContacts = exports.findExistingSharedContact = exports.releaseSharedProviderId = exports.claimSharedProviderId = exports.isWhatsAppLiveFor = exports.readSendPrivate = exports.credentialsCompanyId = exports.companyLooksReal = exports.sharedInboxSaveBlocked = exports.inboxForMember = exports.inboxById = void 0;
 const conversations_1 = require("./conversations");
+const identity_1 = require("./identity");
 const search_1 = require("./stock/search");
 const types_1 = require("./types");
 const inboxRef = (inboxId, sub = '') => (0, conversations_1.db)().ref((0, conversations_1.routingPath)(`sharedInboxes/${inboxId}${sub ? `/${sub}` : ''}`));
@@ -115,12 +116,25 @@ const claimSharedProviderId = async (inboxId, providerId) => {
     return result.committed;
 };
 exports.claimSharedProviderId = claimSharedProviderId;
-const writeSharedContact = async (inboxId, companyId, channel, address, convId) => {
+const writeSharedContact = async (inboxId, companyId, channel, address, convId, stealFrom) => {
     if (!address)
         return;
+    if (channel === 'email' && !(0, identity_1.isUsableEmail)(address))
+        return;
     const key = (0, types_1.rtdbKey)((0, types_1.normaliseAddress)(channel, address));
-    await inboxRef(inboxId, `contactIndex/${key}`).set({ companyId, convId });
+    const ref = inboxRef(inboxId, `contactIndex/${key}`);
+    const current = (await ref.once('value')).val();
+    const canSteal = channel === 'email' && stealFrom && current?.convId === stealFrom;
+    if (current?.convId && current.convId !== convId && !canSteal)
+        return;
+    await ref.set({ companyId, convId });
 };
+const releaseSharedProviderId = async (inboxId, providerId) => {
+    if (!inboxId || !providerId)
+        return;
+    await inboxRef(inboxId, `seenProviderIds/${(0, types_1.rtdbKey)(providerId)}`).remove();
+};
+exports.releaseSharedProviderId = releaseSharedProviderId;
 const lookupSharedContact = async (inboxId, channel, address) => {
     if (!address)
         return null;
@@ -129,24 +143,20 @@ const lookupSharedContact = async (inboxId, channel, address) => {
     const val = snap.val();
     return val?.companyId && val?.convId ? val : null;
 };
-const contactCandidates = (channel, address, contact) => {
-    const candidates = [[channel, address]];
-    if (contact.email)
-        candidates.push(['email', contact.email]);
-    if (contact.phone) {
-        candidates.push(['whatsapp', contact.phone], ['sms', contact.phone]);
-    }
-    return candidates;
-};
 const findExistingSharedContact = async (inbox, channel, address, contact) => {
-    for (const [candidateChannel, candidateAddress] of contactCandidates(channel, address, contact)) {
+    for (const [candidateChannel, candidateAddress] of (0, identity_1.lookupKeys)(channel, address, contact)) {
         const found = await lookupSharedContact(inbox.id, candidateChannel, candidateAddress);
         if (!found || !inbox.memberCompanyIds.includes(found.companyId))
             continue;
         // A thread deleted from the inbox leaves its pointer behind. Following it
         // would pin the customer to a ledger and a conversation that no longer
         // exist, so the pointer goes and the placement rule runs afresh.
-        if (!(await (0, conversations_1.getConversation)(found.companyId, found.convId))) {
+        const existing = await (0, conversations_1.getConversation)(found.companyId, found.convId);
+        if (!existing) {
+            await inboxRef(inbox.id, `contactIndex/${(0, types_1.rtdbKey)((0, types_1.normaliseAddress)(candidateChannel, candidateAddress))}`).remove();
+            continue;
+        }
+        if ((0, identity_1.isDifferentPerson)(channel, address, contact, existing)) {
             await inboxRef(inbox.id, `contactIndex/${(0, types_1.rtdbKey)((0, types_1.normaliseAddress)(candidateChannel, candidateAddress))}`).remove();
             continue;
         }
@@ -168,7 +178,7 @@ const backfillSharedContacts = async (inbox) => {
             if (!conversation?.address)
                 continue;
             const contact = conversation.contact || {};
-            for (const [candidateChannel, candidateAddress] of contactCandidates(conversation.channel, conversation.address, contact)) {
+            for (const [candidateChannel, candidateAddress] of (0, identity_1.indexKeys)(conversation.channel, conversation.address, contact)) {
                 const key = (0, types_1.rtdbKey)((0, types_1.normaliseAddress)(candidateChannel, candidateAddress));
                 const current = (await inboxRef(inbox.id, `contactIndex/${key}`).once('value')).val();
                 if (current?.companyId && current?.convId)
@@ -181,13 +191,13 @@ const backfillSharedContacts = async (inbox) => {
     return mirrored;
 };
 exports.backfillSharedContacts = backfillSharedContacts;
-const mirrorConversationContacts = async (companyId, conversation, channel, address) => {
+const mirrorConversationContacts = async (companyId, conversation, channel, address, stealFrom) => {
     const inbox = await (0, exports.inboxForMember)(companyId);
     if (!inbox)
         return;
     const contact = conversation.contact || {};
-    for (const [candidateChannel, candidateAddress] of contactCandidates(channel, address, contact)) {
-        await writeSharedContact(inbox.id, companyId, candidateChannel, candidateAddress, conversation.id);
+    for (const [candidateChannel, candidateAddress] of (0, identity_1.indexKeys)(channel, address, contact)) {
+        await writeSharedContact(inbox.id, companyId, candidateChannel, candidateAddress, conversation.id, stealFrom);
     }
 };
 exports.mirrorConversationContacts = mirrorConversationContacts;
@@ -230,7 +240,7 @@ const pickHomeCompany = (args) => {
 exports.pickHomeCompany = pickHomeCompany;
 const resolveConversationHome = async (args) => {
     const { inbox, credentialCompanyId, channel, address, contact, lead, text } = args;
-    const existing = inbox
+    const existing = inbox && !args.skipExisting
         ? await (0, exports.findExistingSharedContact)(inbox, channel, address, contact)
         : null;
     const stockItem = await (0, search_1.matchEnquiryStockForCompany)(credentialCompanyId, {

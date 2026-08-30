@@ -18,6 +18,7 @@ import {
     PlusIcon,
     SparklesIcon,
     TrashIcon,
+    UsersIcon,
     WhatsAppIcon,
     XMarkIcon,
 } from '../icons';
@@ -39,6 +40,7 @@ import {
     isReactionMessage,
     reactionEmojiOf,
     correctThreadCar,
+    detachAgentMessage,
     deleteAgentConversation,
     deleteAgentMessage,
     discardAgentDraft,
@@ -340,7 +342,8 @@ const MessageBubble: React.FC<{
     selected: boolean;
     onToggleSelect: () => void;
     onDelete: () => void;
-}> = ({ message, agentName, mixed, showAuthor, selected, onToggleSelect, onDelete }) => {
+    onDetach?: () => void;
+}> = ({ message, agentName, mixed, showAuthor, selected, onToggleSelect, onDelete, onDetach }) => {
     const mine = message.from !== 'customer';
     const fromOwner = message.from === 'owner';
     const instruction = instructionText(message);
@@ -485,6 +488,19 @@ const MessageBubble: React.FC<{
                             </span>
                         )}
                     </div>
+                    {onDetach && (
+                        <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); onDetach(); }}
+                            aria-label="This email is someone else"
+                            title="This email is someone else"
+                            className={`flex-shrink-0 p-1 text-[#8696a0] transition-opacity hover:text-amber-300 ${
+                                selected ? 'opacity-100' : 'pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'
+                            }`}
+                        >
+                            <UsersIcon className="h-3.5 w-3.5" />
+                        </button>
+                    )}
                     {deleteBtn('Delete this message')}
                 </div>
             </div>
@@ -531,6 +547,8 @@ const AgentInboxPage = () => {
     const [carFixOpen, setCarFixOpen] = useState(false);
     const [carFixNote, setCarFixNote] = useState('');
     const [carFixBusy, setCarFixBusy] = useState(false);
+    const [pendingSplit, setPendingSplit] = useState<{ message: AgentMessage; conv: Conversation } | null>(null);
+    const [splitting, setSplitting] = useState(false);
     const [showOther, setShowOther] = useState(readShowOtherLedger);
     const [selectedMsgKey, setSelectedMsgKey] = useState<string | null>(null);
     const [bannerCollapsed, setBannerCollapsed] = useState(false);
@@ -964,6 +982,46 @@ const AgentInboxPage = () => {
         }
     }, [companyId, active, carFixNote, carFixBusy, toast]);
 
+    const pickSplitTarget = useCallback((): { message: AgentMessage; conv: Conversation } | null => {
+        const isCustomer = (m: AgentMessage) => m.from === 'customer' && !instructionText(m) && !bounceNoticeText(m);
+        if (selectedMsgKey) {
+            const found = messages.find(m => `${conversationRefKey(m.conv)}:${m.id}` === selectedMsgKey);
+            if (found && isCustomer(found)) return { message: found, conv: found.conv };
+        }
+        const inbounds = messages.filter(isCustomer);
+        if (inbounds.length < 2) return null;
+        const latest = inbounds[inbounds.length - 1];
+        return { message: latest, conv: latest.conv };
+    }, [messages, selectedMsgKey]);
+
+    const requestSplit = useCallback((target?: { message: AgentMessage; conv: Conversation } | null) => {
+        const picked = target || pickSplitTarget();
+        if (!picked) {
+            toast.error('Tap the email that is the other person, then try again.');
+            return;
+        }
+        setPendingSplit(picked);
+    }, [pickSplitTarget, toast]);
+
+    const handleConfirmSplit = useCallback(async () => {
+        if (!companyId || !pendingSplit || splitting) return;
+        setSplitting(true);
+        try {
+            const result = await detachAgentMessage(
+                homeOf(pendingSplit.conv, companyId),
+                pendingSplit.conv.id,
+                pendingSplit.message.id
+            );
+            setPendingSplit(null);
+            setSelectedMsgKey(null);
+            toast.success(result.message);
+        } catch (err: any) {
+            toast.error(err?.message || 'That email could not be separated.');
+        } finally {
+            setSplitting(false);
+        }
+    }, [companyId, pendingSplit, splitting, toast]);
+
     /**
      * Ask the backend to draft a reply to whatever the customer is waiting on.
      * Benign refusals (already drafted, paused, nothing waiting) stay silent;
@@ -1384,6 +1442,10 @@ const AgentInboxPage = () => {
                                             <CarIcon className="h-4 w-4 text-amber-300" />
                                             Wrong car
                                         </MenuItem>
+                                        <MenuItem onClick={() => { setMenuOpen(false); requestSplit(); }}>
+                                            <UsersIcon className="h-4 w-4 text-amber-300" />
+                                            Different person
+                                        </MenuItem>
                                         {(phoneOnFile || active.contact?.leadId) && <div className="my-1 border-t border-white/5" />}
                                         {phoneOnFile && (
                                             <a href={`tel:${phoneOnFile}`} role="menuitem" onClick={() => setMenuOpen(false)} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[#e9edef] hover:bg-white/5">
@@ -1517,6 +1579,11 @@ const AgentInboxPage = () => {
                                             selected={selectedMsgKey === key}
                                             onToggleSelect={() => setSelectedMsgKey(k => (k === key ? null : key))}
                                             onDelete={() => setPendingDelete({ kind: 'message', message, conv: message.conv })}
+                                            onDetach={
+                                                message.from === 'customer' && message.channel === 'email'
+                                                    ? () => requestSplit({ message, conv: message.conv })
+                                                    : undefined
+                                            }
                                         />
                                     );
                                 })
@@ -1904,6 +1971,22 @@ const AgentInboxPage = () => {
                         setActiveConvId(convId);
                     }}
                 />
+            )}
+
+            {pendingSplit && (
+                <Modal onClose={() => { if (!splitting) setPendingSplit(null); }} size="sm">
+                    <div className="p-6 text-center">
+                        <h3 className="text-lg font-semibold text-white">Different person</h3>
+                        <p className="mt-2 text-sm text-gray-400">
+                            Pull this email into its own lead? {agentName} will match the car again, so it can land on the other ledger.
+                            {pendingSplit.message.subject ? ` “${pendingSplit.message.subject}”` : ''}
+                        </p>
+                        <div className="mt-6 flex justify-center gap-3">
+                            <Button variant="secondary" onClick={() => setPendingSplit(null)} disabled={splitting}>Cancel</Button>
+                            <Button onClick={handleConfirmSplit} loading={splitting} disabled={splitting}>Separate</Button>
+                        </div>
+                    </div>
+                </Modal>
             )}
 
             {pendingDelete && (

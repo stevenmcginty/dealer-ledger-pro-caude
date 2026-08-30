@@ -9,6 +9,10 @@
  * conversation id. That is what lets the agent keep its memory when the router moves
  * an email lead onto WhatsApp.
  *
+ * Email identity is the customer's email, never a mobile scraped from the body
+ * and never a platform noreply. Matching on those glued two different people
+ * onto one Dave thread (Steve, 30 Aug).
+ *
  * Every conversation also gets a short number. Steve replies "TAKE OVER 12" on his
  * phone; a push key would be unusable for that.
  */
@@ -46,10 +50,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.applyCustomerReaction = exports.recordDelivery = exports.appendMessage = exports.findOrCreateConversation = exports.allocateShortId = exports.lookupContactIndex = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
+exports.setLeadStage = exports.appendLeadActivity = exports.findOrCreateLead = exports.readHistory = exports.applyCustomerReaction = exports.recordDelivery = exports.appendMessage = exports.findOrCreateConversation = exports.allocateShortId = exports.lookupContactIndex = exports.releaseProviderId = exports.indexContactIfFree = exports.indexContact = exports.convIdForShortId = exports.listConversations = exports.updateConversation = exports.getConversation = exports.pruneSeenProviderIds = exports.claimProviderId = exports.readPrivate = exports.readSettings = exports.requireInboxAccess = exports.requireMember = exports.privatePath = exports.routingPath = exports.agentPath = exports.agentRoot = exports.BRAIN_SECRETS = exports.db = void 0;
 const admin = __importStar(require("firebase-admin"));
 const functions = __importStar(require("firebase-functions/v1"));
 const types_1 = require("./types");
+const identity_1 = require("./identity");
 const db = () => admin.database();
 exports.db = db;
 exports.BRAIN_SECRETS = ['GEMINI_API_KEY'];
@@ -275,10 +280,38 @@ exports.convIdForShortId = convIdForShortId;
 const indexContact = async (companyId, channel, address, convId) => {
     if (!address)
         return;
+    if (channel === 'email' && !(0, identity_1.isUsableEmail)(address))
+        return;
     const key = (0, types_1.rtdbKey)((0, types_1.normaliseAddress)(channel, address));
     await (0, exports.db)().ref((0, exports.agentPath)(companyId, `contactIndex/${key}`)).set(convId);
 };
 exports.indexContact = indexContact;
+/**
+ * Write a contactIndex pointer only when it is free, or when it still points at
+ * the thread we are detaching this person from. Never steal another customer's
+ * number or email.
+ */
+const indexContactIfFree = async (companyId, channel, address, convId, options = {}) => {
+    if (!address)
+        return false;
+    if (channel === 'email' && !(0, identity_1.isUsableEmail)(address))
+        return false;
+    const key = (0, types_1.rtdbKey)((0, types_1.normaliseAddress)(channel, address));
+    const ref = (0, exports.db)().ref((0, exports.agentPath)(companyId, `contactIndex/${key}`));
+    const current = (await ref.once('value')).val();
+    const canSteal = channel === 'email' && options.stealFrom && current === options.stealFrom;
+    if (current && current !== convId && !canSteal)
+        return false;
+    await ref.set(convId);
+    return true;
+};
+exports.indexContactIfFree = indexContactIfFree;
+const releaseProviderId = async (companyId, providerId) => {
+    if (!providerId)
+        return;
+    await (0, exports.db)().ref((0, exports.agentPath)(companyId, `seenProviderIds/${(0, types_1.rtdbKey)(providerId)}`)).remove();
+};
+exports.releaseProviderId = releaseProviderId;
 const lookupContactIndex = async (companyId, channel, address) => {
     if (!address)
         return null;
@@ -309,43 +342,50 @@ const mergeContact = (existing, incoming) => {
 /**
  * Find this person's conversation or start one.
  *
- * The address they used is tried first, then any other address we were handed with
- * them — a CarGurus lead arrives with an email and a mobile at the same time, and if
- * either one is already known this is not a new customer.
+ * Email inbound matches on the customer's email only. A phone in the body is
+ * stored (so the WhatsApp follow-up can find them later) but it is not identity:
+ * Gmail quotes and platform templates often carry someone else's number.
  */
 const findOrCreateConversation = async (companyId, channel, address, contact, options = {}) => {
-    const candidates = [[channel, address]];
-    if (contact.email)
-        candidates.push(['email', contact.email]);
-    if (contact.phone)
-        candidates.push(['whatsapp', contact.phone], ['sms', contact.phone]);
-    for (const [candidateChannel, candidateAddress] of candidates) {
-        const convId = await (0, exports.lookupContactIndex)(companyId, candidateChannel, candidateAddress);
-        if (!convId)
-            continue;
-        const existing = await (0, exports.getConversation)(companyId, convId);
-        if (!existing)
-            continue;
-        const merged = mergeContact(existing.contact || {}, contact);
-        if (JSON.stringify(merged) !== JSON.stringify(existing.contact || {})) {
-            await (0, exports.updateConversation)(companyId, convId, { contact: merged });
-            existing.contact = merged;
+    if (!options.forceNew) {
+        for (const [candidateChannel, candidateAddress] of (0, identity_1.lookupKeys)(channel, address, contact)) {
+            const convId = await (0, exports.lookupContactIndex)(companyId, candidateChannel, candidateAddress);
+            if (!convId)
+                continue;
+            const existing = await (0, exports.getConversation)(companyId, convId);
+            if (!existing)
+                continue;
+            if ((0, identity_1.isDifferentPerson)(channel, address, contact, existing)) {
+                await (0, exports.db)()
+                    .ref((0, exports.agentPath)(companyId, `contactIndex/${(0, types_1.rtdbKey)((0, types_1.normaliseAddress)(candidateChannel, candidateAddress))}`))
+                    .remove();
+                continue;
+            }
+            const merged = mergeContact(existing.contact || {}, contact);
+            if (JSON.stringify(merged) !== JSON.stringify(existing.contact || {})) {
+                await (0, exports.updateConversation)(companyId, convId, { contact: merged });
+                existing.contact = merged;
+            }
+            await (0, exports.indexContactIfFree)(companyId, channel, address, convId, { stealFrom: options.stealFrom });
+            return { conversation: existing, isNew: false };
         }
-        // Whatever address they have just used now points here too.
-        await (0, exports.indexContact)(companyId, channel, address, convId);
-        return { conversation: existing, isNew: false };
     }
     const ref = (0, exports.db)().ref((0, exports.agentPath)(companyId, 'conversations')).push();
     const id = ref.key;
     const shortId = await (0, exports.allocateShortId)(companyId);
     const now = Date.now();
     const leadId = await (0, exports.findOrCreateLead)(companyId, contact, options.source || sourceForChannel(channel), options.vehicleOfInterest);
+    const emailAddress = (0, identity_1.isUsableEmail)(address)
+        ? address.trim().toLowerCase()
+        : (0, identity_1.isUsableEmail)(contact.email)
+            ? contact.email.trim().toLowerCase()
+            : `unparsed:${id}`;
     const conversation = {
         id,
         shortId,
         companyId,
         channel,
-        address: channel === 'email' ? address.trim().toLowerCase() : (0, types_1.toE164)(address),
+        address: channel === 'email' ? emailAddress : (0, types_1.toE164)(address),
         originChannel: channel,
         contact: { ...contact, leadId },
         mode: 'agent',
@@ -367,12 +407,19 @@ const findOrCreateConversation = async (companyId, channel, address, contact, op
         conversation.emailSubject = options.emailSubject;
     await ref.set((0, types_1.stripUndefined)(conversation));
     await (0, exports.db)().ref((0, exports.agentPath)(companyId, `shortIds/${shortId}`)).set(id);
-    await (0, exports.indexContact)(companyId, channel, address, id);
-    if (contact.email)
-        await (0, exports.indexContact)(companyId, 'email', contact.email, id);
+    for (const [ch, addr] of (0, identity_1.indexKeys)(channel, conversation.address, conversation.contact)) {
+        await (0, exports.indexContactIfFree)(companyId, ch, addr, id, { stealFrom: options.stealFrom });
+    }
+    // A number copied out of a quoted email can belong to someone else. Keep it
+    // on this contact only when this thread actually owns the index.
     if (contact.phone) {
-        await (0, exports.indexContact)(companyId, 'whatsapp', contact.phone, id);
-        await (0, exports.indexContact)(companyId, 'sms', contact.phone, id);
+        const owner = await (0, exports.lookupContactIndex)(companyId, 'whatsapp', contact.phone);
+        if (owner && owner !== id) {
+            const cleaned = { ...conversation.contact };
+            delete cleaned.phone;
+            conversation.contact = cleaned;
+            await (0, exports.updateConversation)(companyId, id, { contact: cleaned });
+        }
     }
     return { conversation, isNew: true };
 };

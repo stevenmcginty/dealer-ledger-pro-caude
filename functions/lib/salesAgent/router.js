@@ -65,6 +65,7 @@ const whatsapp_1 = require("./channels/whatsapp");
 const gmail_1 = require("./channels/gmail");
 const twilio_1 = require("./channels/twilio");
 const leadParsers_1 = require("./channels/leadParsers");
+const identity_1 = require("./identity");
 const inboxRouting_1 = require("./inboxRouting");
 const startWhatsApp_1 = require("./startWhatsApp");
 const types_1 = require("./types");
@@ -90,10 +91,14 @@ const contactFromLead = (msg, lead) => {
         if (parts.length > 1)
             contact.lastName = parts.slice(1).join(' ');
     }
-    const email = lead?.email || (msg.channel === 'email' ? msg.address : undefined);
-    if (email)
+    const email = lead?.email || (msg.channel === 'email' && (0, identity_1.isUsableEmail)(msg.address) ? msg.address : undefined);
+    if (email && (0, identity_1.isUsableEmail)(email))
         contact.email = email.toLowerCase();
-    const phone = lead?.phone || msg.extractedPhones?.[0] || (msg.channel !== 'email' ? msg.address : undefined);
+    // A number scraped from an email body is not identity — it is often the last
+    // customer Gmail quoted. Structured parsers (Cazoo / CarGurus / website) put
+    // the customer's own phone on lead.phone; that is the only mobile we trust
+    // enough to store on an email inbound. WhatsApp inbound still uses the From.
+    const phone = lead?.phone || (msg.channel !== 'email' ? (msg.extractedPhones?.[0] || msg.address) : undefined);
     if (phone)
         contact.phone = (0, types_1.toE164)(phone);
     return contact;
@@ -299,6 +304,7 @@ const handleInbound = async (msg, options = {}) => {
         contact,
         lead,
         text: lead ? (0, leadParsers_1.messageOrDefault)(lead, lead.vehicle?.title) : msg.text,
+        skipExisting: options.forceNewConversation === true,
     });
     const companyId = home.companyId;
     msg.companyId = companyId;
@@ -306,10 +312,12 @@ const handleInbound = async (msg, options = {}) => {
     const { conversation, isNew } = await (0, conversations_1.findOrCreateConversation)(companyId, msg.channel, msg.address, contact, {
         source: lead ? (0, leadParsers_1.crmLeadSource)(lead.source) : undefined,
         vehicleOfInterest: lead?.vehicle?.title || home.stockItem?.title,
-        emailThreadId: msg.emailThreadId,
+        emailThreadId: options.forceNewConversation ? undefined : msg.emailThreadId,
         emailSubject: msg.subject,
+        forceNew: options.forceNewConversation === true,
+        stealFrom: options.stealFrom,
     });
-    await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, msg.channel, msg.address);
+    await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, msg.channel, msg.address, options.stealFrom);
     // One mailbox, two dealers. Whose car this is has just been decided above, so say
     // so in Gmail itself — otherwise both of them read every lead to find out whether
     // it is theirs. Fire and forget: a label must never hold up answering a customer.
@@ -354,6 +362,7 @@ const handleInbound = async (msg, options = {}) => {
         providerId: msg.providerId,
         subject: msg.subject,
         createdAt: msg.receivedAt || Date.now(),
+        ...(msg.address ? { fromAddress: msg.address } : {}),
         ...(msg.media ? { media: msg.media } : {}),
     });
     const patch = {
@@ -369,8 +378,14 @@ const handleInbound = async (msg, options = {}) => {
             patch.address = msg.address;
         }
     }
-    if (msg.emailThreadId)
-        patch.emailThreadId = msg.emailThreadId;
+    if (msg.emailThreadId && !options.forceNewConversation) {
+        const inboundEmail = (0, identity_1.inboundEmailOf)(msg.channel, msg.address, contact);
+        const taken = (await (0, conversations_1.listConversations)(companyId)).some(other => other.id !== conversation.id
+            && other.emailThreadId === msg.emailThreadId
+            && (0, identity_1.emailsConflict)(inboundEmail, (0, identity_1.existingEmailOf)(other)));
+        if (!taken)
+            patch.emailThreadId = msg.emailThreadId;
+    }
     if (msg.subject)
         patch.emailSubject = msg.subject;
     if (isNew && inbox && home.reason !== 'single') {
@@ -721,17 +736,20 @@ exports.discardDraft = discardDraft;
  */
 const deliverReply = async (companyId, conversation, settings, reply, inbound) => {
     const sendAfter = queueSendAfter(settings, (0, outbox_1.randomDelayMs)(settings.replyDelaySeconds));
-    const inboundPhone = inbound.extractedPhones?.[0];
+    const inboundPhone = inbound.channel === 'email' ? undefined : inbound.extractedPhones?.[0];
     if (inboundPhone && !conversation.contact?.phone) {
         const e164 = (0, types_1.toE164)(inboundPhone);
-        const contact = { ...(conversation.contact || {}), phone: e164 };
-        conversation.contact = contact;
-        await (0, conversations_1.updateConversation)(companyId, conversation.id, { contact });
+        const claimed = await (0, conversations_1.indexContactIfFree)(companyId, 'whatsapp', e164, conversation.id);
+        if (claimed) {
+            const contact = { ...(conversation.contact || {}), phone: e164 };
+            conversation.contact = contact;
+            await (0, conversations_1.updateConversation)(companyId, conversation.id, { contact });
+        }
     }
     const phone = (0, sendTargets_1.contactPhone)(conversation);
     if (phone) {
-        await (0, conversations_1.indexContact)(companyId, 'whatsapp', phone, conversation.id);
-        await (0, conversations_1.indexContact)(companyId, 'sms', phone, conversation.id);
+        await (0, conversations_1.indexContactIfFree)(companyId, 'whatsapp', phone, conversation.id);
+        await (0, conversations_1.indexContactIfFree)(companyId, 'sms', phone, conversation.id);
         await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, 'whatsapp', phone);
     }
     const live = settings.channels.whatsapp && await (0, inboxRouting_1.isWhatsAppLiveFor)(companyId);
@@ -787,8 +805,8 @@ const enqueueOrSend = async (companyId, conversation, settings, text, via, from,
     let skippedWhatsApp;
     const phone = (0, sendTargets_1.contactPhone)(conversation);
     if (phone) {
-        await (0, conversations_1.indexContact)(companyId, 'whatsapp', phone, conversation.id);
-        await (0, conversations_1.indexContact)(companyId, 'sms', phone, conversation.id);
+        await (0, conversations_1.indexContactIfFree)(companyId, 'whatsapp', phone, conversation.id);
+        await (0, conversations_1.indexContactIfFree)(companyId, 'sms', phone, conversation.id);
         await (0, inboxRouting_1.mirrorConversationContacts)(companyId, conversation, 'whatsapp', phone);
     }
     for (const target of targets) {

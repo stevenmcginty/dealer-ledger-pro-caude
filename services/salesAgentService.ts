@@ -223,6 +223,7 @@ export interface AgentMessage {
     from: 'customer' | 'agent' | 'owner';
     providerId?: string;
     subject?: string;
+    fromAddress?: string;
     media?: MessageMedia;
     /** WhatsApp emoji tap, stored as its own bubble when we cannot pin it on the original. */
     kind?: 'reaction';
@@ -860,6 +861,25 @@ export const correctThreadCar = (companyId: string, convId: string, note: string
         { companyId, convId, note, ...(stockId ? { stockId } : {}) },
         300000,
         'That correction could not be applied.'
+    );
+
+export interface ThreadSplit {
+    ok: true;
+    companyId: string;
+    convId: string;
+    message: string;
+}
+
+/**
+ * "Different person." Pull one inbound email off this thread into its own lead.
+ * The car on that email is matched again, so it can land on the other ledger.
+ */
+export const detachAgentMessage = (companyId: string, convId: string, messageId: string) =>
+    call<{ companyId: string; convId: string; messageId: string }, ThreadSplit>(
+        'salesAgentDetachMessage',
+        { companyId, convId, messageId },
+        180000,
+        'That email could not be separated.'
     );
 
 export const discardAgentDraft = (companyId: string, convId: string) =>

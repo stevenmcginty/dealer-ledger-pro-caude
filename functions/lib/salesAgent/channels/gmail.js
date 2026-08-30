@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.salesAgentGmailPush = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
+exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.salesAgentGmailPush = exports.reprocessGmailMessage = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const companyIds_1 = require("../../utils/companyIds");
 const inboxRouting_1 = require("../inboxRouting");
@@ -56,6 +56,7 @@ const conversations_1 = require("../conversations");
 const gmailAuth_1 = require("../gmailAuth");
 const router_1 = require("../router");
 const types_1 = require("../types");
+const identity_1 = require("../identity");
 const leadParsers_1 = require("./leadParsers");
 const gmailParse_1 = require("./gmailParse");
 // --- Reading a message ------------------------------------------------------
@@ -152,9 +153,11 @@ const recordIgnored = async (companyId, messageId, from, subject, reason) => {
  * The reply address comes from the ParsedLead, never from the From header — a CarGurus
  * lead arrives from a robot and answering it would talk to nobody.
  */
-const processMessage = async (companyId, selfEmail, message) => {
+const processMessage = async (companyId, selfEmail, message, options = {}) => {
     const labels = message.labelIds || [];
-    if (labels.includes('SENT') || labels.includes('DRAFT') || !labels.includes('INBOX'))
+    if (labels.includes('SENT') || labels.includes('DRAFT'))
+        return;
+    if (!options.ignoreMailboxLabels && !labels.includes('INBOX'))
         return;
     const raw = (0, exports.toRawEmail)(message, selfEmail);
     const lead = (0, leadParsers_1.parseLeadEmail)(raw);
@@ -166,15 +169,19 @@ const processMessage = async (companyId, selfEmail, message) => {
         await recordIgnored(companyId, message.id || String(Date.now()), raw.from, raw.subject, 'bounce_no_recipient');
         return;
     }
+    const sender = (0, leadParsers_1.parseFromHeader)(raw.from).address;
+    const replyAddress = (lead.replyTo.address && (0, identity_1.isUsableEmail)(lead.replyTo.address))
+        ? lead.replyTo.address
+        : (0, identity_1.isUsableEmail)(sender) ? sender : '';
     const inbound = {
         companyId,
         channel: (lead.replyTo.channel || 'email'),
-        address: lead.replyTo.address || raw.from,
+        address: replyAddress || `unparsed:${message.id || Date.now()}`,
         text: lead.message,
         providerId: lead.correlationId ? `cazoo:${lead.correlationId}` : (message.id || ''),
         name: lead.kind === 'bounce' ? undefined : lead.name,
         subject: lead.kind === 'bounce' ? undefined : raw.subject,
-        emailThreadId: lead.kind === 'bounce' ? undefined : (message.threadId || undefined),
+        emailThreadId: lead.kind === 'bounce' || options.forceNewConversation ? undefined : (message.threadId || undefined),
         extractedPhones: Array.from(new Set([
             ...(lead.phone ? [lead.phone] : []),
             ...(0, types_1.extractUkMobiles)(raw.text),
@@ -182,8 +189,32 @@ const processMessage = async (companyId, selfEmail, message) => {
         fullText: (0, exports.emailBodyForBrain)(raw),
         receivedAt: Number(message.internalDate) || Date.now(),
     };
-    await (0, router_1.handleInbound)(inbound, { lead });
+    await (0, router_1.handleInbound)(inbound, {
+        lead,
+        forceNewConversation: options.forceNewConversation,
+        stealFrom: options.stealFrom,
+    });
 };
+/**
+ * Run one Gmail message through the inbox again. Used when Steve splits a mixed
+ * thread: we already claimed the provider id the first time, so the caller
+ * releases it first. Archived mail is allowed — it may no longer sit in INBOX.
+ */
+const reprocessGmailMessage = async (credentialCompanyId, messageId, options = {}) => {
+    const [settings, priv, gmail] = await Promise.all([
+        (0, conversations_1.readSettings)(credentialCompanyId),
+        (0, conversations_1.readPrivate)(credentialCompanyId),
+        (0, gmailAuth_1.gmailClientFor)(credentialCompanyId),
+    ]);
+    const selfEmail = (priv.gmail?.email || settings.emailAddress || '').toLowerCase();
+    const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+    await processMessage(credentialCompanyId, selfEmail, full.data, {
+        ignoreMailboxLabels: true,
+        forceNewConversation: options.forceNewConversation,
+        stealFrom: options.stealFrom,
+    });
+};
+exports.reprocessGmailMessage = reprocessGmailMessage;
 /**
  * A reply Steve or Chris typed in Gmail itself, not in the app.
  *

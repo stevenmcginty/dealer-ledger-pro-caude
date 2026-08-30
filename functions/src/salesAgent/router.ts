@@ -28,6 +28,8 @@ import {
     findOrCreateConversation,
     getConversation,
     indexContact,
+    indexContactIfFree,
+    listConversations,
     privatePath,
     readHistory,
     readSettings,
@@ -45,6 +47,7 @@ import { registerWhatsAppRouting, renderFallbackTemplate, templateFallbackFor } 
 import { labelEmailThread } from './channels/gmail';
 import { registerTwilioRouting } from './channels/twilio';
 import { ParsedLead, crmLeadSource, messageOrDefault } from './channels/leadParsers';
+import { emailsConflict, existingEmailOf, inboundEmailOf, isUsableEmail } from './identity';
 import {
     bindInboxChannelsFromPrivate,
     claimSharedProviderId,
@@ -92,6 +95,10 @@ const queueSendAfter = (settings: SalesAgentSettings, extraDelayMs = 0): number 
 export interface InboundOptions {
     /** Set by the Gmail adapter; the platform-specific reading of a lead email. */
     lead?: ParsedLead;
+    /** Open a new thread even if a pointer still aims at someone else. */
+    forceNewConversation?: boolean;
+    /** Conversation we are splitting this message off; its indexes may be taken. */
+    stealFrom?: string;
 }
 
 // --- Inbound ----------------------------------------------------------------
@@ -106,10 +113,14 @@ const contactFromLead = (msg: InboundMessage, lead?: ParsedLead): Contact => {
         if (parts.length > 1) contact.lastName = parts.slice(1).join(' ');
     }
 
-    const email = lead?.email || (msg.channel === 'email' ? msg.address : undefined);
-    if (email) contact.email = email.toLowerCase();
+    const email = lead?.email || (msg.channel === 'email' && isUsableEmail(msg.address) ? msg.address : undefined);
+    if (email && isUsableEmail(email)) contact.email = email.toLowerCase();
 
-    const phone = lead?.phone || msg.extractedPhones?.[0] || (msg.channel !== 'email' ? msg.address : undefined);
+    // A number scraped from an email body is not identity — it is often the last
+    // customer Gmail quoted. Structured parsers (Cazoo / CarGurus / website) put
+    // the customer's own phone on lead.phone; that is the only mobile we trust
+    // enough to store on an email inbound. WhatsApp inbound still uses the From.
+    const phone = lead?.phone || (msg.channel !== 'email' ? (msg.extractedPhones?.[0] || msg.address) : undefined);
     if (phone) contact.phone = toE164(phone);
 
     return contact;
@@ -359,6 +370,7 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         contact,
         lead,
         text: lead ? messageOrDefault(lead, lead.vehicle?.title) : msg.text,
+        skipExisting: options.forceNewConversation === true,
     });
 
     const companyId = home.companyId;
@@ -368,11 +380,13 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     const { conversation, isNew } = await findOrCreateConversation(companyId, msg.channel, msg.address, contact, {
         source: lead ? crmLeadSource(lead.source) : undefined,
         vehicleOfInterest: lead?.vehicle?.title || home.stockItem?.title,
-        emailThreadId: msg.emailThreadId,
+        emailThreadId: options.forceNewConversation ? undefined : msg.emailThreadId,
         emailSubject: msg.subject,
+        forceNew: options.forceNewConversation === true,
+        stealFrom: options.stealFrom,
     });
 
-    await mirrorConversationContacts(companyId, conversation, msg.channel, msg.address);
+    await mirrorConversationContacts(companyId, conversation, msg.channel, msg.address, options.stealFrom);
 
     // One mailbox, two dealers. Whose car this is has just been decided above, so say
     // so in Gmail itself — otherwise both of them read every lead to find out whether
@@ -424,6 +438,7 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         providerId: msg.providerId,
         subject: msg.subject,
         createdAt: msg.receivedAt || Date.now(),
+        ...(msg.address ? { fromAddress: msg.address } : {}),
         ...(msg.media ? { media: msg.media } : {}),
     });
 
@@ -441,7 +456,15 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
             patch.address = msg.address;
         }
     }
-    if (msg.emailThreadId) patch.emailThreadId = msg.emailThreadId;
+    if (msg.emailThreadId && !options.forceNewConversation) {
+        const inboundEmail = inboundEmailOf(msg.channel, msg.address, contact);
+        const taken = (await listConversations(companyId)).some(other =>
+            other.id !== conversation.id
+            && other.emailThreadId === msg.emailThreadId
+            && emailsConflict(inboundEmail, existingEmailOf(other))
+        );
+        if (!taken) patch.emailThreadId = msg.emailThreadId;
+    }
     if (msg.subject) patch.emailSubject = msg.subject;
 
     if (isNew && inbox && home.reason !== 'single') {
@@ -931,18 +954,21 @@ const deliverReply = async (
     inbound: InboundMessage
 ): Promise<void> => {
     const sendAfter = queueSendAfter(settings, randomDelayMs(settings.replyDelaySeconds));
-    const inboundPhone = inbound.extractedPhones?.[0];
+    const inboundPhone = inbound.channel === 'email' ? undefined : inbound.extractedPhones?.[0];
     if (inboundPhone && !conversation.contact?.phone) {
         const e164 = toE164(inboundPhone);
-        const contact = { ...(conversation.contact || {}), phone: e164 };
-        conversation.contact = contact;
-        await updateConversation(companyId, conversation.id, { contact });
+        const claimed = await indexContactIfFree(companyId, 'whatsapp', e164, conversation.id);
+        if (claimed) {
+            const contact = { ...(conversation.contact || {}), phone: e164 };
+            conversation.contact = contact;
+            await updateConversation(companyId, conversation.id, { contact });
+        }
     }
 
     const phone = contactPhone(conversation);
     if (phone) {
-        await indexContact(companyId, 'whatsapp', phone, conversation.id);
-        await indexContact(companyId, 'sms', phone, conversation.id);
+        await indexContactIfFree(companyId, 'whatsapp', phone, conversation.id);
+        await indexContactIfFree(companyId, 'sms', phone, conversation.id);
         await mirrorConversationContacts(companyId, conversation, 'whatsapp', phone);
     }
 
@@ -1014,8 +1040,8 @@ const enqueueOrSend = async (
 
     const phone = contactPhone(conversation);
     if (phone) {
-        await indexContact(companyId, 'whatsapp', phone, conversation.id);
-        await indexContact(companyId, 'sms', phone, conversation.id);
+        await indexContactIfFree(companyId, 'whatsapp', phone, conversation.id);
+        await indexContactIfFree(companyId, 'sms', phone, conversation.id);
         await mirrorConversationContacts(companyId, conversation, 'whatsapp', phone);
     }
 

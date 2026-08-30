@@ -231,6 +231,8 @@ export interface AgentMessage {
     from: 'customer' | 'agent' | 'owner';
     providerId?: string;                 // WhatsApp wamid / Twilio SID / Gmail message id (dedupe)
     subject?: string;
+    /** Customer email or number this bubble actually came from, when the thread has mixed people. */
+    fromAddress?: string;
     media?: MessageMedia;
     /** WhatsApp emoji tap, stored as its own bubble when we cannot pin it on the original. */
     kind?: 'reaction';

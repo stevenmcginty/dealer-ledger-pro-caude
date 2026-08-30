@@ -23,6 +23,7 @@ import {
     readSettings,
     routingPath,
 } from './conversations';
+import { indexKeys, isDifferentPerson, isUsableEmail, lookupKeys } from './identity';
 import { matchEnquiryStockForCompany } from './stock/search';
 import {
     Channel,
@@ -154,11 +155,22 @@ const writeSharedContact = async (
     companyId: string,
     channel: Channel,
     address: string,
-    convId: string
+    convId: string,
+    stealFrom?: string
 ): Promise<void> => {
     if (!address) return;
+    if (channel === 'email' && !isUsableEmail(address)) return;
     const key = rtdbKey(normaliseAddress(channel, address));
-    await inboxRef(inboxId, `contactIndex/${key}`).set({ companyId, convId });
+    const ref = inboxRef(inboxId, `contactIndex/${key}`);
+    const current = (await ref.once('value')).val() as SharedContactRef | null;
+    const canSteal = channel === 'email' && stealFrom && current?.convId === stealFrom;
+    if (current?.convId && current.convId !== convId && !canSteal) return;
+    await ref.set({ companyId, convId });
+};
+
+export const releaseSharedProviderId = async (inboxId: string, providerId: string): Promise<void> => {
+    if (!inboxId || !providerId) return;
+    await inboxRef(inboxId, `seenProviderIds/${rtdbKey(providerId)}`).remove();
 };
 
 const lookupSharedContact = async (
@@ -173,32 +185,24 @@ const lookupSharedContact = async (
     return val?.companyId && val?.convId ? val : null;
 };
 
-const contactCandidates = (
-    channel: Channel,
-    address: string,
-    contact: Contact
-): Array<[Channel, string]> => {
-    const candidates: Array<[Channel, string]> = [[channel, address]];
-    if (contact.email) candidates.push(['email', contact.email]);
-    if (contact.phone) {
-        candidates.push(['whatsapp', contact.phone], ['sms', contact.phone]);
-    }
-    return candidates;
-};
-
 export const findExistingSharedContact = async (
     inbox: SharedInbox,
     channel: Channel,
     address: string,
     contact: Contact
 ): Promise<SharedContactRef | null> => {
-    for (const [candidateChannel, candidateAddress] of contactCandidates(channel, address, contact)) {
+    for (const [candidateChannel, candidateAddress] of lookupKeys(channel, address, contact)) {
         const found = await lookupSharedContact(inbox.id, candidateChannel, candidateAddress);
         if (!found || !inbox.memberCompanyIds.includes(found.companyId)) continue;
         // A thread deleted from the inbox leaves its pointer behind. Following it
         // would pin the customer to a ledger and a conversation that no longer
         // exist, so the pointer goes and the placement rule runs afresh.
-        if (!(await getConversation(found.companyId, found.convId))) {
+        const existing = await getConversation(found.companyId, found.convId);
+        if (!existing) {
+            await inboxRef(inbox.id, `contactIndex/${rtdbKey(normaliseAddress(candidateChannel, candidateAddress))}`).remove();
+            continue;
+        }
+        if (isDifferentPerson(channel, address, contact, existing)) {
             await inboxRef(inbox.id, `contactIndex/${rtdbKey(normaliseAddress(candidateChannel, candidateAddress))}`).remove();
             continue;
         }
@@ -219,7 +223,7 @@ export const backfillSharedContacts = async (inbox: SharedInbox): Promise<number
         for (const conversation of conversations) {
             if (!conversation?.address) continue;
             const contact = conversation.contact || {};
-            for (const [candidateChannel, candidateAddress] of contactCandidates(conversation.channel, conversation.address, contact)) {
+            for (const [candidateChannel, candidateAddress] of indexKeys(conversation.channel, conversation.address, contact)) {
                 const key = rtdbKey(normaliseAddress(candidateChannel, candidateAddress));
                 const current = (await inboxRef(inbox.id, `contactIndex/${key}`).once('value')).val() as SharedContactRef | null;
                 if (current?.companyId && current?.convId) continue;
@@ -235,14 +239,15 @@ export const mirrorConversationContacts = async (
     companyId: string,
     conversation: Conversation,
     channel: Channel,
-    address: string
+    address: string,
+    stealFrom?: string
 ): Promise<void> => {
     const inbox = await inboxForMember(companyId);
     if (!inbox) return;
 
     const contact = conversation.contact || {};
-    for (const [candidateChannel, candidateAddress] of contactCandidates(channel, address, contact)) {
-        await writeSharedContact(inbox.id, companyId, candidateChannel, candidateAddress, conversation.id);
+    for (const [candidateChannel, candidateAddress] of indexKeys(channel, address, contact)) {
+        await writeSharedContact(inbox.id, companyId, candidateChannel, candidateAddress, conversation.id, stealFrom);
     }
 };
 
@@ -300,10 +305,11 @@ export const resolveConversationHome = async (args: {
     contact: Contact;
     lead?: ParsedLead;
     text?: string;
+    skipExisting?: boolean;
 }): Promise<HomeDecision> => {
     const { inbox, credentialCompanyId, channel, address, contact, lead, text } = args;
 
-    const existing = inbox
+    const existing = inbox && !args.skipExisting
         ? await findExistingSharedContact(inbox, channel, address, contact)
         : null;
 

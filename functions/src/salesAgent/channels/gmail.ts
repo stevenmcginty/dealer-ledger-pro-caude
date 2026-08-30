@@ -37,7 +37,8 @@ import {
 import { GMAIL_SECRETS, gmailClientFor, startGmailWatch } from '../gmailAuth';
 import { handleInbound } from '../router';
 import { ChannelSender, Channel, InboundMessage, extractUkMobiles, rtdbKey } from '../types';
-import { ParsedLead, crmLeadSource, htmlToText, parseLeadEmail } from './leadParsers';
+import { isUsableEmail } from '../identity';
+import { ParsedLead, crmLeadSource, htmlToText, parseFromHeader, parseLeadEmail } from './leadParsers';
 import { stripQuotedReply } from './gmailParse';
 
 // --- Reading a message ------------------------------------------------------
@@ -150,10 +151,12 @@ const recordIgnored = async (companyId: string, messageId: string, from: string,
 const processMessage = async (
     companyId: string,
     selfEmail: string,
-    message: gmail_v1.Schema$Message
+    message: gmail_v1.Schema$Message,
+    options: { ignoreMailboxLabels?: boolean; forceNewConversation?: boolean; stealFrom?: string } = {}
 ): Promise<void> => {
     const labels = message.labelIds || [];
-    if (labels.includes('SENT') || labels.includes('DRAFT') || !labels.includes('INBOX')) return;
+    if (labels.includes('SENT') || labels.includes('DRAFT')) return;
+    if (!options.ignoreMailboxLabels && !labels.includes('INBOX')) return;
 
     const raw = toRawEmail(message, selfEmail);
     const lead = parseLeadEmail(raw);
@@ -168,15 +171,20 @@ const processMessage = async (
         return;
     }
 
+    const sender = parseFromHeader(raw.from).address;
+    const replyAddress = (lead.replyTo.address && isUsableEmail(lead.replyTo.address))
+        ? lead.replyTo.address
+        : isUsableEmail(sender) ? sender : '';
+
     const inbound: InboundMessage = {
         companyId,
         channel: (lead.replyTo.channel || 'email') as Channel,
-        address: lead.replyTo.address || raw.from,
+        address: replyAddress || `unparsed:${message.id || Date.now()}`,
         text: lead.message,
         providerId: lead.correlationId ? `cazoo:${lead.correlationId}` : (message.id || ''),
         name: lead.kind === 'bounce' ? undefined : lead.name,
         subject: lead.kind === 'bounce' ? undefined : raw.subject,
-        emailThreadId: lead.kind === 'bounce' ? undefined : (message.threadId || undefined),
+        emailThreadId: lead.kind === 'bounce' || options.forceNewConversation ? undefined : (message.threadId || undefined),
         extractedPhones: Array.from(new Set([
             ...(lead.phone ? [lead.phone] : []),
             ...extractUkMobiles(raw.text),
@@ -185,7 +193,35 @@ const processMessage = async (
         receivedAt: Number(message.internalDate) || Date.now(),
     };
 
-    await handleInbound(inbound, { lead });
+    await handleInbound(inbound, {
+        lead,
+        forceNewConversation: options.forceNewConversation,
+        stealFrom: options.stealFrom,
+    });
+};
+
+/**
+ * Run one Gmail message through the inbox again. Used when Steve splits a mixed
+ * thread: we already claimed the provider id the first time, so the caller
+ * releases it first. Archived mail is allowed — it may no longer sit in INBOX.
+ */
+export const reprocessGmailMessage = async (
+    credentialCompanyId: string,
+    messageId: string,
+    options: { forceNewConversation?: boolean; stealFrom?: string } = {}
+): Promise<void> => {
+    const [settings, priv, gmail] = await Promise.all([
+        readSettings(credentialCompanyId),
+        readPrivate(credentialCompanyId),
+        gmailClientFor(credentialCompanyId),
+    ]);
+    const selfEmail = (priv.gmail?.email || settings.emailAddress || '').toLowerCase();
+    const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+    await processMessage(credentialCompanyId, selfEmail, full.data, {
+        ignoreMailboxLabels: true,
+        forceNewConversation: options.forceNewConversation,
+        stealFrom: options.stealFrom,
+    });
 };
 
 /**
