@@ -202,6 +202,14 @@ export interface Conversation {
     lastInboundAt: number;
     lastOutboundAt?: number;
     lastCustomerMessageAt: number;       // WhatsApp 24h customer-service window check
+    /** When the approved WhatsApp opener went out, so it is not sent twice. */
+    whatsappOpenerAt?: number;
+    /**
+     * Steve's own words for WhatsApp, written before the customer had replied.
+     * Meta will not carry free text until they do, so these wait and go the moment
+     * their first WhatsApp arrives.
+     */
+    heldWords?: { text: string; at: number } | null;
     createdAt: number;
     updatedAt: number;
     unread: number;

@@ -148,6 +148,9 @@ export interface Conversation {
     summary?: string;
     lastInboundAt: number;
     lastOutboundAt?: number;
+    whatsappOpenerAt?: number;
+    /** Your words, waiting for their first WhatsApp so Meta will carry them. */
+    heldWords?: { text: string; at: number } | null;
     lastCustomerMessageAt: number;
     createdAt: number;
     updatedAt: number;
@@ -751,11 +754,12 @@ export const sendAgentReply = (
     text: string,
     media?: MessageMedia,
     via: SendVia = 'auto',
-    phone?: string
+    phone?: string,
+    opener = false
 ) =>
-    call<{ companyId: string; convId: string; text: string; media?: MessageMedia; via?: SendVia; phone?: string }, { ok: true; sent?: Channel[]; skippedWhatsApp?: string | null }>(
+    call<{ companyId: string; convId: string; text: string; media?: MessageMedia; via?: SendVia; phone?: string; opener?: boolean }, { ok: true; sent?: Channel[]; held?: boolean; skippedWhatsApp?: string | null }>(
         'salesAgentSendReply',
-        { companyId, convId, text, via, ...(media ? { media } : {}), ...(phone ? { phone } : {}) },
+        { companyId, convId, text, via, ...(media ? { media } : {}), ...(phone ? { phone } : {}), ...(opener ? { opener } : {}) },
         120000,
         'That message was not sent.'
     );

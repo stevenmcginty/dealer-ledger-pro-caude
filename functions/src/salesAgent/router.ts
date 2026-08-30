@@ -535,6 +535,10 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     await updateConversation(companyId, conversation.id, patch);
     Object.assign(conversation, patch);
 
+    if (msg.channel === 'whatsapp' && conversation.heldWords?.text) {
+        await releaseHeldWords(companyId, conversation, settings);
+    }
+
     if (home.stockItem && !conversation.vehicleInterest?.stockId) {
         const item = home.stockItem;
         const vehicleInterest: Conversation['vehicleInterest'] = {
@@ -1072,6 +1076,90 @@ const deliverReply = async (
     }
 };
 
+/**
+ * Steve wants to start on WhatsApp. Meta's rule: until the customer has written
+ * to us on WhatsApp, the only message that can go is an approved template. So the
+ * opener goes now (once), and any words of his own wait on the thread and go the
+ * moment their first WhatsApp arrives. Nothing is ever sent over his name that he
+ * did not write (29 Aug), and nothing he wrote is silently dropped (30 Aug).
+ */
+const openerThenHold = async (
+    companyId: string,
+    conversation: Conversation,
+    text: string,
+    openerOnly: boolean
+): Promise<{ sentOpener: boolean; held: boolean; message: string }> => {
+    const who = conversation.contact?.firstName || 'they';
+    const phone = contactPhone(conversation);
+    let sentOpener = false;
+
+    if (phone && !conversation.whatsappOpenerAt) {
+        const fallback = templateFallbackFor(conversation.contact?.firstName, conversation.vehicleInterest?.title);
+        await sendNow({
+            companyId,
+            convId: conversation.id,
+            channel: 'whatsapp',
+            to: phone,
+            text: renderFallbackTemplate(fallback.templateParams || [], { bounced: !!conversation.emailBounce }),
+            ...fallback,
+            sendAfter: Date.now(),
+            id: 'immediate',
+            attempts: 0,
+            createdAt: Date.now(),
+        }, 'agent');
+        const at = Date.now();
+        await updateConversation(companyId, conversation.id, { whatsappOpenerAt: at });
+        conversation.whatsappOpenerAt = at;
+        sentOpener = true;
+    }
+
+    if (openerOnly || !text.trim()) {
+        return {
+            sentOpener,
+            held: false,
+            message: sentOpener
+                ? `Opener sent on WhatsApp. Your own words can go once ${who} replies.`
+                : `The opener already went on ${whenOn(conversation.whatsappOpenerAt)}. Your own words can go once ${who} replies.`,
+        };
+    }
+
+    const heldWords = { text: text.trim(), at: Date.now() };
+    await updateConversation(companyId, conversation.id, { heldWords });
+    conversation.heldWords = heldWords;
+
+    return {
+        sentOpener,
+        held: true,
+        message: sentOpener
+            ? `Opener sent on WhatsApp. Your words are waiting and go the moment ${who} replies.`
+            : `Your words are waiting and go the moment ${who} replies on WhatsApp (opener went ${whenOn(conversation.whatsappOpenerAt)}).`,
+    };
+};
+
+const whenOn = (at?: number): string =>
+    at
+        ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(at))
+        : 'earlier';
+
+/** Their first WhatsApp has opened the window: send what Steve wrote while waiting. */
+const releaseHeldWords = async (
+    companyId: string,
+    conversation: Conversation,
+    settings: SalesAgentSettings
+): Promise<void> => {
+    const words = conversation.heldWords?.text;
+    if (!words) return;
+    await updateConversation(companyId, conversation.id, { heldWords: null });
+    conversation.heldWords = null;
+    try {
+        await enqueueOrSend(companyId, conversation, settings, words, 'whatsapp', 'owner');
+    } catch (error) {
+        console.error(`Held words for #${conversation.shortId} could not be sent`, error);
+        await sendOwnerAlert(companyId, 'error', conversation,
+            `#${conversation.shortId} Your waiting WhatsApp to ${conversation.contact?.firstName || 'them'} could not be sent: ${(error as Error)?.message || 'unknown error'}`);
+    }
+};
+
 /** Why "Me" could not go out, in words Steve can act on. */
 export const ownerOutsideWindowMessage = (conversation: Conversation): string => {
     const who = conversation.contact?.firstName || 'They';
@@ -1091,13 +1179,14 @@ const enqueueOrSend = async (
     text: string,
     via: SendVia,
     from: 'agent' | 'owner',
-    extra?: { media?: MessageMedia; sendAfter?: number }
-): Promise<{ sent: Channel[]; skippedWhatsApp?: string; sendAfter: number }> => {
+    extra?: { media?: MessageMedia; sendAfter?: number; opener?: boolean }
+): Promise<{ sent: Channel[]; skippedWhatsApp?: string; held?: boolean; sendAfter: number }> => {
     const sendAfter = extra?.sendAfter ?? Date.now();
     const live = settings.channels.whatsapp && await isWhatsAppLiveFor(companyId);
     const targets = resolveSendTargets(conversation, via);
     const sent: Channel[] = [];
     let skippedWhatsApp: string | undefined;
+    let held = false;
 
     const phone = contactPhone(conversation);
     if (phone) {
@@ -1136,7 +1225,10 @@ const enqueueOrSend = async (
             // when it had not, twice (29 Aug). His own messages refuse; Dave's openers
             // still fall back, because a template is what they are.
             if (from === 'owner') {
-                skippedWhatsApp = ownerOutsideWindowMessage(conversation);
+                const note = await openerThenHold(companyId, conversation, text, extra?.opener === true);
+                if (note.sentOpener) sent.push('whatsapp');
+                if (note.held) held = true;
+                skippedWhatsApp = note.message;
                 continue;
             }
 
@@ -1169,7 +1261,7 @@ const enqueueOrSend = async (
         }
     }
 
-    if (!sent.length) {
+    if (!sent.length && !held) {
         throw new Error(skippedWhatsApp || 'There is nowhere to send that. No working email or mobile is on file.');
     }
 
@@ -1312,7 +1404,8 @@ export const salesAgentSendReply = functions
         const settings = await readSettings(companyId);
 
         try {
-            const result = await enqueueOrSend(companyId, conversation, settings, text || (media ? `[${media.kind}]` : ''), via, 'owner', { media });
+            const opener = data?.opener === true;
+            const result = await enqueueOrSend(companyId, conversation, settings, text || (media ? `[${media.kind}]` : ''), via, 'owner', { media, opener });
             // Same contract as REPLY on WhatsApp: his words went out as written,
             // Dave goes quiet, and a leftover draft must not sit there to be
             // approved by accident.
@@ -1326,14 +1419,14 @@ export const salesAgentSendReply = functions
             // Nothing actually left the building. Returning ok here is what let the app
             // say "message sent" while the customer got nothing, or got something Steve
             // never wrote (29 Aug).
-            if (!result.sent.length) {
+            if (!result.sent.length && !result.held) {
                 throw new functions.https.HttpsError(
                     'failed-precondition',
                     result.skippedWhatsApp || 'That message could not be sent.'
                 );
             }
 
-            return { ok: true, sent: result.sent, skippedWhatsApp: result.skippedWhatsApp || null };
+            return { ok: true, sent: result.sent, held: result.held === true, skippedWhatsApp: result.skippedWhatsApp || null };
         } catch (error: any) {
             if (error instanceof functions.https.HttpsError) throw error;
             const message = error?.message || 'The message could not be sent.';

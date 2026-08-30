@@ -850,7 +850,7 @@ const AgentInboxPage = () => {
             const sent = (result?.sent || []).map(ch => CHANNEL_LABELS[ch] || ch);
             toast.success(
                 result?.skippedWhatsApp
-                    ? `${sent.length ? `Sent on ${sent.join(' and ')}. ` : ''}${result.skippedWhatsApp}`
+                    ? `${sent.length && !result.held ? `Sent on ${sent.join(' and ')}. ` : ''}${result.skippedWhatsApp}`
                     : sent.length ? `Sent on ${sent.join(' and ')}.` : 'Sent.'
             );
         } catch (err: any) {
@@ -1075,16 +1075,11 @@ const AgentInboxPage = () => {
         const text = reply.trim() || whatsappOpener(active.contact?.firstName, active.vehicleInterest?.title);
         setSending(true);
         try {
-            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, undefined, 'whatsapp', phone);
+            const opener = !reply.trim();
+            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, undefined, 'whatsapp', phone, opener);
             setReply('');
-            if (result?.skippedWhatsApp) {
-                setSendError({ message: result.skippedWhatsApp });
-            } else {
-                setSendError(null);
-                toast.success(active.lastCustomerMessageAt
-                    ? 'Sent on WhatsApp.'
-                    : 'WhatsApp opener sent. Free text can go once they reply.');
-            }
+            setSendError(null);
+            toast.success(result?.skippedWhatsApp || (active.lastCustomerMessageAt ? 'Sent on WhatsApp.' : 'WhatsApp opener sent.'));
         } catch (err: any) {
             setSendError(describeError(err, 'That WhatsApp could not be sent.'));
         } finally {
@@ -1750,6 +1745,13 @@ const AgentInboxPage = () => {
                                 </p>
                             )}
 
+                            {active?.heldWords?.text && (
+                                <div className="mb-2 rounded-xl border border-[#25d366]/30 bg-[#25d366]/10 px-3 py-2 text-[11px] leading-snug text-[#e9edef]">
+                                    <span className="font-semibold text-[#25d366]">Waiting for their reply on WhatsApp, then this goes: </span>
+                                    {active.heldWords.text}
+                                </div>
+                            )}
+
                             {customerWaiting && !asking && replyMode === 'human' && (
                                 <button
                                     type="button"
@@ -1808,7 +1810,9 @@ const AgentInboxPage = () => {
                             {!asking && replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
                                 <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
                                     <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
-                                        They have not WhatsApp&apos;d us yet — the first message must be the approved opener. Free text goes once they reply.
+                                        {active?.whatsappOpenerAt
+                                            ? 'Opener sent. Type your words and they go the moment they reply on WhatsApp.'
+                                            : 'First WhatsApp is the approved opener (Meta\u2019s rule). Type your words: the opener goes now and your words follow the moment they reply.'}
                                     </p>
                                     {!reply.trim() && (
                                         <button
