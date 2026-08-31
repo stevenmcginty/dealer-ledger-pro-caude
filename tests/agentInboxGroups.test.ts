@@ -3,10 +3,14 @@ import type { Conversation } from '../services/salesAgentService';
 import {
     conversationKeys,
     conversationsForFilter,
+    conversationForChannel,
+    defaultThreadChannel,
     groupConversations,
     groupHasChannel,
+    keepMessageOnChannel,
     partitionSharedGroups,
     phoneKey,
+    threadChannelsOf,
 } from '../utils/agentInboxGroups';
 import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../utils/agentInboxBounce';
 
@@ -142,6 +146,37 @@ describe('groupConversations', () => {
         expect(conversationsForFilter(groups[0], 'whatsapp').map(c => c.id)).toEqual(['wa']);
         expect(conversationsForFilter(groups[0], 'email').map(c => c.id)).toEqual(['em']);
         expect(conversationsForFilter(groups[0], 'all')).toHaveLength(2);
+    });
+
+    it('opens a mixed person on the list filter, else the latest channel', () => {
+        const groups = groupConversations([
+            conv({
+                id: 'wa',
+                channel: 'whatsapp',
+                address: '+447700900555',
+                contact: { phone: '+447700900555', email: 'mix@b.c' },
+                updatedAt: 20,
+            }),
+            conv({
+                id: 'em',
+                channel: 'email',
+                originChannel: 'email',
+                address: 'mix@b.c',
+                contact: { email: 'mix@b.c', phone: '+447700900555' },
+                updatedAt: 10,
+            }),
+        ]);
+        expect(threadChannelsOf(groups[0])).toEqual(['whatsapp', 'email']);
+        expect(defaultThreadChannel(groups[0], 'all')).toBe('whatsapp');
+        expect(defaultThreadChannel(groups[0], 'email')).toBe('email');
+        expect(conversationForChannel(groups[0], 'email').id).toBe('em');
+    });
+
+    it('keeps email bodies off the WhatsApp pane even on one conversation', () => {
+        const wa = conv({ id: 'wa', channel: 'whatsapp' });
+        expect(keepMessageOnChannel({ channel: 'email' }, wa, 'whatsapp')).toBe(false);
+        expect(keepMessageOnChannel({ channel: 'whatsapp' }, wa, 'whatsapp')).toBe(true);
+        expect(keepMessageOnChannel({}, wa, 'whatsapp')).toBe(true);
     });
 });
 

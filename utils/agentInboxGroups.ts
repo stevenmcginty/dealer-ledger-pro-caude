@@ -14,6 +14,8 @@ const nameOf = (conv: Conversation): string => {
 };
 
 export type InboxFilter = 'all' | 'whatsapp' | 'email';
+/** The thread is always one of these — never a mixed All stream. */
+export type ThreadChannel = 'whatsapp' | 'email';
 
 export const conversationRefKey = (conv: Pick<Conversation, 'id' | 'companyId'>): string =>
     `${conv.companyId || ''}:${conv.id}`;
@@ -166,6 +168,47 @@ export const conversationsForFilter = (group: CustomerGroup, filter: InboxFilter
     const exact = group.conversations.filter(conv => conv.channel === filter);
     if (exact.length) return exact;
     return group.conversations.filter(conv => conversationChannels(conv).includes(filter));
+};
+
+export const threadChannelsOf = (group: CustomerGroup): ThreadChannel[] => {
+    const order: ThreadChannel[] = ['whatsapp', 'email'];
+    return order.filter(ch => group.channels.includes(ch));
+};
+
+/**
+ * Which pane to open. List filter wins when that channel exists;
+ * otherwise the latest thread's own channel.
+ */
+export const defaultThreadChannel = (group: CustomerGroup, listFilter: InboxFilter): ThreadChannel => {
+    const available = threadChannelsOf(group);
+    if (listFilter !== 'all' && available.includes(listFilter)) return listFilter;
+    const latest = group.latest.channel;
+    if (latest === 'whatsapp' || latest === 'email') {
+        if (available.includes(latest)) return latest;
+    }
+    return available[0] || 'email';
+};
+
+export const messageChannelOf = (
+    message: { channel?: Channel },
+    conv: Pick<Conversation, 'channel'>
+): Channel => message.channel || conv.channel;
+
+export const keepMessageOnChannel = (
+    message: { channel?: Channel },
+    conv: Pick<Conversation, 'channel'>,
+    channel: ThreadChannel
+): boolean => messageChannelOf(message, conv) === channel;
+
+/** Conversation to send on for this pane — prefer one that already talks that way. */
+export const conversationForChannel = (
+    group: CustomerGroup,
+    channel: ThreadChannel
+): Conversation => {
+    const exact = group.conversations.find(conv => conv.channel === channel);
+    if (exact) return exact;
+    const origin = group.conversations.find(conv => conversationChannels(conv).includes(channel));
+    return origin || group.latest;
 };
 
 export const inboxWaitingCount = (conversations: Conversation[]): { pending: number; unread: number } => {

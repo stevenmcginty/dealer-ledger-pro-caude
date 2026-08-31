@@ -37,8 +37,6 @@ import {
     conversationEmail,
     conversationName,
     conversationPhone,
-    isReactionMessage,
-    reactionEmojiOf,
     correctThreadCar,
     detachAgentMessage,
     deleteAgentConversation,
@@ -69,11 +67,15 @@ import {
 import {
     CustomerGroup,
     InboxFilter,
+    ThreadChannel,
+    conversationForChannel,
     conversationRefKey,
-    conversationsForFilter,
+    defaultThreadChannel,
     groupConversations,
     groupHasChannel,
+    keepMessageOnChannel,
     partitionSharedGroups,
+    threadChannelsOf,
 } from '../../utils/agentInboxGroups';
 import { dismissConversationNotifications } from '../../utils/inboxNotify';
 import {
@@ -84,19 +86,14 @@ import {
     prepareWhatsAppFile,
 } from '../../utils/whatsappMedia';
 import StartWhatsAppSheet from './StartWhatsAppSheet';
+import { ThreadMessage } from './inboxMessages';
+import { DEMO_CONVERSATIONS, DEMO_MESSAGES } from './inboxDemo';
 import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../../utils/agentInboxBounce';
 
 const whatsappOpener = (firstName?: string, vehicleTitle?: string): string => {
     const name = (firstName || 'there').trim() || 'there';
     const vehicle = (vehicleTitle || 'car').trim() || 'car';
     return `Hi ${name}, thanks for enquiring about the ${vehicle}. It's still available. Would you like any more details, or to arrange a viewing or test drive?`;
-};
-
-const defaultSendVia = (conv: Conversation): Exclude<SendVia, 'auto'> => {
-    const phone = conversationPhone(conv) || phoneFromThread(conv);
-    if (threadLooksBounced(conv) && phone) return 'whatsapp';
-    if (conv.channel === 'whatsapp' && phone) return 'whatsapp';
-    return 'email';
 };
 
 const homeOf = (conv: Conversation, fallback: string): string => conv.companyId || fallback;
@@ -160,19 +157,6 @@ const ComposeError: React.FC<{ error: InlineError; onDismiss: () => void }> = ({
     );
 };
 
-const Disclosure: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className }) => {
-    const [open, setOpen] = useState(false);
-    return (
-        <div className={className}>
-            <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8696a0] hover:text-white">
-                {label}
-                <ChevronDownIcon className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
-            </button>
-            {open && children}
-        </div>
-    );
-};
-
 const MenuItem: React.FC<{ onClick: () => void; disabled?: boolean; danger?: boolean; children: React.ReactNode }> = ({ onClick, disabled, danger, children }) => (
     <button
         type="button"
@@ -186,34 +170,6 @@ const MenuItem: React.FC<{ onClick: () => void; disabled?: boolean; danger?: boo
         {children}
     </button>
 );
-
-const ChannelChip: React.FC<{ channel: Channel; compact?: boolean }> = ({ channel, compact }) => {
-    if (channel === 'whatsapp') {
-        return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#25d366]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#25d366]">
-                <WhatsAppIcon className="h-3 w-3" />
-                {compact ? null : 'WhatsApp'}
-            </span>
-        );
-    }
-    if (channel === 'email') {
-        return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-300">
-                <EnvelopeIcon className="h-3 w-3" />
-                {compact ? null : 'Email'}
-            </span>
-        );
-    }
-    if (channel === 'sms') {
-        return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
-                <PhoneIcon className="h-3 w-3" />
-                {compact ? null : 'SMS'}
-            </span>
-        );
-    }
-    return null;
-};
 
 const initials = (name: string): string => {
     const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -264,8 +220,13 @@ const GroupRow: React.FC<{
                 </div>
                 <div className="mt-0.5 flex items-center gap-2">
                     <p className={`min-w-0 flex-1 truncate text-[13px] ${group.unread ? 'font-medium text-[#e9edef]' : 'text-[#8696a0]'}`}>
-                        <ChannelGlyphs channels={group.channels} />
-                        <span className="ml-1.5">{group.preview || 'No messages yet'}</span>
+                        <span className={`font-semibold ${
+                            group.latest.channel === 'whatsapp' ? 'text-[#25d366]' : group.latest.channel === 'email' ? 'text-sky-300' : 'text-violet-300'
+                        }`}>
+                            {group.latest.channel === 'whatsapp' ? 'WhatsApp' : group.latest.channel === 'email' ? 'Email' : 'SMS'}
+                        </span>
+                        <span className="mx-1.5 text-[#8696a0]/40" aria-hidden>·</span>
+                        {group.preview || 'No messages yet'}
                     </p>
                     {attention ? (
                         <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
@@ -277,234 +238,18 @@ const GroupRow: React.FC<{
                         </span>
                     ) : null}
                 </div>
-                {group.shared && (
-                    <span className="mt-1 inline-flex rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-[#8696a0]">
-                        Other ledger
-                    </span>
-                )}
-            </div>
-        </button>
-    );
-};
-
-/**
- * WhatsApp-style delivery state on an outbound bubble.
- * `delivery` from the webhook wins; a provider id alone still proves 'sent'
- * (older messages predate the receipts). A brand-new message with neither is
- * in flight; anything older with neither stays neutral — never "failed".
- */
-const deliveryStateOf = (message: AgentMessage): 'sent' | 'delivered' | 'read' | 'failed' | 'pending' | null => {
-    if (message.direction !== 'out') return null;
-    if (message.delivery) return message.delivery;
-    if (message.providerId) return 'sent';
-    if (Date.now() - (message.createdAt || 0) < 5 * 60_000) return 'pending';
-    return null;
-};
-
-const DeliveryTicks: React.FC<{ message: AgentMessage }> = ({ message }) => {
-    const state = deliveryStateOf(message);
-    if (!state) return null;
-    if (state === 'pending') {
-        return (
-            <svg viewBox="0 0 16 16" className="inline h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.4" aria-label="Sending" role="img">
-                <circle cx="8" cy="8" r="5.6" />
-                <path d="M8 5v3.2l2.1 1.3" strokeLinecap="round" />
-            </svg>
-        );
-    }
-    if (state === 'failed') {
-        return <ExclamationTriangleIcon className="inline h-3 w-3 text-red-300" aria-label="Not delivered" />;
-    }
-    const label = state === 'read' ? 'Read' : state === 'delivered' ? 'Delivered' : 'Sent';
-    return (
-        <svg
-            viewBox="0 0 18 12"
-            className={`inline h-3 w-[18px] ${state === 'read' ? 'text-[#53bdeb]' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            role="img"
-            aria-label={label}
-        >
-            <path d="M1.5 6.5 5 10 11.5 3" />
-            {state !== 'sent' && <path d="M8 8 10 10 16.5 3" />}
-        </svg>
-    );
-};
-
-const MessageBubble: React.FC<{
-    message: AgentMessage;
-    agentName: string;
-    mixed: boolean;
-    showAuthor: boolean;
-    selected: boolean;
-    onToggleSelect: () => void;
-    onDelete: () => void;
-    onDetach?: () => void;
-}> = ({ message, agentName, mixed, showAuthor, selected, onToggleSelect, onDelete, onDetach }) => {
-    const mine = message.from !== 'customer';
-    const fromOwner = message.from === 'owner';
-    const instruction = instructionText(message);
-    const bounce = bounceNoticeText(message);
-    const wa = message.channel === 'whatsapp';
-    const email = message.channel === 'email';
-
-    const trashClass = `flex-shrink-0 p-1 text-[#8696a0] transition-opacity hover:text-red-400 ${
-        selected ? 'opacity-100' : 'pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'
-    }`;
-    const deleteBtn = (label: string) => (
-        <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            aria-label={label}
-            className={trashClass}
-        >
-            <TrashIcon className="h-3.5 w-3.5" />
-        </button>
-    );
-
-    if (bounce) {
-        return (
-            <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-                <div className="max-w-[90%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
-                    <span className="font-medium text-red-300/90">Email bounced</span>
-                    <span className="mx-1.5 opacity-50">·</span>
-                    <span className="opacity-70">{formatAgentTime(message.createdAt)}</span>
-                    <Disclosure label="Bounce details" className="mt-0.5">
-                        <p className="mt-1 whitespace-pre-wrap break-words text-left font-mono text-[10.5px] leading-relaxed text-[#8696a0]">{bounce}</p>
-                    </Disclosure>
-                </div>
-                {deleteBtn('Delete this note')}
-            </div>
-        );
-    }
-
-    if (instruction) {
-        return (
-            <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
-                    <span className="font-medium text-[#e9edef]/70">You told {agentName}:</span> {instruction}
-                </p>
-                {deleteBtn('Delete this note')}
-            </div>
-        );
-    }
-
-    if (isReactionMessage(message)) {
-        const emoji = reactionEmojiOf(message);
-        return (
-            <div className="group flex justify-start" onClick={onToggleSelect}>
-                <div className="flex items-end gap-1">
-                    <div className="rounded-2xl rounded-tl-sm bg-[#202c33] px-2.5 py-1.5 shadow">
-                        {mixed && (
-                            <div className="mb-1">
-                                <ChannelChip channel={message.channel} />
-                            </div>
-                        )}
-                        {emoji ? (
-                            <p className="text-[22px] leading-none" aria-label={`Reacted ${emoji}`}>{emoji}</p>
-                        ) : (
-                            <p className="text-[13px] text-[#e9edef]">Reacted</p>
-                        )}
-                        <p className="mt-1 text-[10px] text-[#8696a0]">
-                            {formatAgentTime(message.createdAt)}
-                        </p>
-                    </div>
-                    {deleteBtn('Delete this reaction')}
-                </div>
-            </div>
-        );
-    }
-
-    const bubble = !mine
-        ? 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
-        : fromOwner
-            ? 'rounded-tr-sm bg-emerald-800 text-white'
-            : wa
-                ? 'rounded-tr-sm bg-[#005c4b] text-[#e9edef]'
-                : email
-                    ? 'rounded-tr-sm bg-[#1e3a8a] text-white'
-                    : 'rounded-tr-sm bg-brand-700 text-white';
-
-    return (
-        <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`} onClick={onToggleSelect}>
-            <div className="max-w-[78%] sm:max-w-[70%]">
-                {mine && showAuthor && (
-                    <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-300' : wa ? 'text-[#25d366]' : 'text-sky-300'}`}>
-                        {fromOwner ? 'You' : agentName}
-                    </p>
-                )}
-                <div className={`flex items-end gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
-                    <div className={`relative rounded-2xl px-3 py-2 shadow ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
-                        {mixed && (
-                            <div className="mb-1">
-                                <ChannelChip channel={message.channel} />
-                            </div>
-                        )}
-                        {message.subject && (
-                            <p className="mb-1 border-b border-white/15 pb-1 text-xs font-semibold opacity-90">
-                                {message.subject}
-                            </p>
-                        )}
-                        {message.media?.kind === 'image' && (
-                            <a href={message.media.url} target="_blank" rel="noreferrer" className="mb-1 block">
-                                <img src={message.media.url} alt={message.media.filename || 'Photo'} className="max-h-64 max-w-full rounded-lg object-cover" />
-                            </a>
-                        )}
-                        {message.media?.kind === 'video' && (
-                            <video src={message.media.url} controls className="mb-1 max-h-64 w-full rounded-lg bg-black" />
-                        )}
-                        {message.media?.kind === 'document' && (
-                            <a
-                                href={message.media.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="mb-1 inline-flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2 text-sm underline"
-                            >
-                                <PaperClipIcon className="h-4 w-4" />
-                                {message.media.filename || 'File'}
-                            </a>
-                        )}
-                        {message.text && message.text !== '[photo]' && message.text !== '[video]' && message.text !== '[document]' && (
-                            <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">{message.text}</p>
-                        )}
-                        <p className={`mt-1 flex items-center gap-1 text-[10px] ${mine ? 'justify-end text-white/50' : 'text-[#8696a0]'}`}>
-                            {formatAgentTime(message.createdAt)}
-                            {mine && <DeliveryTicks message={message} />}
-                        </p>
-                        {mine && message.delivery === 'failed' && (
-                            <p className="mt-0.5 text-right text-[10px] font-medium text-red-300">
-                                Not delivered{message.deliveryError ? ` — ${message.deliveryError}` : ''}
-                            </p>
-                        )}
-                        {message.customerReaction && (
-                            <span
-                                className={`absolute -bottom-3 ${mine ? 'left-2' : 'right-2'} rounded-full bg-[#1f2c33] px-1.5 py-0.5 text-[15px] leading-none shadow ring-2 ring-[#0b141a]`}
-                                title={`Reacted ${message.customerReaction}`}
-                            >
-                                {message.customerReaction}
+                {(group.channels.length > 1 || group.shared) && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                        {group.channels.length > 1 && <ChannelGlyphs channels={group.channels} />}
+                        {group.shared && (
+                            <span className="inline-flex rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-[#8696a0]">
+                                Other ledger
                             </span>
                         )}
                     </div>
-                    {onDetach && (
-                        <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); onDetach(); }}
-                            aria-label="This email is someone else"
-                            title="This email is someone else"
-                            className={`flex-shrink-0 p-1 text-[#8696a0] transition-opacity hover:text-amber-300 ${
-                                selected ? 'opacity-100' : 'pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'
-                            }`}
-                        >
-                            <UsersIcon className="h-3.5 w-3.5" />
-                        </button>
-                    )}
-                    {deleteBtn('Delete this message')}
-                </div>
+                )}
             </div>
-        </div>
+        </button>
     );
 };
 
@@ -520,6 +265,8 @@ const AgentInboxPage = () => {
     const [query, setQuery] = useState('');
     const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
     const [activeConvId, setActiveConvId] = useState<string | null>(null);
+    const [threadChannel, setThreadChannel] = useState<ThreadChannel>('whatsapp');
+    const [alsoOther, setAlsoOther] = useState(false);
     const [messagesByConv, setMessagesByConv] = useState<Record<string, AgentMessage[]>>({});
     const [reply, setReply] = useState('');
     const [sending, setSending] = useState(false);
@@ -531,7 +278,6 @@ const AgentInboxPage = () => {
     const [promptText, setPromptText] = useState('');
     const [draftBusy, setDraftBusy] = useState<'' | 'approve' | 'discard'>('');
     const [replyMode, setReplyMode] = useState<'human' | 'agent'>('human');
-    const [sendVia, setSendVia] = useState<Exclude<SendVia, 'auto'>>('email');
     const [phrasingSince, setPhrasingSince] = useState<number | null>(null);
     const [pendingDelete, setPendingDelete] = useState<
         { kind: 'thread'; conv: Conversation } | { kind: 'message'; message: AgentMessage; conv: Conversation } | null
@@ -604,6 +350,10 @@ const AgentInboxPage = () => {
 
     useEffect(() => {
         if (!companyId) return;
+        if (companyId === 'demo-company') {
+            setOwn(DEMO_CONVERSATIONS);
+            return;
+        }
         return subscribeToAgentConversations(companyId, setOwn);
     }, [companyId, resumeTick]);
 
@@ -685,29 +435,39 @@ const AgentInboxPage = () => {
         return null;
     }, [allGroups, activeGroupId, activeConvId]);
 
-    const threadConversations = useMemo(() => {
-        if (!activeGroup) return [];
-        return conversationsForFilter(activeGroup, filter);
-    }, [activeGroup, filter]);
+    const paneChannels = useMemo(
+        () => (activeGroup ? threadChannelsOf(activeGroup) : []),
+        [activeGroup]
+    );
+
+    const pane: ThreadChannel = paneChannels.includes(threadChannel)
+        ? threadChannel
+        : (paneChannels[0] || 'email');
 
     const active = useMemo(() => {
         if (!activeGroup) return null;
-        const pool = threadConversations.length ? threadConversations : activeGroup.conversations;
-        return pool.find(c => c.id === activeConvId) || pool[0] || activeGroup.latest;
-    }, [activeGroup, activeConvId, threadConversations]);
+        const preferred = conversationForChannel(activeGroup, pane);
+        return activeGroup.conversations.find(c => c.id === activeConvId && keepMessageOnChannel({ channel: c.channel }, c, pane))
+            || preferred;
+    }, [activeGroup, activeConvId, pane]);
 
     useEffect(() => {
-        if (!activeGroup || !threadConversations.length) return;
-        if (activeConvId && threadConversations.some(c => c.id === activeConvId)) return;
-        setActiveConvId(threadConversations[0].id);
-    }, [activeGroup, threadConversations, activeConvId]);
+        if (activeGroupId || !activeConvId) return;
+        const group = allGroups.find(g => g.conversations.some(c => c.id === activeConvId));
+        if (!group) return;
+        const conv = group.conversations.find(c => c.id === activeConvId);
+        setActiveGroupId(group.id);
+        if (conv && (conv.channel === 'whatsapp' || conv.channel === 'email')) {
+            setThreadChannel(conv.channel);
+        }
+    }, [activeConvId, activeGroupId, allGroups]);
 
     useEffect(() => {
-        if (activeGroupId || activeConvId || !groups.length) return;
-        if (typeof window !== 'undefined' && window.innerWidth < 1024) return;
-        setActiveGroupId(groups[0].id);
-        setActiveConvId(groups[0].latest.id);
-    }, [groups, activeGroupId, activeConvId]);
+        if (!activeGroup) return;
+        const next = conversationForChannel(activeGroup, pane);
+        if (activeConvId === next.id) return;
+        setActiveConvId(next.id);
+    }, [activeGroup?.id, pane]);
 
     useEffect(() => {
         if (!companyId || !activeGroup) {
@@ -729,6 +489,15 @@ const AgentInboxPage = () => {
         setDrafting(null);
         setDraftOpen(false);
         setReplyMode('human');
+        setAlsoOther(false);
+        if (companyId === 'demo-company') {
+            const next: Record<string, AgentMessage[]> = {};
+            activeGroup.conversations.forEach(conv => {
+                next[conversationRefKey(conv)] = DEMO_MESSAGES[conv.id] || [];
+            });
+            setMessagesByConv(next);
+            return;
+        }
         const unsubs = activeGroup.conversations.map(conv => {
             const home = homeOf(conv, companyId);
             void markConversationRead(home, conv.id).catch(() => undefined);
@@ -740,12 +509,26 @@ const AgentInboxPage = () => {
         return () => unsubs.forEach(stop => stop());
     }, [companyId, activeGroup?.id, resumeTick]);
 
-    const draftId = active?.pendingDraft?.id || '';
+    const draftHost = useMemo(() => {
+        if (!activeGroup) return active;
+        return activeGroup.conversations.find(c => c.channel === pane && c.pendingDraft)
+            || activeGroup.conversations.find(c => c.pendingDraft)
+            || active;
+    }, [activeGroup, pane, active]);
+
+    const questionHost = useMemo(() => {
+        if (!activeGroup) return active;
+        return activeGroup.conversations.find(c => c.channel === pane && c.pendingQuestion)
+            || activeGroup.conversations.find(c => c.pendingQuestion)
+            || active;
+    }, [activeGroup, pane, active]);
+
+    const draftId = draftHost?.pendingDraft?.id || '';
     useEffect(() => {
-        setDraftText(active?.pendingDraft?.text || '');
+        setDraftText(draftHost?.pendingDraft?.text || '');
         // The prompt that produced this draft stays amendable, so a tweak-and-
         // re-run never means retyping. Unprompted drafts start with a blank prompt.
-        setPromptText(active?.pendingDraft?.source === 'instruction' ? (active?.ownerAnswer?.answer || '') : '');
+        setPromptText(draftHost?.pendingDraft?.source === 'instruction' ? (draftHost?.ownerAnswer?.answer || '') : '');
         if (draftId) {
             setPhrasingSince(null);
             setReplyMode('human');
@@ -754,28 +537,40 @@ const AgentInboxPage = () => {
     }, [draftId]);
 
     useEffect(() => {
-        if (active) setSendVia(defaultSendVia(active));
-    }, [active?.id, active?.emailBounce?.at]);
+        setAlsoOther(false);
+    }, [active?.id, pane]);
+
+    useEffect(() => {
+        if (filter === 'all') return;
+        setThreadChannel(filter);
+    }, [filter]);
 
     useEffect(() => {
         if (answerMode) replyBoxRef.current?.focus();
     }, [answerMode]);
 
-    const messages = useMemo(() => {
+    const allMessages = useMemo(() => {
         if (!activeGroup) return [];
-        const pool = threadConversations.length ? threadConversations : activeGroup.conversations;
-        const mixed = filter === 'all' && (pool.length > 1 || activeGroup.channels.length > 1);
-        const list: Array<AgentMessage & { conv: Conversation; mixed: boolean }> = [];
-        pool.forEach(conv => {
+        const list: Array<AgentMessage & { conv: Conversation }> = [];
+        activeGroup.conversations.forEach(conv => {
             const key = conversationRefKey(conv);
             (messagesByConv[key] || []).forEach(message => {
-                if (filter !== 'all' && message.channel && message.channel !== filter) return;
-                list.push({ ...message, conv, mixed });
+                list.push({ ...message, conv });
             });
         });
         list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
         return list;
-    }, [activeGroup, threadConversations, messagesByConv, filter]);
+    }, [activeGroup, messagesByConv]);
+
+    const messages = useMemo(
+        () => allMessages.filter(message => keepMessageOnChannel(message, message.conv, pane)),
+        [allMessages, pane]
+    );
+
+    const channelCounts = useMemo(() => ({
+        whatsapp: allMessages.filter(m => keepMessageOnChannel(m, m.conv, 'whatsapp')).length,
+        email: allMessages.filter(m => keepMessageOnChannel(m, m.conv, 'email')).length,
+    }), [allMessages]);
 
     useEffect(() => {
         if (!phrasingSince) return;
@@ -796,14 +591,17 @@ const AgentInboxPage = () => {
     }, [messages]);
 
     const openGroup = useCallback((group: CustomerGroup) => {
+        const channel = defaultThreadChannel(group, filter);
         setActiveGroupId(group.id);
-        const preferred = filter === 'whatsapp'
-            ? group.conversations.find(c => c.channel === 'whatsapp') || group.latest
-            : filter === 'email'
-                ? group.conversations.find(c => c.channel === 'email') || group.latest
-                : group.latest;
-        setActiveConvId(preferred.id);
+        setThreadChannel(channel);
+        setActiveConvId(conversationForChannel(group, channel).id);
     }, [filter]);
+
+    useEffect(() => {
+        if (activeGroupId || activeConvId || !groups.length) return;
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) return;
+        openGroup(groups[0]);
+    }, [groups, activeGroupId, activeConvId, openGroup]);
 
     const handleMode = useCallback(async (mode: ConversationMode) => {
         if (!companyId || !active) return;
@@ -842,7 +640,8 @@ const AgentInboxPage = () => {
                 media = { kind, url, mime: ready.type, filename: ready.name };
             }
             setSendStatus(null);
-            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, media, sendVia, conversationPhone(active) || phoneFromThread(active));
+            const via: Exclude<SendVia, 'auto'> = alsoOther ? 'both' : pane;
+            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, media, via, conversationPhone(active) || phoneFromThread(active));
             setReply('');
             setAttachment(null);
             setSendError(null);
@@ -859,7 +658,7 @@ const AgentInboxPage = () => {
             setSendStatus(null);
             setSending(false);
         }
-    }, [companyId, active, reply, attachment, sending, toast, sendVia]);
+    }, [companyId, active, reply, attachment, sending, toast, alsoOther, pane]);
 
     const handleInstruct = useCallback(async () => {
         const text = reply.trim();
@@ -882,10 +681,11 @@ const AgentInboxPage = () => {
 
     const handleAnswer = useCallback(async () => {
         const text = answer.trim();
-        if (!companyId || !active || !text || answering) return;
+        const host = questionHost || active;
+        if (!companyId || !host || !text || answering) return;
         setAnswering(true);
         try {
-            await answerAgentQuestion(homeOf(active, companyId), active.id, text);
+            await answerAgentQuestion(homeOf(host, companyId), host.id, text);
             setAnswer('');
             setSendError(null);
             toast.success('Sent back to the agent — it will put that in its own words.');
@@ -894,22 +694,23 @@ const AgentInboxPage = () => {
         } finally {
             setAnswering(false);
         }
-    }, [companyId, active, answer, answering, toast]);
+    }, [companyId, questionHost, active, answer, answering, toast]);
 
     const handleApproveDraft = useCallback(async () => {
         const text = draftText.trim();
-        if (!companyId || !active || !text || draftBusy) return;
+        const host = draftHost;
+        if (!companyId || !host || !text || draftBusy) return;
         setDraftBusy('approve');
         try {
-            const result = await approveAgentDraft(homeOf(active, companyId), active.id, text);
-            const sent = (result.sent || [active.channel]).map(ch => CHANNEL_LABELS[ch] || ch).join(' and ');
+            const result = await approveAgentDraft(homeOf(host, companyId), host.id, text);
+            const sent = (result.sent || [host.channel]).map(ch => CHANNEL_LABELS[ch] || ch).join(' and ');
             toast.success(approvedSendMessage(sent, result.sendAfter));
         } catch (err: any) {
             toast.error(err?.message || 'That draft was not sent.');
         } finally {
             setDraftBusy('');
         }
-    }, [companyId, active, draftText, draftBusy, toast]);
+    }, [companyId, draftHost, draftText, draftBusy, toast]);
 
     const handleConfirmDelete = useCallback(async () => {
         if (!companyId || !pendingDelete || deleting) return;
@@ -941,17 +742,17 @@ const AgentInboxPage = () => {
     }, [companyId, pendingDelete, deleting, activeConvId, toast]);
 
     const handleDiscardDraft = useCallback(async () => {
-        if (!companyId || !active || draftBusy) return;
+        if (!companyId || !draftHost || draftBusy) return;
         setDraftBusy('discard');
         try {
-            await discardAgentDraft(homeOf(active, companyId), active.id);
+            await discardAgentDraft(homeOf(draftHost, companyId), draftHost.id);
             toast.success('Draft binned. Nothing was sent.');
         } catch (err: any) {
             toast.error(err?.message || 'That draft could not be discarded.');
         } finally {
             setDraftBusy('');
         }
-    }, [companyId, active, draftBusy, toast]);
+    }, [companyId, draftHost, draftBusy, toast]);
 
     /**
      * "Wrong car." Put Dave right about which car this thread is about.
@@ -983,16 +784,17 @@ const AgentInboxPage = () => {
     }, [companyId, active, carFixNote, carFixBusy, toast]);
 
     const pickSplitTarget = useCallback((): { message: AgentMessage; conv: Conversation } | null => {
-        const isCustomer = (m: AgentMessage) => m.from === 'customer' && !instructionText(m) && !bounceNoticeText(m);
+        const isCustomerEmail = (m: AgentMessage) =>
+            m.from === 'customer' && m.channel === 'email' && !instructionText(m) && !bounceNoticeText(m);
         if (selectedMsgKey) {
-            const found = messages.find(m => `${conversationRefKey(m.conv)}:${m.id}` === selectedMsgKey);
-            if (found && isCustomer(found)) return { message: found, conv: found.conv };
+            const found = allMessages.find(m => `${conversationRefKey(m.conv)}:${m.id}` === selectedMsgKey);
+            if (found && isCustomerEmail(found)) return { message: found, conv: found.conv };
         }
-        const inbounds = messages.filter(isCustomer);
+        const inbounds = allMessages.filter(isCustomerEmail);
         if (inbounds.length < 2) return null;
         const latest = inbounds[inbounds.length - 1];
         return { message: latest, conv: latest.conv };
-    }, [messages, selectedMsgKey]);
+    }, [allMessages, selectedMsgKey]);
 
     const requestSplit = useCallback((target?: { message: AgentMessage; conv: Conversation } | null) => {
         const picked = target || pickSplitTarget();
@@ -1050,10 +852,12 @@ const AgentInboxPage = () => {
         setPhrasingSince(Date.now());
         setDraftOpen(true);
         try {
+            const host = draftHost || active;
+            if (!host) return;
             if (text) {
-                await instructAgent(homeOf(active, companyId), active.id, text);
+                await instructAgent(homeOf(host, companyId), host.id, text);
             } else {
-                await draftNow(homeOf(active, companyId), active.id, true);
+                await draftNow(homeOf(host, companyId), host.id, true);
                 setPhrasingSince(null);
             }
             setSendError(null);
@@ -1063,7 +867,7 @@ const AgentInboxPage = () => {
         } finally {
             setSending(false);
         }
-    }, [companyId, active, promptText, sending, agentName]);
+    }, [companyId, active, draftHost, promptText, sending, agentName]);
 
     const handleWhatsAppHer = useCallback(async () => {
         if (!companyId || !active || sending) return;
@@ -1117,23 +921,27 @@ const AgentInboxPage = () => {
         );
     }
 
-    const mixed = !!activeGroup && filter === 'all' && (activeGroup.conversations.length > 1 || activeGroup.channels.length > 1);
     const phoneOnFile = active ? (conversationPhone(active) || phoneFromThread(active)) : undefined;
     const emailOnFile = active ? conversationEmail(active) : undefined;
-    const bounced = !!(active && threadLooksBounced(active, messages));
-    const whatsappAlreadySent = messages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
-    const whatsappNeedsOpener = !!phoneOnFile && !(active?.lastCustomerMessageAt);
-    const asking = !!active?.pendingQuestion && answerMode;
-    const hasDraft = !!active?.pendingDraft;
+    const bounced = !!(active && threadLooksBounced(active, allMessages));
+    const whatsappAlreadySent = allMessages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
+    const whatsappNeedsOpener = pane === 'whatsapp' && !!phoneOnFile && !(active?.lastCustomerMessageAt);
+    const asking = !!questionHost?.pendingQuestion && answerMode;
+    const hasDraft = !!draftHost?.pendingDraft;
     const customerWaiting = !!(
         active
         && !hasDraft
-        && !active.pendingQuestion
+        && !questionHost?.pendingQuestion
         && (active.lastCustomerMessageAt || 0) > (active.lastOutboundAt || 0)
     );
     /** Where an approved draft will go out — WhatsApp once the email route is dead. */
-    const draftChannel: Channel = active ? (bounced && phoneOnFile ? 'whatsapp' : active.channel) : 'email';
-    const canChooseChannel = !!phoneOnFile && !!emailOnFile;
+    const draftChannel: Channel = draftHost
+        ? (bounced && phoneOnFile ? 'whatsapp' : draftHost.channel)
+        : pane;
+    const canAlsoSendOther = pane === 'email' ? !!phoneOnFile && !bounced : !!emailOnFile && !bounced;
+    const sendViaNow: Exclude<SendVia, 'auto'> = alsoOther && canAlsoSendOther ? 'both' : pane;
+    const emailPane = pane === 'email';
+    const showChannelSwitch = paneChannels.length > 1;
     const tabs: Array<{ id: InboxFilter; label: string; count: number; accent?: string }> = [
         { id: 'all', label: 'All', count: counts.all },
         { id: 'whatsapp', label: 'WhatsApp', count: counts.whatsapp, accent: 'text-[#25d366]' },
@@ -1161,7 +969,7 @@ const AgentInboxPage = () => {
                             <p className="text-[11px] text-[#8696a0]">
                                 {inbox
                                     ? `${inbox.name || 'Shared number'} · every ledger`
-                                    : 'WhatsApp and email'}
+                                    : 'One person, one channel at a time'}
                             </p>
                         </div>
                     </div>
@@ -1191,8 +999,8 @@ const AgentInboxPage = () => {
                                     : 'text-[#8696a0] hover:bg-white/5 hover:text-white'
                             }`}
                         >
-                            {tab.label}
-                            <span className="ml-1 opacity-70">{tab.count}</span>
+                            {tab.label}{' '}
+                            <span className="opacity-70">{tab.count}</span>
                         </button>
                     ))}
                 </div>
@@ -1273,22 +1081,6 @@ const AgentInboxPage = () => {
                                         {active.escalated && !bounced && <Badge size="sm" variant="danger">Escalated</Badge>}
                                     </div>
                                     <div className="mt-0.5 flex items-center gap-1.5 text-[12px] leading-tight text-[#8696a0]">
-                                        {(threadConversations.length ? threadConversations : activeGroup.conversations).length > 1 && (
-                                            <span className="flex flex-shrink-0 items-center gap-1">
-                                                {(threadConversations.length ? threadConversations : activeGroup.conversations).map(conv => (
-                                                    <button
-                                                        key={conversationRefKey(conv)}
-                                                        type="button"
-                                                        onClick={() => setActiveConvId(conv.id)}
-                                                        aria-label={`Show the ${CHANNEL_LABELS[conv.channel] || conv.channel} thread`}
-                                                        aria-pressed={conv.id === active.id}
-                                                        className={`rounded-full ${conv.id === active.id ? 'ring-1 ring-white/40' : 'opacity-60'}`}
-                                                    >
-                                                        <ChannelChip channel={conv.channel} compact />
-                                                    </button>
-                                                ))}
-                                            </span>
-                                        )}
                                         {active.vehicleInterest?.title ? (
                                             <span className="flex min-w-0 items-center gap-1">
                                                 <CarIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25d366]" />
@@ -1316,6 +1108,42 @@ const AgentInboxPage = () => {
                                     <EllipsisVerticalIcon className="h-5 w-5" />
                                 </button>
                             </div>
+
+                            {showChannelSwitch ? (
+                                <div className="mt-2 flex rounded-lg bg-black/35 p-0.5" role="tablist" aria-label="Channel">
+                                    {paneChannels.map(ch => {
+                                        const on = pane === ch;
+                                        const n = channelCounts[ch];
+                                        return (
+                                            <button
+                                                key={ch}
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={on}
+                                                onClick={() => setThreadChannel(ch)}
+                                                className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition-colors ${
+                                                    on
+                                                        ? ch === 'whatsapp'
+                                                            ? 'bg-[#25d366] text-[#111b21] shadow'
+                                                            : 'bg-sky-600 text-white shadow'
+                                                        : 'text-[#8696a0] hover:text-white'
+                                                }`}
+                                            >
+                                                {ch === 'whatsapp' ? <WhatsAppIcon className="h-3.5 w-3.5" /> : <EnvelopeIcon className="h-3.5 w-3.5" />}
+                                                {ch === 'whatsapp' ? 'WhatsApp' : 'Email'}
+                                                <span className={`tabular-nums ${on ? 'opacity-80' : 'opacity-50'}`}>{n}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide ${
+                                    pane === 'whatsapp' ? 'text-[#25d366]' : 'text-sky-300'
+                                }`}>
+                                    {pane === 'whatsapp' ? <WhatsAppIcon className="h-3.5 w-3.5" /> : <EnvelopeIcon className="h-3.5 w-3.5" />}
+                                    {pane === 'whatsapp' ? 'WhatsApp' : 'Email'}
+                                </p>
+                            )}
 
                             {carFixOpen && (
                                 <div className="mt-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2.5">
@@ -1500,7 +1328,10 @@ const AgentInboxPage = () => {
                                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                                         <button
                                             type="button"
-                                            onClick={handleWhatsAppHer}
+                                            onClick={() => {
+                                                setThreadChannel('whatsapp');
+                                                void handleWhatsAppHer();
+                                            }}
                                             disabled={sending}
                                             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#25d366] px-4 text-[14px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50 sm:w-auto"
                                         >
@@ -1515,15 +1346,15 @@ const AgentInboxPage = () => {
                             </div>
                         ))}
 
-                        {active.pendingQuestion && (
+                        {questionHost?.pendingQuestion && (
                             <div className="border-b border-white/5 border-l-2 border-l-amber-400/80 bg-[#141c22] px-4 py-3">
                                 <div className="flex items-start gap-2.5">
                                     <SparklesIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
                                     <div className="min-w-0 flex-1">
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-300">{agentName} needs an answer</p>
-                                        <p className="mt-1 text-[14px] leading-snug text-white">{active.pendingQuestion.question}</p>
-                                        {active.pendingQuestion.context && (
-                                            <p className="mt-1 text-[12px] leading-snug text-[#8696a0]">{active.pendingQuestion.context}</p>
+                                        <p className="mt-1 text-[14px] leading-snug text-white">{questionHost.pendingQuestion.question}</p>
+                                        {questionHost.pendingQuestion.context && (
+                                            <p className="mt-1 text-[12px] leading-snug text-[#8696a0]">{questionHost.pendingQuestion.context}</p>
                                         )}
                                         {!answerMode && (
                                             <button type="button" onClick={() => { setAnswerMode(true); replyBoxRef.current?.focus(); }} className="mt-2 text-[12px] font-medium text-amber-300 hover:text-amber-200">
@@ -1535,7 +1366,7 @@ const AgentInboxPage = () => {
                             </div>
                         )}
 
-                        {active.escalated && active.escalationReason && !active.pendingQuestion && !bounced && !bannerCollapsed && (
+                        {active.escalated && active.escalationReason && !questionHost?.pendingQuestion && !bounced && !bannerCollapsed && (
                             <div className="flex items-start gap-2.5 border-b border-white/5 border-l-2 border-l-red-400/80 bg-[#141c22] px-4 py-3">
                                 <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-300" />
                                 <p className="min-w-0 flex-1 text-[13px] leading-snug text-[#e9edef]">{active.escalationReason}</p>
@@ -1552,25 +1383,24 @@ const AgentInboxPage = () => {
 
                         <div
                             ref={threadRef}
-                            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4"
-                            style={{
+                            className={`min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4 ${emailPane ? 'space-y-4' : ''}`}
+                            style={emailPane ? {
+                                backgroundColor: '#0e1620',
+                            } : {
                                 backgroundColor: '#0b141a',
                                 backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0)',
                                 backgroundSize: '22px 22px',
                             }}
                         >
                             {messages.length ? (
-                                messages.map((message, i) => {
+                                messages.map(message => {
                                     const key = `${conversationRefKey(message.conv)}:${message.id}`;
-                                    const prev = messages[i - 1];
-                                    const showAuthor = !prev || prev.from !== message.from;
                                     return (
-                                        <MessageBubble
+                                        <ThreadMessage
                                             key={key}
                                             message={message}
                                             agentName={agentName}
-                                            mixed={mixed}
-                                            showAuthor={showAuthor}
+                                            deskEmail={inbox?.gmailAddress}
                                             selected={selectedMsgKey === key}
                                             onToggleSelect={() => setSelectedMsgKey(k => (k === key ? null : key))}
                                             onDelete={() => setPendingDelete({ kind: 'message', message, conv: message.conv })}
@@ -1583,7 +1413,29 @@ const AgentInboxPage = () => {
                                     );
                                 })
                             ) : (
-                                <p className="py-12 text-center text-sm text-[#8696a0]">Nothing said yet.</p>
+                                <div className="px-4 py-16 text-center">
+                                    {emailPane ? (
+                                        <>
+                                            <EnvelopeIcon className="mx-auto h-10 w-10 text-sky-400/30" />
+                                            <p className="mt-3 text-sm font-medium text-[#e9edef]">No emails in this thread</p>
+                                            <p className="mt-1 text-xs text-[#8696a0]">
+                                                {emailOnFile
+                                                    ? `Mail to ${emailOnFile} will show here. WhatsApp stays on the other tab.`
+                                                    : 'No email address on file. Switch to WhatsApp to keep talking.'}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <WhatsAppIcon className="mx-auto h-10 w-10 text-[#25d366]/30" />
+                                            <p className="mt-3 text-sm font-medium text-[#e9edef]">No WhatsApp yet</p>
+                                            <p className="mt-1 text-xs text-[#8696a0]">
+                                                {phoneOnFile
+                                                    ? `Chat with ${displayUkPhone(phoneOnFile)} shows here. Emails stay on the other tab.`
+                                                    : 'No mobile number on file. Switch to Email to keep talking.'}
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
                             )}
                         </div>
 
@@ -1591,7 +1443,7 @@ const AgentInboxPage = () => {
                             className="border-t border-white/5 bg-[#202c33] px-3 pt-2"
                             style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
                         >
-                            {!asking && hasDraft && active.pendingDraft && (
+                            {!asking && hasDraft && draftHost?.pendingDraft && (
                                 <div className="mb-2 overflow-hidden rounded-xl border border-amber-400/25 bg-amber-400/[0.06]">
                                     <div className="flex items-center gap-1.5 px-2.5 py-1.5">
                                         <button
@@ -1603,7 +1455,7 @@ const AgentInboxPage = () => {
                                             <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
                                             <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-amber-200">
                                                 {draftOpen
-                                                    ? (active.pendingDraft.source === 'instruction'
+                                                    ? (draftHost.pendingDraft.source === 'instruction'
                                                         ? `${agentName}'s draft, from your prompt`
                                                         : `${agentName} drafted this`)
                                                     : (draftText || `${agentName} drafted a reply`)}
@@ -1626,7 +1478,7 @@ const AgentInboxPage = () => {
                                     </div>
                                     {draftOpen && (
                                         <div className="border-t border-amber-400/15 px-2.5 pb-2.5 pt-2">
-                                            {bounced && active.pendingDraft.source === 'agent' && (
+                                            {bounced && draftHost.pendingDraft.source === 'agent' && (
                                                 <p className="mb-2 text-[12px] leading-snug text-red-300">
                                                     This may be a reply to the bounce notice, not the customer — read it before sending.
                                                 </p>
@@ -1763,51 +1615,19 @@ const AgentInboxPage = () => {
                                 </button>
                             )}
 
-                            {!asking && replyMode === 'human' && canChooseChannel && (
-                                <div className="mb-1.5 flex gap-1" role="radiogroup" aria-label="Send this on">
-                                    <button
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={sendVia === 'email'}
-                                        onClick={() => setSendVia('email')}
-                                        disabled={bounced || !!attachment}
-                                        title={bounced ? 'Their email address bounces' : attachment ? 'Photos and files go by WhatsApp' : undefined}
-                                        className={`flex h-8 flex-1 items-center justify-center gap-1 rounded-full text-[12px] font-semibold transition-colors disabled:opacity-40 ${
-                                            sendVia === 'email' ? 'bg-sky-600 text-white' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
-                                        }`}
-                                    >
-                                        <EnvelopeIcon className="h-3.5 w-3.5" />
-                                        <span className={bounced ? 'line-through' : ''}>Email</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={sendVia === 'whatsapp'}
-                                        onClick={() => setSendVia('whatsapp')}
-                                        className={`flex h-8 flex-1 items-center justify-center gap-1 rounded-full text-[12px] font-semibold transition-colors ${
-                                            sendVia === 'whatsapp' ? 'bg-[#25d366] text-[#111b21]' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
-                                        }`}
-                                    >
-                                        <WhatsAppIcon className="h-3.5 w-3.5" />
-                                        WhatsApp
-                                    </button>
-                                    <button
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={sendVia === 'both'}
-                                        onClick={() => setSendVia('both')}
-                                        disabled={bounced || !!attachment}
-                                        title={bounced ? 'Their email address bounces' : attachment ? 'Photos and files go by WhatsApp' : undefined}
-                                        className={`flex h-8 flex-1 items-center justify-center rounded-full text-[12px] font-semibold transition-colors disabled:opacity-40 ${
-                                            sendVia === 'both' ? 'bg-[#005c4b] text-white' : 'bg-black/35 text-[#e9edef] hover:bg-black/50'
-                                        }`}
-                                    >
-                                        Both
-                                    </button>
-                                </div>
+                            {!asking && replyMode === 'human' && canAlsoSendOther && !attachment && (
+                                <label className="mb-1.5 flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg px-1 text-[12px] text-[#8696a0] hover:text-[#e9edef]">
+                                    <input
+                                        type="checkbox"
+                                        checked={alsoOther}
+                                        onChange={e => setAlsoOther(e.target.checked)}
+                                        className="h-4 w-4 rounded border-white/20 bg-black/40 text-[#25d366] focus:ring-[#25d366]/40"
+                                    />
+                                    {pane === 'email' ? 'Also send on WhatsApp' : 'Also send by email'}
+                                </label>
                             )}
 
-                            {!asking && replyMode === 'human' && sendVia !== 'email' && whatsappNeedsOpener && (
+                            {!asking && replyMode === 'human' && pane === 'whatsapp' && whatsappNeedsOpener && (
                                 <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
                                     <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
                                         {active?.whatsappOpenerAt
@@ -1862,7 +1682,7 @@ const AgentInboxPage = () => {
                                 </div>
                             ) : (
                                 <div className="flex items-end gap-2">
-                                    {phoneOnFile && sendVia !== 'email' && (
+                                    {phoneOnFile && pane === 'whatsapp' && (
                                         <>
                                             <input
                                                 ref={fileRef}
@@ -1880,7 +1700,7 @@ const AgentInboxPage = () => {
                                                     }
                                                     setAttachment(file);
                                                     setReplyMode('human');
-                                                    setSendVia('whatsapp');
+                                                    setThreadChannel('whatsapp');
                                                 }}
                                             />
                                             <button
@@ -1920,27 +1740,27 @@ const AgentInboxPage = () => {
                                             else if (reply.trim()) handleInstruct();
                                             else if (active) void requestDraft(active, true);
                                         }}
-                                        disabled={sending || (replyMode === 'human' && !reply.trim() && !attachment)}
+                                        disabled={sending || (pane === 'email' && bounced) || (replyMode === 'human' && !reply.trim() && !attachment)}
                                         className={`flex h-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
                                             attachment || replyMode === 'human'
-                                                ? sendVia === 'email'
+                                                ? sendViaNow === 'email'
                                                     ? 'bg-sky-600 text-white'
-                                                    : sendVia === 'both'
+                                                    : sendViaNow === 'both'
                                                         ? 'bg-[#005c4b] text-white'
                                                         : 'bg-[#25d366] text-[#111b21]'
                                                 : 'gap-1 bg-[#005c4b] text-white'
                                         }`}
                                         aria-label={
                                             attachment || replyMode === 'human'
-                                                ? sendVia === 'both' ? 'Send by email and WhatsApp' : sendVia === 'email' ? 'Send by email' : 'Send on WhatsApp'
+                                                ? sendViaNow === 'both' ? 'Send by email and WhatsApp' : sendViaNow === 'email' ? 'Send by email' : 'Send on WhatsApp'
                                                 : reply.trim() ? `Tell ${agentName}` : `Ask ${agentName} to draft`
                                         }
                                     >
                                         {sending ? <Spinner className="h-4 w-4" /> : attachment || replyMode === 'human' ? (
                                             <>
-                                                {sendVia === 'email' ? (
+                                                {sendViaNow === 'email' ? (
                                                     <EnvelopeIcon className="h-4 w-4" aria-hidden />
-                                                ) : sendVia === 'whatsapp' ? (
+                                                ) : sendViaNow === 'whatsapp' ? (
                                                     <WhatsAppIcon className="h-4 w-4" aria-hidden />
                                                 ) : null}
                                                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
