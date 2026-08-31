@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLongEmailBody, looksLikeForwardedEmail, splitQuotedEmail } from '../utils/emailQuote';
+import { isLongEmailBody, looksLikeEmailBody, looksLikeForwardedEmail, splitQuotedEmail } from '../utils/emailQuote';
 
 const NIGE = `Sent from my iPhone regards nige
 
@@ -62,6 +62,29 @@ describe('looksLikeForwardedEmail', () => {
 
     it('does not collapse a short quoted reply', () => {
         expect(looksLikeForwardedEmail('> ok thanks')).toBe(false);
+    });
+});
+
+const NINE_ELEVEN = `Hi Steven
+
+Is the 911 still for sale?
+
+Yes it is still available. Would you like to come and see it or shall I send more details?
+
+Thanks
+Steven
+Radlett Car Sales
+07710 525694
+www.radlettcarsales.com`;
+
+describe('looksLikeEmailBody', () => {
+    it('treats a pasted desk email as mail, not chat', () => {
+        expect(looksLikeEmailBody(NINE_ELEVEN)).toBe(true);
+    });
+
+    it('leaves a normal WhatsApp as chat', () => {
+        expect(looksLikeEmailBody('Is the car still available?')).toBe(false);
+        expect(looksLikeEmailBody('Hi Steve, is the 911 still for sale?')).toBe(false);
     });
 });
 

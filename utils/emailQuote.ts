@@ -83,7 +83,25 @@ export const splitQuotedEmail = (text: string): SplitEmail => {
         };
     }
 
+    const ios = raw.match(/^(Sent from my iPhone)\s*\n+/i);
+    if (ios) {
+        const rest = raw.slice(ios[0].length).replace(/^\s+/, '');
+        if (looksLikeEmailBody(rest)) {
+            return { body: ios[1], quoted: rest, quotedFrom: quotedFromOf(rest) };
+        }
+    }
+
     return { body: raw, quoted: null };
+};
+
+const emailHits = (text: string): number => {
+    const greeting = /^(hi|hello|dear)\s+\w+/im.test(text);
+    const signoff = /^(regards|kind regards|thanks|thank you|cheers)\b/im.test(text);
+    const link = /www\.|https?:\/\//i.test(text);
+    const phone = /(\+44\s?\d{9,11}|0\d{3,4}\s?\d{3}\s?\d{3,4})/.test(text);
+    const desk = /radlett car sales|sent from my /i.test(text);
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim()).length >= 3;
+    return [greeting, signoff, link, phone, desk, paragraphs].filter(Boolean).length;
 };
 
 /** A pasted WhatsApp should only collapse when the quote is actually an email. */
@@ -91,22 +109,23 @@ export const looksLikeForwardedEmail = (quoted: string | null | undefined): bool
     if (!quoted) return false;
     const text = quoted.trim();
     if (text.length < 80) return false;
-    const hits = [
-        /@/,
-        /\bhi\b/i,
-        /\bregards\b/i,
-        /\bplease see\b/i,
-        /https?:\/\//i,
-        /\bsubject:/i,
-        /\btel:/i,
-        /\bsent from my /i,
-    ].filter(re => re.test(text)).length;
-    return hits >= 2 || text.length > 240;
+    return emailHits(text) >= 2 || text.length > 240;
+};
+
+/**
+ * A WhatsApp bubble that is itself an email (no "On … wrote" marker).
+ * Short chat stays chat.
+ */
+export const looksLikeEmailBody = (text: string | null | undefined): boolean => {
+    const raw = (text || '').trim();
+    if (raw.length < 80) return false;
+    if (raw.split('\n').filter(l => l.trim()).length < 5) return false;
+    return emailHits(raw) >= 3;
 };
 
 export const isLongEmailBody = (body: string): boolean => {
     const text = (body || '').trim();
     if (!text) return false;
     const lines = text.split('\n').filter(l => l.trim()).length;
-    return lines > 8 || text.length > 520;
+    return lines > 5 || text.length > 280;
 };

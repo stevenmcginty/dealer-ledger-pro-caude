@@ -52,6 +52,26 @@ describe('ThreadMessage', () => {
         expect(html).not.toContain('poctra.org');
     });
 
+    it('renders a WhatsApp that is really a desk email as a card', () => {
+        const html = htmlOf(msg({
+            channel: 'whatsapp',
+            text: `Hi Steven
+
+Is the 911 still for sale?
+
+Yes it is still available. Would you like to come and see it or shall I send more details?
+
+Thanks
+Steven
+Radlett Car Sales
+07710 525694
+www.radlettcarsales.com`,
+        }));
+        expect(html).toContain('Email');
+        expect(html).toContain('Show more');
+        expect(html).not.toContain('07710 525694');
+    });
+
     it('renders an email as a card, not a chat dump', () => {
         const html = htmlOf(msg({
             channel: 'email',

@@ -16,7 +16,7 @@ import {
     isReactionMessage,
     reactionEmojiOf,
 } from '../../services/salesAgentService';
-import { isLongEmailBody, looksLikeForwardedEmail, splitQuotedEmail } from '../../utils/emailQuote';
+import { isLongEmailBody, looksLikeEmailBody, looksLikeForwardedEmail, splitQuotedEmail } from '../../utils/emailQuote';
 
 const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
     <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
@@ -147,12 +147,13 @@ const LongBody: React.FC<{ text: string; className?: string }> = ({ text, classN
     if (!long) {
         return <p className={`whitespace-pre-wrap break-words ${className || ''}`}>{text}</p>;
     }
+    const preview = text.split('\n').slice(0, 5).join('\n').trimEnd();
     return (
         <div>
-            <p className={`whitespace-pre-wrap break-words ${className || ''} ${open ? '' : 'line-clamp-6'}`}>{text}</p>
+            <p className={`whitespace-pre-wrap break-words ${className || ''}`}>{open ? text : `${preview}\n…`}</p>
             <button
                 type="button"
-                onClick={() => setOpen(o => !o)}
+                onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
                 className="mt-1 text-[11px] font-medium text-sky-300 hover:text-white"
             >
                 {open ? 'Show less' : 'Show more'}
@@ -309,6 +310,7 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
     const forwarded = looksLikeForwardedEmail(split.quoted);
     const body = forwarded ? split.body : (message.text || '');
     const quoted = forwarded ? split.quoted : null;
+    const emailShaped = !forwarded && looksLikeEmailBody(body);
 
     const bubble = !mine
         ? 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
@@ -328,7 +330,9 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
                     <div className={`relative rounded-2xl px-3 py-2 shadow ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
                         <MediaBlock message={message} />
                         {body && body !== '[photo]' && body !== '[video]' && body !== '[document]' && (
-                            <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">{body}</p>
+                            emailShaped
+                                ? <LongBody text={body} className="text-[14.5px] leading-relaxed" />
+                                : <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">{body}</p>
                         )}
                         {quoted && <QuotedBlock quoted={quoted} from={split.quotedFrom} defaultOpen={!body.trim()} />}
                         <p className={`mt-1 flex items-center gap-1 text-[10px] ${mine ? 'justify-end text-white/50' : 'text-[#8696a0]'}`}>
@@ -409,6 +413,6 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
         );
     }
 
-    if (message.channel === 'email') return <EmailCard {...props} />;
+    if (message.channel === 'email' || looksLikeEmailBody(message.text)) return <EmailCard {...props} />;
     return <ChatBubble {...props} />;
 };
