@@ -581,8 +581,16 @@ const parseCarDealer5Enquiry = (raw) => {
 };
 const parseCarDealer5Reservation = (raw, paymentFailed) => {
     const body = `${raw.text || ''}\n${raw.html ? cheerio.load(raw.html).text() : ''}`;
-    const name = tidyName(body.match(/(?:Customer|Name)\s*:?\s*(.+)/i)?.[1]);
-    const email = bodyEmails(body, raw.selfEmail)[0];
+    // The receipt is written to the customer, not about them: the name is in the
+    // greeting ("Hi Jamie Sanderson,") and their address is the To header, with the
+    // dealership only on copy. Neither has a Customer: line to find (31 Aug).
+    const name = tidyName(body.match(/(?:Customer|Name)\s*:?\s*(.+)/i)?.[1])
+        || tidyName(body.match(/\bHi\s+([^,\n]{2,60}),/)?.[1]);
+    const toAddress = (0, exports.parseFromHeader)(raw.to || '').address;
+    const email = bodyEmails(body, raw.selfEmail)[0]
+        || (toAddress && toAddress !== (raw.selfEmail || '').toLowerCase() && !(0, exports.isNoReplyAddress)(toAddress)
+            ? toAddress
+            : undefined);
     const phone = firstPhone(body);
     const lead = withReply({
         source: 'Website',
@@ -777,11 +785,25 @@ const crmLeadSource = (source) => {
     }
 };
 exports.crmLeadSource = crmLeadSource;
-/** What to say to the brain when the customer sent no words at all. */
+/**
+ * What to say to the brain when the customer sent no words at all.
+ *
+ * A wordless enquiry stands in as the availability question every enquiry is. A
+ * reservation must not: the customer did not ask anything, they paid, and showing
+ * "Is the car still available?" over their name put words in Jamie Sanderson's
+ * mouth and had Dave answering a question nobody asked (31 Aug).
+ */
 const messageOrDefault = (lead, vehicleTitle) => {
     if (lead.message)
         return lead.message;
-    return `Is the ${vehicleTitle || lead.vehicle?.title || 'car'} still available?`;
+    const car = vehicleTitle || lead.vehicle?.title || 'car';
+    if (lead.kind === 'reservation') {
+        const reg = lead.vehicle?.reg ? ` (${lead.vehicle.reg})` : '';
+        return lead.paymentFailed
+            ? `[Website receipt: tried to reserve the ${car}${reg} but the payment failed. No message from the customer.]`
+            : `[Website receipt: reserved the ${car}${reg}. No message from the customer.]`;
+    }
+    return `Is the ${car} still available?`;
 };
 exports.messageOrDefault = messageOrDefault;
 //# sourceMappingURL=leadParsers.js.map

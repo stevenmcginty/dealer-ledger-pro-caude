@@ -36,7 +36,7 @@ import {
 } from '../conversations';
 import { GMAIL_SECRETS, gmailClientFor, startGmailWatch } from '../gmailAuth';
 import { handleInbound } from '../router';
-import { ChannelSender, Channel, InboundMessage, extractUkMobiles, rtdbKey } from '../types';
+import { ChannelSender, InboundMessage, extractUkMobiles, rtdbKey } from '../types';
 import { isUsableEmail } from '../identity';
 import { ParsedLead, crmLeadSource, htmlToText, parseFromHeader, parseLeadEmail } from './leadParsers';
 import { stripQuotedReply } from './gmailParse';
@@ -79,6 +79,7 @@ export const toRawEmail = (message: gmail_v1.Schema$Message, selfEmail: string) 
 
     return {
         from: headerValue(message, 'From'),
+        to: headerValue(message, 'To') || undefined,
         subject: headerValue(message, 'Subject'),
         text: stripQuotedReply(bodies.text),
         html: bodies.html || undefined,
@@ -176,9 +177,15 @@ const processMessage = async (
         ? lead.replyTo.address
         : isUsableEmail(sender) ? sender : '';
 
+    // Everything here arrived by email, so the channel is 'email' even when the lead
+    // only left a mobile — the phone goes in via the contact and the reply machinery
+    // opens WhatsApp with the approved opener. Passing the parser's reply channel
+    // through as the inbound channel made a phone-only lead into a "WhatsApp"
+    // conversation whose address was the Gmail message id mangled into a fake phone
+    // number, and whose 24h free-text window Meta had never actually opened (31 Aug).
     const inbound: InboundMessage = {
         companyId,
-        channel: (lead.replyTo.channel || 'email') as Channel,
+        channel: 'email',
         address: replyAddress || `unparsed:${message.id || Date.now()}`,
         text: lead.message,
         providerId: lead.correlationId ? `cazoo:${lead.correlationId}` : (message.id || ''),

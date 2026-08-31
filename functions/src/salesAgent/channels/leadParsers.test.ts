@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { crmLeadSource, isDeliveryFailure, isGenericMarketing, isNoReplyAddress, isSalesDeskRelevant, looksLikeSpam, parseFromHeader, parseLeadEmail } from './leadParsers';
+import { crmLeadSource, isDeliveryFailure, isGenericMarketing, isNoReplyAddress, isSalesDeskRelevant, looksLikeSpam, messageOrDefault, parseFromHeader, parseLeadEmail } from './leadParsers';
 
 const SELF = 'radlettcars@gmail.com';
 
@@ -274,6 +274,47 @@ describe('Car Dealer 5 reservation emails', () => {
         assert.equal(lead.name, 'Finlay Douglas');
         assert.equal(lead.vehicle?.reg, 'EA59ODK');
         assert.equal(lead.contactable, true);
+    });
+
+    it('reads the customer out of a receipt addressed to them, not about them', () => {
+        const lead = email({
+            from: 'noreply@cardealer5.co.uk',
+            to: 'jamie.sanderson@example.com',
+            subject: 'Vehicle Reservation Successful - Radlett Cars',
+            text: 'Hi Jamie Sanderson,\nThank you for reserving our PORSCHE BOXSTER with the registration number K50ATR\nWe will get back to you swiftly during our working hours. Call us on 07700 900123.',
+        });
+
+        assert.equal(lead.kind, 'reservation');
+        assert.equal(lead.name, 'Jamie Sanderson');
+        assert.equal(lead.email, 'jamie.sanderson@example.com');
+        assert.equal(lead.vehicle?.reg, 'K50ATR');
+        assert.deepEqual(lead.replyTo, { channel: 'email', address: 'jamie.sanderson@example.com' });
+    });
+
+    it('does not mistake the dealership copy for the customer', () => {
+        const lead = email({
+            from: 'noreply@cardealer5.co.uk',
+            to: 'Radlett Cars <radlettcars@gmail.com>',
+            subject: 'Vehicle Reservation Successful - Radlett Cars',
+            text: 'Hi Jamie Sanderson,\nThank you for reserving our PORSCHE BOXSTER with the registration number K50ATR\nCall us on 07700 900123.',
+        });
+
+        assert.equal(lead.email, undefined);
+        assert.equal(lead.name, 'Jamie Sanderson');
+    });
+
+    it('never invents a question the customer did not ask', () => {
+        const lead = email({
+            from: 'noreply@cardealer5.co.uk',
+            to: 'jamie.sanderson@example.com',
+            subject: 'Vehicle Reservation Successful - Radlett Cars',
+            text: 'Hi Jamie Sanderson,\nThank you for reserving our PORSCHE BOXSTER with the registration number K50ATR',
+        });
+
+        assert.equal(
+            messageOrDefault(lead, 'Porsche Boxster 3.2 986 S'),
+            '[Website receipt: reserved the Porsche Boxster 3.2 986 S (K50ATR). No message from the customer.]'
+        );
     });
 
     it('leaves a failed payment for Steve alone', () => {

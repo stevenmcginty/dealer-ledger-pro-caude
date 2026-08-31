@@ -236,6 +236,38 @@ const email = (over) => (0, leadParsers_1.parseLeadEmail)({
         node_assert_1.strict.equal(lead.vehicle?.reg, 'EA59ODK');
         node_assert_1.strict.equal(lead.contactable, true);
     });
+    (0, node_test_1.it)('reads the customer out of a receipt addressed to them, not about them', () => {
+        const lead = email({
+            from: 'noreply@cardealer5.co.uk',
+            to: 'jamie.sanderson@example.com',
+            subject: 'Vehicle Reservation Successful - Radlett Cars',
+            text: 'Hi Jamie Sanderson,\nThank you for reserving our PORSCHE BOXSTER with the registration number K50ATR\nWe will get back to you swiftly during our working hours. Call us on 07700 900123.',
+        });
+        node_assert_1.strict.equal(lead.kind, 'reservation');
+        node_assert_1.strict.equal(lead.name, 'Jamie Sanderson');
+        node_assert_1.strict.equal(lead.email, 'jamie.sanderson@example.com');
+        node_assert_1.strict.equal(lead.vehicle?.reg, 'K50ATR');
+        node_assert_1.strict.deepEqual(lead.replyTo, { channel: 'email', address: 'jamie.sanderson@example.com' });
+    });
+    (0, node_test_1.it)('does not mistake the dealership copy for the customer', () => {
+        const lead = email({
+            from: 'noreply@cardealer5.co.uk',
+            to: 'Radlett Cars <radlettcars@gmail.com>',
+            subject: 'Vehicle Reservation Successful - Radlett Cars',
+            text: 'Hi Jamie Sanderson,\nThank you for reserving our PORSCHE BOXSTER with the registration number K50ATR\nCall us on 07700 900123.',
+        });
+        node_assert_1.strict.equal(lead.email, undefined);
+        node_assert_1.strict.equal(lead.name, 'Jamie Sanderson');
+    });
+    (0, node_test_1.it)('never invents a question the customer did not ask', () => {
+        const lead = email({
+            from: 'noreply@cardealer5.co.uk',
+            to: 'jamie.sanderson@example.com',
+            subject: 'Vehicle Reservation Successful - Radlett Cars',
+            text: 'Hi Jamie Sanderson,\nThank you for reserving our PORSCHE BOXSTER with the registration number K50ATR',
+        });
+        node_assert_1.strict.equal((0, leadParsers_1.messageOrDefault)(lead, 'Porsche Boxster 3.2 986 S'), '[Website receipt: reserved the Porsche Boxster 3.2 986 S (K50ATR). No message from the customer.]');
+    });
     (0, node_test_1.it)('leaves a failed payment for Steve alone', () => {
         const lead = email({
             from: 'noreply@cardealer5.co.uk',

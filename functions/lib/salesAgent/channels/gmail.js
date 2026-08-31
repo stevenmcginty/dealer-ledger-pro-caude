@@ -88,6 +88,7 @@ const toRawEmail = (message, selfEmail) => {
     const bodies = bodiesOf(message.payload);
     return {
         from: headerValue(message, 'From'),
+        to: headerValue(message, 'To') || undefined,
         subject: headerValue(message, 'Subject'),
         text: (0, gmailParse_1.stripQuotedReply)(bodies.text),
         html: bodies.html || undefined,
@@ -173,9 +174,15 @@ const processMessage = async (companyId, selfEmail, message, options = {}) => {
     const replyAddress = (lead.replyTo.address && (0, identity_1.isUsableEmail)(lead.replyTo.address))
         ? lead.replyTo.address
         : (0, identity_1.isUsableEmail)(sender) ? sender : '';
+    // Everything here arrived by email, so the channel is 'email' even when the lead
+    // only left a mobile — the phone goes in via the contact and the reply machinery
+    // opens WhatsApp with the approved opener. Passing the parser's reply channel
+    // through as the inbound channel made a phone-only lead into a "WhatsApp"
+    // conversation whose address was the Gmail message id mangled into a fake phone
+    // number, and whose 24h free-text window Meta had never actually opened (31 Aug).
     const inbound = {
         companyId,
-        channel: (lead.replyTo.channel || 'email'),
+        channel: 'email',
         address: replyAddress || `unparsed:${message.id || Date.now()}`,
         text: lead.message,
         providerId: lead.correlationId ? `cazoo:${lead.correlationId}` : (message.id || ''),
