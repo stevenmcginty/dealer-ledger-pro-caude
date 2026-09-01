@@ -14,9 +14,12 @@ import { downloadElementAsPdf, elementAsPdfBlob } from '../../utils/pdf';
 const A4_WIDTH = 794;
 const A4_HEIGHT = 1123;
 
+// JPEG at 1.0 barely compresses, so an 8-megapixel A4 page landed near the 5 MB
+// cap Gmail puts on a send once base64 has grown it by a third. 0.85 is the same
+// page to the eye on text and roughly a third of the bytes.
 const PDF_OPTIONS = {
     canvas: { scale: 3, width: A4_WIDTH, height: A4_HEIGHT },
-    quality: 1.0,
+    quality: 0.85,
     singlePage: true,
 } as const;
 
