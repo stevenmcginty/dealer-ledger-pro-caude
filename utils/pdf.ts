@@ -20,9 +20,8 @@ export interface DownloadPdfOptions {
     singlePage?: boolean;
 }
 
-export const downloadElementAsPdf = async (
+const renderElementToPdf = async (
     element: HTMLElement,
-    filename: string,
     { canvas: canvasOptions, quality = 0.8, singlePage = false }: DownloadPdfOptions = {}
 ) => {
     const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
@@ -58,5 +57,24 @@ export const downloadElementAsPdf = async (
             heightLeft -= pdfPageHeight;
         }
     }
+    return pdf;
+};
+
+export const downloadElementAsPdf = async (
+    element: HTMLElement,
+    filename: string,
+    options: DownloadPdfOptions = {}
+) => {
+    const pdf = await renderElementToPdf(element, options);
     pdf.save(filename);
+};
+
+/** Same render pipeline as downloadElementAsPdf, but returns the PDF bytes
+ *  instead of saving them — used when the PDF is uploaded and sent. */
+export const elementAsPdfBlob = async (
+    element: HTMLElement,
+    options: DownloadPdfOptions = {}
+): Promise<Blob> => {
+    const pdf = await renderElementToPdf(element, options);
+    return pdf.output('blob');
 };

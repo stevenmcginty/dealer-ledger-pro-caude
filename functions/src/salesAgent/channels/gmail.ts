@@ -15,6 +15,7 @@
  */
 
 import * as functions from 'firebase-functions/v1';
+import * as crypto from 'crypto';
 import type { gmail_v1 } from 'googleapis';
 
 import { getCompanyIds } from '../../utils/companyIds';
@@ -432,28 +433,71 @@ const threadMessageId = async (gmail: gmail_v1.Gmail, threadId: string): Promise
     return '';
 };
 
-const buildMime = (parts: {
+export interface MimeAttachment {
+    filename: string;
+    /** Raw bytes; base64-encoded into the MIME part. */
+    data: Buffer;
+    mime?: string;
+}
+
+/** Base64 split into 76-character lines, as RFC 2045 asks for. */
+const base64Lines = (data: Buffer): string =>
+    data.toString('base64').replace(/(.{76})/g, '$1\r\n');
+
+export const buildMime = (parts: {
     fromName: string;
     fromEmail: string;
     to: string;
     subject: string;
     body: string;
     inReplyTo?: string;
+    attachment?: MimeAttachment;
 }): string => {
     const headers = [
         `From: ${encodeHeader(parts.fromName)} <${parts.fromEmail}>`,
         `To: ${parts.to}`,
         `Subject: ${encodeHeader(parts.subject)}`,
         'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset="UTF-8"',
-        'Content-Transfer-Encoding: 8bit',
     ];
+
+    // No attachment: the byte-for-byte text/plain message this has always built,
+    // in the header order it has always had.
+    if (!parts.attachment) {
+        headers.push('Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: 8bit');
+        if (parts.inReplyTo) {
+            headers.push(`In-Reply-To: ${parts.inReplyTo}`, `References: ${parts.inReplyTo}`);
+        }
+        return `${headers.join('\r\n')}\r\n\r\n${parts.body.replace(/\n/g, '\r\n')}`;
+    }
 
     if (parts.inReplyTo) {
         headers.push(`In-Reply-To: ${parts.inReplyTo}`, `References: ${parts.inReplyTo}`);
     }
 
-    return `${headers.join('\r\n')}\r\n\r\n${parts.body.replace(/\n/g, '\r\n')}`;
+    // The boundary is derived from the bytes so the same attachment always
+    // produces the same message (tests, and no crypto import for randomness).
+    const boundary = `=_ledger${crypto.createHash('sha1').update(parts.attachment.data).digest('hex').slice(0, 20)}`;
+    const mime = parts.attachment.mime || 'application/octet-stream';
+    const filename = parts.attachment.filename.replace(/["\r\n]/g, '');
+
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+    const body = [
+        `--${boundary}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        parts.body.replace(/\n/g, '\r\n'),
+        `--${boundary}`,
+        `Content-Type: ${mime}; name="${filename}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${filename}"`,
+        '',
+        base64Lines(parts.attachment.data),
+        `--${boundary}--`,
+    ].join('\r\n');
+
+    return `${headers.join('\r\n')}\r\n\r\n${body}`;
 };
 
 export const gmailSender: ChannelSender = {
@@ -469,9 +513,27 @@ export const gmailSender: ChannelSender = {
         if (!fromEmail) throw new Error('No Gmail address is connected for this company');
 
         const rawSubject = job.subject || 'Your enquiry';
-        const subject = /^re:\s/i.test(rawSubject) ? rawSubject : `Re: ${rawSubject}`;
+        // "Re:" belongs on a reply inside a thread. A message that opens a new
+        // thread — an invoice to somebody who never emailed in — is not one.
+        const subject = job.emailThreadId && !/^re:\s/i.test(rawSubject) ? `Re: ${rawSubject}` : rawSubject;
 
         const inReplyTo = job.emailThreadId ? await threadMessageId(gmail, job.emailThreadId) : '';
+
+        // Attachments travel as a Storage download URL (token-signed, no auth
+        // needed); the bytes are fetched here, the same way WhatsApp's media
+        // upload fetches them.
+        let attachment: MimeAttachment | undefined;
+        if (job.media) {
+            const fileRes = await fetch(job.media.url);
+            if (!fileRes.ok) {
+                throw new Error(`Could not read the attachment (${fileRes.status}).`);
+            }
+            attachment = {
+                filename: job.media.filename || 'attachment',
+                data: Buffer.from(await fileRes.arrayBuffer()),
+                mime: job.media.mime || fileRes.headers.get('content-type') || 'application/octet-stream',
+            };
+        }
 
         const mime = buildMime({
             fromName: settings.dealershipName || 'Sales',
@@ -480,6 +542,7 @@ export const gmailSender: ChannelSender = {
             subject,
             body: job.text,
             inReplyTo: inReplyTo || undefined,
+            attachment,
         });
 
         const sent = await gmail.users.messages.send({

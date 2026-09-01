@@ -30,10 +30,13 @@ const toDraft = (p: Payment): PaymentDraft => ({ ...p, amount: p.amount ? String
 const toPayment = (p: PaymentDraft): Payment => ({ ...p, amount: parseFloat(p.amount) || 0 });
 
 const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editingDocument, prefillData, onSubmit, onCancel, financeCompanies, businessDetails }: DocumentCreatorProps) => {
-    const { isVatRegistered } = useData();
+    const { isVatRegistered, customers } = useData();
     // These states now always refer to the END customer
     const [customerName, setCustomerName] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
+    const [customerEmail, setCustomerEmail] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [customerId, setCustomerId] = useState<string | undefined>(undefined);
 
     const [useDeliveryAddress, setUseDeliveryAddress] = useState(false);
     // These states are for a non-finance separate delivery address
@@ -101,6 +104,9 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             }
 
             setInvoiceDate(editingDocument.invoiceDate || new Date().toISOString().split('T')[0]);
+            setCustomerEmail(editingDocument.customerEmail || '');
+            setCustomerPhone(editingDocument.customerPhone || '');
+            setCustomerId(editingDocument.customerId || undefined);
             setPriceStr(String(editingDocument.price || ''));
             setDeliveryChargeStr(String(editingDocument.deliveryCharge || ''));
             setSurchargeStr(String(editingDocument.surcharge || ''));
@@ -119,6 +125,9 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         let initialPayments: PaymentDraft[] = [];
         let initialCustomerName = '';
         let initialCustomerAddress = '';
+        let initialCustomerEmail = '';
+        let initialCustomerPhone = '';
+        let initialCustomerId: string | undefined = undefined;
         let initialAdditionalNotes = '';
         let initialHasPx = false;
         let initialPxValue = '';
@@ -127,6 +136,9 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         if (priorDeposit && (documentType === 'Sales Invoice' || documentType === 'Proforma Invoice')) {
             initialCustomerName = priorDeposit.customerName;
             initialCustomerAddress = priorDeposit.customerAddress;
+            initialCustomerEmail = priorDeposit.customerEmail || '';
+            initialCustomerPhone = priorDeposit.customerPhone || '';
+            initialCustomerId = priorDeposit.customerId;
             initialAdditionalNotes = priorDeposit.additionalNotes || '';
             initialPrice = String(priorDeposit.price || '0');
             
@@ -142,6 +154,9 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         
         setCustomerName(initialCustomerName);
         setCustomerAddress(initialCustomerAddress);
+        setCustomerEmail(initialCustomerEmail);
+        setCustomerPhone(initialCustomerPhone);
+        setCustomerId(initialCustomerId);
         setUseDeliveryAddress(documentType === 'Proforma Invoice');
         setDeliveryName('');
         setDeliveryAddress('');
@@ -166,6 +181,20 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             if (prefillData.payments !== undefined) setPayments(prefillData.payments.map(toDraft));
         }
     }, [prefillData]);
+
+    // Autocomplete: when the typed name matches an existing Customer, pull their
+    // contact details in so the invoice can be emailed / WhatsApped after saving.
+    useEffect(() => {
+        if (financeCompany) return;
+        const name = customerName.trim().toLowerCase();
+        if (!name) return;
+        const match = customers.find(c => c.name.trim().toLowerCase() === name);
+        if (!match || match.id === customerId) return;
+        setCustomerId(match.id);
+        if (!customerEmail.trim() && match.email) setCustomerEmail(match.email);
+        if (!customerPhone.trim() && match.phone) setCustomerPhone(match.phone);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [customerName, customers]);
 
     const price = parseFloat(priceStr) || 0;
     const deliveryCharge = parseFloat(deliveryChargeStr) || 0;
@@ -253,6 +282,9 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
             invoiceDate,
             customerName: docCustomerName, customerAddress: docCustomerAddress, price, deliveryCharge, surcharge, vat, subtotal, payments: numericPayments,
             balance, deliveryName: docDeliveryName, deliveryAddress: docDeliveryAddress, additionalNotes,
+            customerId,
+            customerEmail: customerEmail.trim() || undefined,
+            customerPhone: customerPhone.trim() || undefined,
             pxValue: hasPartExchange ? pxValue : 0,
             partExchangeDetails: (hasPartExchange && partExchangeDetails.reg) ? (partExchangeDetails as PartExchangeVehicle) : undefined,
             commission: isSor ? commission : undefined,
@@ -349,6 +381,16 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
                 <div>
                     <label htmlFor="customerAddress" className="block text-sm font-medium text-gray-300">{financeCompany ? 'Finance Co. Address' : 'Customer Address'}</label>
                     <textarea id="customerAddress" value={financeCompany ? financeCompany.address : customerAddress} onChange={e => !financeCompany && setCustomerAddress(e.target.value)} readOnly={!!financeCompany} required rows={3} className={`mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white ${!!financeCompany && 'bg-gray-900 text-gray-400'}`} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="customerEmail" className="block text-sm font-medium text-gray-300">Customer Email <span className="text-gray-500">(to send the {docTitles[documentType].toLowerCase()})</span></label>
+                        <input type="email" id="customerEmail" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="name@example.com" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                    </div>
+                    <div>
+                        <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-300">Customer Mobile <span className="text-gray-500">(to WhatsApp the {docTitles[documentType].toLowerCase()})</span></label>
+                        <input type="tel" id="customerPhone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="07123 456789" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                    </div>
                 </div>
                 <div className="relative flex items-start">
                     <div className="flex h-6 items-center"><input id="useDeliveryAddress" type="checkbox" checked={useDeliveryAddress} onChange={e => setUseDeliveryAddress(e.target.checked)} disabled={!!financeCompany} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 disabled:opacity-70" /></div>

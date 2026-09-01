@@ -170,9 +170,28 @@ export const conversationsForFilter = (group: CustomerGroup, filter: InboxFilter
     return group.conversations.filter(conv => conversationChannels(conv).includes(filter));
 };
 
+const groupHasPhone = (group: CustomerGroup): boolean =>
+    group.conversations.some(conv =>
+        !!phoneKey(conv.contact?.phone) || (conv.channel !== 'email' && !!phoneKey(conv.address))
+    );
+
+const groupHasEmail = (group: CustomerGroup): boolean =>
+    group.conversations.some(conv =>
+        !!emailKey(conv.contact?.email) || (conv.channel === 'email' && !!emailKey(conv.address))
+    );
+
+/**
+ * Tabs inside a thread. An email lead that left a mobile still gets a WhatsApp
+ * pane so Steve can follow up there, even before anything has been sent.
+ * The inbox list filter stays on channels that actually have traffic.
+ */
 export const threadChannelsOf = (group: CustomerGroup): ThreadChannel[] => {
     const order: ThreadChannel[] = ['whatsapp', 'email'];
-    return order.filter(ch => group.channels.includes(ch));
+    return order.filter(ch =>
+        group.channels.includes(ch)
+        || (ch === 'whatsapp' && groupHasPhone(group))
+        || (ch === 'email' && groupHasEmail(group))
+    );
 };
 
 /**

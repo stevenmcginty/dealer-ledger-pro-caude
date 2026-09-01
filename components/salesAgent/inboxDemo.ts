@@ -125,6 +125,33 @@ export const DEMO_CONVERSATIONS: Conversation[] = [
         unread: 0,
         emailSubject: 'MX-5 still for sale?',
     },
+    {
+        id: 'anne-em',
+        shortId: 22,
+        companyId: 'demo-company',
+        channel: 'email',
+        address: 'annemariehammond123@gmail.com',
+        originChannel: 'email',
+        contact: {
+            firstName: 'Anne-Marie',
+            lastName: 'Hammond',
+            email: 'annemariehammond123@gmail.com',
+            phone: '+447700900222',
+        },
+        mode: 'human',
+        stage: 'vehicle',
+        vehicleInterest: { title: 'Mini Clubman 2.0 Clubman Cooper S' },
+        escalated: true,
+        priceRequests: 0,
+        summary: 'Cooper S 6dr Auto. You can reach me by email…',
+        lastInboundAt: now - 60_000,
+        lastOutboundAt: now - 5_000,
+        lastCustomerMessageAt: 0,
+        createdAt: now - 120_000,
+        updatedAt: now - 5_000,
+        unread: 0,
+        emailSubject: 'Lead submission from CarGurus',
+    },
 ];
 
 export const DEMO_MESSAGES: Record<string, AgentMessage[]> = {
@@ -258,6 +285,41 @@ Dave
 Radlett Car Sales`,
             from: 'agent',
             createdAt: now - 7_900_000,
+            delivery: 'sent',
+        },
+    ],
+    'anne-em': [
+        {
+            id: 'a1',
+            direction: 'in',
+            channel: 'email',
+            subject: 'Lead submission from CarGurus',
+            fromAddress: 'dealer-leads@messages.cargurus.com',
+            text: `Cooper S 6dr Auto. You can reach me by email at
+annemariehammond123@gmail.com any time.
+Thank you! (CarGurus IMV: £9,533 / Deal rating:
+High price / Is from deliverable listing: No)`,
+            from: 'customer',
+            createdAt: now - 60_000,
+        },
+        {
+            id: 'a2',
+            direction: 'out',
+            channel: 'email',
+            subject: 'Re: Lead submission from CarGurus',
+            text: `Hi Anne-Marie,
+
+Thanks for reaching out! Happy to confirm that the 2017 MINI Clubman 2.0 Cooper S in British Racing Green is still available here at Radlett Car Sales.
+
+It's a lovely car with 2 previous owners, 85,000 miles, and the MOT is valid until 25 February 2027 which will be getting renewed at point of sale. It also comes with some great features like Media Pack XL, rear parking sensors, and heated front seats.
+
+Would you like any further information or to arrange a viewing?
+
+Regards
+Dave
+Radlett Car Sales`,
+            from: 'agent',
+            createdAt: now - 5_000,
             delivery: 'sent',
         },
     ],

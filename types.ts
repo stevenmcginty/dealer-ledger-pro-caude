@@ -548,6 +548,9 @@ export interface SalesDocument {
     vatScheme: 'Margin' | 'Qualifying' | 'Commercial';
     customerName: string;
     customerAddress: string;
+    customerId?: string;
+    customerEmail?: string;
+    customerPhone?: string;
     deliveryName?: string;
     deliveryAddress?: string;
     carDetails: Omit<Vehicle, 'id' | 'createdAt' | 'status'>;

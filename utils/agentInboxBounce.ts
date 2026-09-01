@@ -31,14 +31,48 @@ export const threadLooksBounced = (
     return false;
 };
 
+const looksLikeMobile = (raw?: string): string | undefined => {
+    const value = (raw || '').trim();
+    return value.replace(/\D/g, '').length >= 9 ? value : undefined;
+};
+
+const UK_MOBILE_RE = /(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}/g;
+
+/** Mobiles written in a lead body, including CarGurus `Phone number:` lines. */
+export const phonesInText = (text: string): string[] => {
+    const labelled = (text || '').match(/phone(?:\s*number)?\s*[:*]\s*([+\d][\d\s()-]{9,})/i);
+    const fromLabel = labelled?.[1] ? looksLikeMobile(labelled[1]) : undefined;
+    const found = Array.from((text || '').match(UK_MOBILE_RE) || []);
+    return [...new Set([fromLabel, ...found].filter(Boolean) as string[])];
+};
+
+export const phoneFromMessages = (
+    messages: Array<{ text?: string; subject?: string; from?: string; direction?: string }>
+): string | undefined => {
+    const inbound = messages.filter(m => m.from === 'customer' || m.direction === 'in');
+    for (const message of inbound) {
+        const found = phonesInText(`${message.subject || ''} ${message.text || ''}`);
+        if (found[0]) return found[0];
+    }
+    return undefined;
+};
+
 /** Last-ditch: Dave's bounce question often quotes the mobile even if contact.phone was empty. */
 export const phoneFromThread = (conv: Conversation): string | undefined => {
     const stored = conv.contact?.phone || (conv.channel !== 'email' ? conv.address : '');
-    if ((stored || '').replace(/\D/g, '').length >= 9) return stored;
+    if (looksLikeMobile(stored)) return stored;
     const blob = `${conv.pendingQuestion?.question || ''} ${conv.pendingQuestion?.context || ''} ${conv.booking?.phone || ''}`;
     const match = blob.match(/(\+44\d{9,11}|07\d{9})/);
     return match?.[1];
 };
+
+/** Every place a mobile might sit on an email lead — contact, CRM, body, Dave's notes. */
+export const resolveThreadPhone = (
+    conv: Conversation,
+    messages: Array<{ text?: string; subject?: string; from?: string; direction?: string }> = [],
+    extra?: string
+): string | undefined =>
+    phoneFromThread(conv) || looksLikeMobile(extra) || phoneFromMessages(messages);
 
 export const displayUkPhone = (raw: string): string => {
     const digits = raw.replace(/\D/g, '');

@@ -7,12 +7,16 @@ import {
     answerAgentQuestion,
     approveAgentDraft,
     approvedSendMessage,
+    conversationEmail,
     conversationName,
+    conversationPhone,
     discardAgentDraft,
     formatAgentTime,
     instructAgent,
     subscribeToSalesAgentSettings,
 } from '../../services/salesAgentService';
+import { phoneFromThread } from '../../utils/agentInboxBounce';
+import SendViaBar, { sendViaLabel, type SendViaChoice } from './SendViaBar';
 
 interface DraftReviewCardProps {
     conv: Conversation;
@@ -36,6 +40,11 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
     // Dave writes it; the toggle decides whose name goes at the bottom.
     const [ownerName, setOwnerName] = useState('');
     const [signAs, setSignAs] = useState<'agent' | 'owner'>('agent');
+    const phone = conversationPhone(conv) || phoneFromThread(conv);
+    const emailOk = !!conversationEmail(conv) && !conv.emailBounce;
+    const [sendVia, setSendVia] = useState<SendViaChoice>(
+        phone && emailOk && !conv.lastOutboundAt ? 'both' : conv.channel === 'whatsapp' ? 'whatsapp' : 'email'
+    );
     useEffect(() => subscribeToSalesAgentSettings(companyId, s => setOwnerName(s.ownerName || '')), [companyId]);
 
     const draftId = draft?.id || '';
@@ -50,13 +59,14 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
         if (!next || busy) return;
         setBusy('approve');
         try {
-            const result = await approveAgentDraft(companyId, conv.id, next, signAs);
-            toast.success(approvedSendMessage(CHANNEL_LABELS[conv.channel] || conv.channel, result.sendAfter));
+            const result = await approveAgentDraft(companyId, conv.id, next, signAs, sendVia, phone);
+            const sent = (result.sent || [sendVia === 'both' ? 'email' : sendVia]).map(ch => CHANNEL_LABELS[ch] || ch).join(' and ');
+            toast.success(approvedSendMessage(sent, result.sendAfter));
         } catch (err: any) {
             toast.error(err?.message || 'That draft was not sent.');
             setBusy('');
         }
-    }, [text, busy, companyId, conv.id, conv.channel, toast, signAs]);
+    }, [text, busy, companyId, conv.id, toast, signAs, sendVia, phone]);
 
     const handleRewrite = useCallback(async () => {
         const next = instruction.trim();
@@ -143,6 +153,17 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                 </div>
             )}
 
+            {(phone || emailOk) && (
+                <SendViaBar
+                    value={sendVia}
+                    onChange={setSendVia}
+                    emailOk={emailOk}
+                    phone={phone}
+                    needsOpener={!!phone && !conv.lastCustomerMessageAt}
+                    disabled={!!busy}
+                />
+            )}
+
             <div className="flex flex-wrap gap-2">
                 <Button
                     size="sm"
@@ -151,7 +172,7 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                     loading={busy === 'approve'}
                     disabled={!text.trim() || !!busy}
                 >
-                    Approve &amp; send{signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}
+                    {sendViaLabel(sendVia)}{signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}
                 </Button>
                 <Button
                     size="sm"

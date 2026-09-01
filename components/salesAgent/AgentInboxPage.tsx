@@ -36,7 +36,6 @@ import {
     bounceNoticeText,
     conversationEmail,
     conversationName,
-    conversationPhone,
     correctThreadCar,
     detachAgentMessage,
     deleteAgentConversation,
@@ -48,8 +47,8 @@ import {
     instructionText,
     markConversationRead,
     MessageMedia,
+    saveConversationPhone,
     sendAgentReply,
-    SendVia,
     setConversationMode,
     subscribeToAgentConversations,
     subscribeToAgentConversationsAcross,
@@ -86,9 +85,10 @@ import {
     prepareWhatsAppFile,
 } from '../../utils/whatsappMedia';
 import StartWhatsAppSheet from './StartWhatsAppSheet';
+import SendViaBar, { sendViaLabel, type SendViaChoice } from './SendViaBar';
 import { ThreadMessage } from './inboxMessages';
 import { DEMO_CONVERSATIONS, DEMO_MESSAGES } from './inboxDemo';
-import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../../utils/agentInboxBounce';
+import { displayUkPhone, resolveThreadPhone, threadLooksBounced } from '../../utils/agentInboxBounce';
 
 const whatsappOpener = (firstName?: string, vehicleTitle?: string): string => {
     const name = (firstName || 'there').trim() || 'there';
@@ -97,6 +97,29 @@ const whatsappOpener = (firstName?: string, vehicleTitle?: string): string => {
 };
 
 const homeOf = (conv: Conversation, fallback: string): string => conv.companyId || fallback;
+
+const viaIsAvailable = (via: SendViaChoice, phone?: string, emailOk?: boolean): boolean => {
+    if (via === 'whatsapp') return !!phone;
+    if (via === 'email') return !!emailOk;
+    return !!phone && !!emailOk;
+};
+
+const defaultSendVia = (opts: {
+    pane: ThreadChannel;
+    phone?: string;
+    emailOk: boolean;
+    bounced: boolean;
+    whatsappAlreadySent: boolean;
+    firstReply: boolean;
+}): SendViaChoice => {
+    const { pane, phone, emailOk, bounced, whatsappAlreadySent, firstReply } = opts;
+    if (bounced && phone) return 'whatsapp';
+    if (pane === 'whatsapp' && phone) return 'whatsapp';
+    if (pane === 'email' && phone && emailOk && firstReply && !whatsappAlreadySent) return 'both';
+    if (pane === 'email' && emailOk) return 'email';
+    if (phone) return 'whatsapp';
+    return emailOk ? 'email' : 'whatsapp';
+};
 
 /** Steve's choice to reveal the other ledger's leads, remembered on this phone. */
 const SHOW_OTHER_LEDGER_KEY = 'agentInbox.showOtherLedger';
@@ -266,7 +289,7 @@ const AgentInboxPage = () => {
     const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
     const [activeConvId, setActiveConvId] = useState<string | null>(null);
     const [threadChannel, setThreadChannel] = useState<ThreadChannel>('whatsapp');
-    const [alsoOther, setAlsoOther] = useState(false);
+    const [sendVia, setSendVia] = useState<SendViaChoice | null>(null);
     const [messagesByConv, setMessagesByConv] = useState<Record<string, AgentMessage[]>>({});
     const [reply, setReply] = useState('');
     const [sending, setSending] = useState(false);
@@ -489,7 +512,7 @@ const AgentInboxPage = () => {
         setDrafting(null);
         setDraftOpen(false);
         setReplyMode('human');
-        setAlsoOther(false);
+        setSendVia(null);
         if (companyId === 'demo-company') {
             const next: Record<string, AgentMessage[]> = {};
             activeGroup.conversations.forEach(conv => {
@@ -537,7 +560,7 @@ const AgentInboxPage = () => {
     }, [draftId]);
 
     useEffect(() => {
-        setAlsoOther(false);
+        setSendVia(null);
     }, [active?.id, pane]);
 
     useEffect(() => {
@@ -640,8 +663,20 @@ const AgentInboxPage = () => {
                 media = { kind, url, mime: ready.type, filename: ready.name };
             }
             setSendStatus(null);
-            const via: Exclude<SendVia, 'auto'> = alsoOther ? 'both' : pane;
-            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, media, via, conversationPhone(active) || phoneFromThread(active));
+            const phone = resolveThreadPhone(active, allMessages, leads.find(l => l.id === active.contact?.leadId)?.phone);
+            const emailOk = !threadLooksBounced(active, allMessages) && !!conversationEmail(active);
+            const whatsappAlreadySent = allMessages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
+            const via = (sendVia && viaIsAvailable(sendVia, phone, emailOk))
+                ? sendVia
+                : defaultSendVia({
+                    pane,
+                    phone,
+                    emailOk,
+                    bounced: !emailOk,
+                    whatsappAlreadySent,
+                    firstReply: !active.lastOutboundAt,
+                });
+            const result = await sendAgentReply(homeOf(active, companyId), active.id, text, media, via, phone);
             setReply('');
             setAttachment(null);
             setSendError(null);
@@ -658,7 +693,7 @@ const AgentInboxPage = () => {
             setSendStatus(null);
             setSending(false);
         }
-    }, [companyId, active, reply, attachment, sending, toast, alsoOther, pane]);
+    }, [companyId, active, reply, attachment, sending, toast, sendVia, pane, allMessages, leads]);
 
     const handleInstruct = useCallback(async () => {
         const text = reply.trim();
@@ -702,7 +737,20 @@ const AgentInboxPage = () => {
         if (!companyId || !host || !text || draftBusy) return;
         setDraftBusy('approve');
         try {
-            const result = await approveAgentDraft(homeOf(host, companyId), host.id, text);
+            const phone = resolveThreadPhone(host, allMessages, leads.find(l => l.id === host.contact?.leadId)?.phone);
+            const emailOk = !threadLooksBounced(host, allMessages) && !!conversationEmail(host);
+            const whatsappAlreadySent = allMessages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
+            const via = (sendVia && viaIsAvailable(sendVia, phone, emailOk))
+                ? sendVia
+                : defaultSendVia({
+                    pane,
+                    phone,
+                    emailOk,
+                    bounced: !emailOk,
+                    whatsappAlreadySent,
+                    firstReply: !host.lastOutboundAt,
+                });
+            const result = await approveAgentDraft(homeOf(host, companyId), host.id, text, 'agent', via, phone);
             const sent = (result.sent || [host.channel]).map(ch => CHANNEL_LABELS[ch] || ch).join(' and ');
             toast.success(approvedSendMessage(sent, result.sendAfter));
         } catch (err: any) {
@@ -710,7 +758,7 @@ const AgentInboxPage = () => {
         } finally {
             setDraftBusy('');
         }
-    }, [companyId, draftHost, draftText, draftBusy, toast]);
+    }, [companyId, draftHost, draftText, draftBusy, toast, sendVia, pane, allMessages, leads]);
 
     const handleConfirmDelete = useCallback(async () => {
         if (!companyId || !pendingDelete || deleting) return;
@@ -869,19 +917,20 @@ const AgentInboxPage = () => {
         }
     }, [companyId, active, draftHost, promptText, sending, agentName]);
 
-    const handleWhatsAppHer = useCallback(async () => {
+    const handleWhatsAppHer = useCallback(async (preset?: string) => {
         if (!companyId || !active || sending) return;
-        const phone = conversationPhone(active) || phoneFromThread(active);
+        const phone = resolveThreadPhone(active, allMessages, leads.find(l => l.id === active.contact?.leadId)?.phone);
         if (!phone) {
             setSendError({ message: 'No mobile number on file.' });
             return;
         }
-        const text = reply.trim() || whatsappOpener(active.contact?.firstName, active.vehicleInterest?.title);
+        const typed = (typeof preset === 'string' ? preset : reply).trim();
+        const text = typed || whatsappOpener(active.contact?.firstName, active.vehicleInterest?.title);
         setSending(true);
         try {
-            const opener = !reply.trim();
+            const opener = !typed;
             const result = await sendAgentReply(homeOf(active, companyId), active.id, text, undefined, 'whatsapp', phone, opener);
-            setReply('');
+            if (typeof preset !== 'string') setReply('');
             setSendError(null);
             toast.success(result?.skippedWhatsApp || (active.lastCustomerMessageAt ? 'Sent on WhatsApp.' : 'WhatsApp opener sent.'));
         } catch (err: any) {
@@ -889,7 +938,21 @@ const AgentInboxPage = () => {
         } finally {
             setSending(false);
         }
-    }, [companyId, active, reply, sending, toast]);
+    }, [companyId, active, reply, sending, toast, allMessages, leads]);
+
+    const handleAddPhone = useCallback(async (raw: string) => {
+        if (!active || !companyId) return;
+        const home = homeOf(active, companyId);
+        if (companyId !== 'demo-company') {
+            await saveConversationPhone(home, active.id, raw);
+        } else {
+            setOwn(list => (list || []).map(conv => (
+                conv.id === active.id ? { ...conv, contact: { ...conv.contact, phone: raw } } : conv
+            )));
+        }
+        setSendVia(current => current || 'both');
+        toast.success('Mobile saved. You can send WhatsApp on this thread.');
+    }, [active, companyId, toast]);
 
     const openLead = useCallback(() => {
         const leadId = active?.contact?.leadId;
@@ -921,25 +984,46 @@ const AgentInboxPage = () => {
         );
     }
 
-    const phoneOnFile = active ? (conversationPhone(active) || phoneFromThread(active)) : undefined;
     const emailOnFile = active ? conversationEmail(active) : undefined;
     const bounced = !!(active && threadLooksBounced(active, allMessages));
+    const phoneOnFile = active
+        ? resolveThreadPhone(active, allMessages, linkedLead?.phone)
+        : undefined;
     const whatsappAlreadySent = allMessages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
-    const whatsappNeedsOpener = pane === 'whatsapp' && !!phoneOnFile && !(active?.lastCustomerMessageAt);
+    const whatsappNeedsOpener = !!phoneOnFile && !(active?.lastCustomerMessageAt);
+    const lastEmailOut = [...allMessages].reverse().find(m => m.direction === 'out' && m.channel === 'email');
     const asking = !!questionHost?.pendingQuestion && answerMode;
     const hasDraft = !!draftHost?.pendingDraft;
+    const offerWhatsAppFollowUp = !!(
+        active
+        && phoneOnFile
+        && !whatsappAlreadySent
+        && lastEmailOut
+        && !hasDraft
+        && !bounced
+        && pane === 'email'
+        && !asking
+    );
     const customerWaiting = !!(
         active
         && !hasDraft
         && !questionHost?.pendingQuestion
         && (active.lastCustomerMessageAt || 0) > (active.lastOutboundAt || 0)
     );
-    /** Where an approved draft will go out — WhatsApp once the email route is dead. */
-    const draftChannel: Channel = draftHost
-        ? (bounced && phoneOnFile ? 'whatsapp' : draftHost.channel)
-        : pane;
-    const canAlsoSendOther = pane === 'email' ? !!phoneOnFile && !bounced : !!emailOnFile && !bounced;
-    const sendViaNow: Exclude<SendVia, 'auto'> = alsoOther && canAlsoSendOther ? 'both' : pane;
+    const emailOk = !!emailOnFile && !bounced;
+    const sendViaNow: SendViaChoice = attachment && phoneOnFile
+        ? 'whatsapp'
+        : (sendVia && viaIsAvailable(sendVia, phoneOnFile, emailOk))
+            ? sendVia
+            : defaultSendVia({
+                pane,
+                phone: phoneOnFile,
+                emailOk,
+                bounced,
+                whatsappAlreadySent,
+                firstReply: !active?.lastOutboundAt,
+            });
+    const showSendVia = !asking && (!!phoneOnFile || emailOk || !!handleAddPhone);
     const emailPane = pane === 'email';
     const showChannelSwitch = paneChannels.length > 1;
     const tabs: Array<{ id: InboxFilter; label: string; count: number; accent?: string }> = [
@@ -1080,20 +1164,30 @@ const AgentInboxPage = () => {
                                         <h2 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-white">{activeGroup.name}</h2>
                                         {active.escalated && !bounced && <Badge size="sm" variant="danger">Escalated</Badge>}
                                     </div>
-                                    <div className="mt-0.5 flex items-center gap-1.5 text-[12px] leading-tight text-[#8696a0]">
-                                        {active.vehicleInterest?.title ? (
+                                    <div className="mt-0.5 text-[12px] leading-tight text-[#8696a0]">
+                                        {active.vehicleInterest?.title && (
                                             <span className="flex min-w-0 items-center gap-1">
                                                 <CarIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25d366]" />
                                                 <span className="truncate">{active.vehicleInterest.title}</span>
                                             </span>
-                                        ) : (
-                                            <span className="truncate">{phoneOnFile ? displayUkPhone(phoneOnFile) : emailOnFile || active.address}</span>
                                         )}
-                                        <span className="text-[#8696a0]/40" aria-hidden>·</span>
-                                        <span className={`flex-shrink-0 font-medium ${
-                                            active.mode === 'agent' ? 'text-sky-300' : active.mode === 'human' ? 'text-emerald-300' : 'text-amber-300'
-                                        }`}>
-                                            {active.mode === 'agent' ? agentName : active.mode === 'human' ? 'You' : 'Paused'}
+                                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                                            {phoneOnFile ? (
+                                                <a href={`tel:${phoneOnFile}`} className="inline-flex min-w-0 items-center gap-1 truncate text-[#25d366] hover:underline">
+                                                    <PhoneIcon className="h-3 w-3 flex-shrink-0" />
+                                                    {displayUkPhone(phoneOnFile)}
+                                                </a>
+                                            ) : !active.vehicleInterest?.title ? (
+                                                <span className="truncate">{emailOnFile || active.address}</span>
+                                            ) : null}
+                                            {(phoneOnFile || !active.vehicleInterest?.title) && (
+                                                <span className="text-[#8696a0]/40" aria-hidden>·</span>
+                                            )}
+                                            <span className={`flex-shrink-0 font-medium ${
+                                                active.mode === 'agent' ? 'text-sky-300' : active.mode === 'human' ? 'text-emerald-300' : 'text-amber-300'
+                                            }`}>
+                                                {active.mode === 'agent' ? agentName : active.mode === 'human' ? 'You' : 'Paused'}
+                                            </span>
                                         </span>
                                     </div>
                                 </div>
@@ -1276,6 +1370,16 @@ const AgentInboxPage = () => {
                                                 Call {displayUkPhone(phoneOnFile)}
                                             </a>
                                         )}
+                                        {phoneOnFile && !whatsappAlreadySent && (
+                                            <MenuItem onClick={() => {
+                                                setMenuOpen(false);
+                                                setThreadChannel('whatsapp');
+                                                void handleWhatsAppHer(reply.trim() || lastEmailOut?.text || '');
+                                            }}>
+                                                <WhatsAppIcon className="h-4 w-4 text-[#25d366]" />
+                                                Follow up on WhatsApp
+                                            </MenuItem>
+                                        )}
                                         {active.contact?.leadId && (
                                             <MenuItem onClick={() => { setMenuOpen(false); openLead(); }}>
                                                 <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[#8696a0]" />
@@ -1445,81 +1549,94 @@ const AgentInboxPage = () => {
                         >
                             {!asking && hasDraft && draftHost?.pendingDraft && (
                                 <div className="mb-2 overflow-hidden rounded-xl border border-amber-400/25 bg-amber-400/[0.06]">
-                                    <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-                                        <button
-                                            type="button"
-                                            onClick={() => setDraftOpen(o => !o)}
-                                            aria-expanded={draftOpen}
-                                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                        >
-                                            <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
-                                            <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-amber-200">
-                                                {draftOpen
-                                                    ? (draftHost.pendingDraft.source === 'instruction'
-                                                        ? `${agentName}'s draft, from your prompt`
-                                                        : `${agentName} drafted this`)
-                                                    : (draftText || `${agentName} drafted a reply`)}
-                                            </span>
-                                            <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
-                                                Not sent
-                                            </span>
-                                            <ChevronDownIcon className={`h-3.5 w-3.5 flex-shrink-0 text-amber-300/80 transition-transform ${draftOpen ? 'rotate-180' : ''}`} />
-                                        </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDraftOpen(o => !o)}
+                                        aria-expanded={draftOpen}
+                                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+                                    >
+                                        <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
+                                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-amber-200">
+                                            {draftOpen
+                                                ? (draftHost.pendingDraft.source === 'instruction'
+                                                    ? `${agentName}'s draft, from your prompt`
+                                                    : `${agentName} drafted this`)
+                                                : (draftText || `${agentName} drafted a reply`)}
+                                        </span>
+                                        <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                                            Not sent
+                                        </span>
+                                        <ChevronDownIcon className={`h-3.5 w-3.5 flex-shrink-0 text-amber-300/80 transition-transform ${draftOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    <div className="space-y-2 border-t border-amber-400/15 px-2.5 pb-2.5 pt-2">
+                                        {draftOpen && (
+                                            <>
+                                                {bounced && draftHost.pendingDraft.source === 'agent' && (
+                                                    <p className="text-[12px] leading-snug text-red-300">
+                                                        This may be a reply to the bounce notice, not the customer — read it before sending.
+                                                    </p>
+                                                )}
+                                                <textarea
+                                                    rows={3}
+                                                    value={draftText}
+                                                    onChange={e => setDraftText(e.target.value)}
+                                                    aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
+                                                    className="w-full resize-y rounded-xl border border-amber-400/25 bg-[#2a3942] px-3 py-2 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        value={promptText}
+                                                        onChange={e => setPromptText(e.target.value)}
+                                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReprompt(); } }}
+                                                        placeholder={`Tell ${agentName} what to change…`}
+                                                        aria-label={`Your prompt to ${agentName} — amend it and run him again`}
+                                                        className="h-10 min-w-0 flex-1 rounded-full bg-black/35 px-3.5 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/30"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleReprompt}
+                                                        disabled={sending || !!draftBusy}
+                                                        title={promptText.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
+                                                        className="flex h-10 flex-shrink-0 items-center gap-1 rounded-full bg-[#005c4b] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
+                                                    >
+                                                        {sending ? <Spinner className="h-3.5 w-3.5" /> : <SparklesIcon className="h-3.5 w-3.5" />}
+                                                        Redo
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleDiscardDraft}
+                                                        disabled={!!draftBusy}
+                                                        className="flex h-10 flex-shrink-0 items-center justify-center rounded-full px-3 text-[12px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-white disabled:opacity-40"
+                                                    >
+                                                        {draftBusy === 'discard' ? <Spinner className="h-3.5 w-3.5" /> : 'Bin'}
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                        <SendViaBar
+                                            value={sendViaNow}
+                                            onChange={setSendVia}
+                                            emailOk={emailOk}
+                                            phone={phoneOnFile}
+                                            needsOpener={whatsappNeedsOpener}
+                                            disabled={!!draftBusy}
+                                            onAddPhone={handleAddPhone}
+                                        />
                                         <button
                                             type="button"
                                             onClick={handleApproveDraft}
                                             disabled={!draftText.trim() || !!draftBusy}
-                                            className={`flex h-9 flex-shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[12px] font-semibold disabled:opacity-40 ${
-                                                draftChannel === 'email' ? 'bg-sky-600 text-white' : 'bg-[#25d366] text-[#111b21]'
+                                            className={`flex h-11 w-full items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold disabled:opacity-40 ${
+                                                sendViaNow === 'email'
+                                                    ? 'bg-sky-600 text-white'
+                                                    : sendViaNow === 'both'
+                                                        ? 'bg-[#005c4b] text-white'
+                                                        : 'bg-[#25d366] text-[#111b21]'
                                             }`}
                                         >
-                                            {draftBusy === 'approve' ? <Spinner className="h-3.5 w-3.5" /> : 'Send'}
+                                            {draftBusy === 'approve' ? <Spinner className="h-4 w-4" /> : sendViaLabel(sendViaNow)}
                                         </button>
                                     </div>
-                                    {draftOpen && (
-                                        <div className="border-t border-amber-400/15 px-2.5 pb-2.5 pt-2">
-                                            {bounced && draftHost.pendingDraft.source === 'agent' && (
-                                                <p className="mb-2 text-[12px] leading-snug text-red-300">
-                                                    This may be a reply to the bounce notice, not the customer — read it before sending.
-                                                </p>
-                                            )}
-                                            <textarea
-                                                rows={3}
-                                                value={draftText}
-                                                onChange={e => setDraftText(e.target.value)}
-                                                aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
-                                                className="w-full resize-y rounded-xl border border-amber-400/25 bg-[#2a3942] px-3 py-2 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
-                                            />
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <input
-                                                    value={promptText}
-                                                    onChange={e => setPromptText(e.target.value)}
-                                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReprompt(); } }}
-                                                    placeholder={`Tell ${agentName} what to change…`}
-                                                    aria-label={`Your prompt to ${agentName} — amend it and run him again`}
-                                                    className="h-10 min-w-0 flex-1 rounded-full bg-black/35 px-3.5 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/30"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={handleReprompt}
-                                                    disabled={sending || !!draftBusy}
-                                                    title={promptText.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
-                                                    className="flex h-10 flex-shrink-0 items-center gap-1 rounded-full bg-[#005c4b] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
-                                                >
-                                                    {sending ? <Spinner className="h-3.5 w-3.5" /> : <SparklesIcon className="h-3.5 w-3.5" />}
-                                                    Redo
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleDiscardDraft}
-                                                    disabled={!!draftBusy}
-                                                    className="flex h-10 flex-shrink-0 items-center justify-center rounded-full px-3 text-[12px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-white disabled:opacity-40"
-                                                >
-                                                    {draftBusy === 'discard' ? <Spinner className="h-3.5 w-3.5" /> : 'Bin'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
@@ -1615,19 +1732,41 @@ const AgentInboxPage = () => {
                                 </button>
                             )}
 
-                            {!asking && replyMode === 'human' && canAlsoSendOther && !attachment && (
-                                <label className="mb-1.5 flex min-h-[36px] cursor-pointer items-center gap-2 rounded-lg px-1 text-[12px] text-[#8696a0] hover:text-[#e9edef]">
-                                    <input
-                                        type="checkbox"
-                                        checked={alsoOther}
-                                        onChange={e => setAlsoOther(e.target.checked)}
-                                        className="h-4 w-4 rounded border-white/20 bg-black/40 text-[#25d366] focus:ring-[#25d366]/40"
-                                    />
-                                    {pane === 'email' ? 'Also send on WhatsApp' : 'Also send by email'}
-                                </label>
+                            {offerWhatsAppFollowUp && replyMode === 'human' && (
+                                <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#25d366]/30 bg-[#25d366]/10 px-3 py-2">
+                                    <WhatsAppIcon className="h-4 w-4 flex-shrink-0 text-[#25d366]" />
+                                    <p className="min-w-0 flex-1 text-[12px] leading-snug text-[#e9edef]">
+                                        They have a mobile. This reply went by email only.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setThreadChannel('whatsapp');
+                                            void handleWhatsAppHer(reply.trim() || lastEmailOut?.text || '');
+                                        }}
+                                        disabled={sending}
+                                        className="h-9 flex-shrink-0 rounded-full bg-[#25d366] px-3 text-[12px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50"
+                                    >
+                                        Send on WhatsApp
+                                    </button>
+                                </div>
                             )}
 
-                            {!asking && replyMode === 'human' && pane === 'whatsapp' && whatsappNeedsOpener && (
+                            {!asking && replyMode === 'human' && showSendVia && !hasDraft && (
+                                <div className="mb-1.5">
+                                    <SendViaBar
+                                        value={sendViaNow}
+                                        onChange={setSendVia}
+                                        emailOk={emailOk && !attachment}
+                                        phone={phoneOnFile}
+                                        needsOpener={whatsappNeedsOpener && sendViaNow !== 'email' && pane !== 'whatsapp'}
+                                        disabled={sending}
+                                        onAddPhone={handleAddPhone}
+                                    />
+                                </div>
+                            )}
+
+                            {!asking && replyMode === 'human' && pane === 'whatsapp' && whatsappNeedsOpener && sendViaNow !== 'email' && (
                                 <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
                                     <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
                                         {active?.whatsappOpenerAt
@@ -1637,7 +1776,7 @@ const AgentInboxPage = () => {
                                     {!reply.trim() && (
                                         <button
                                             type="button"
-                                            onClick={handleWhatsAppHer}
+                                            onClick={() => void handleWhatsAppHer()}
                                             disabled={sending}
                                             className="h-9 flex-shrink-0 rounded-full bg-[#25d366] px-3 text-[12px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50"
                                         >
@@ -1701,6 +1840,7 @@ const AgentInboxPage = () => {
                                                     setAttachment(file);
                                                     setReplyMode('human');
                                                     setThreadChannel('whatsapp');
+                                                    setSendVia('whatsapp');
                                                 }}
                                             />
                                             <button
@@ -1740,7 +1880,7 @@ const AgentInboxPage = () => {
                                             else if (reply.trim()) handleInstruct();
                                             else if (active) void requestDraft(active, true);
                                         }}
-                                        disabled={sending || (pane === 'email' && bounced) || (replyMode === 'human' && !reply.trim() && !attachment)}
+                                        disabled={sending || (replyMode === 'human' && sendViaNow === 'email' && !emailOk) || (replyMode === 'human' && sendViaNow !== 'email' && !phoneOnFile) || (replyMode === 'human' && !reply.trim() && !attachment)}
                                         className={`flex h-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
                                             attachment || replyMode === 'human'
                                                 ? sendViaNow === 'email'

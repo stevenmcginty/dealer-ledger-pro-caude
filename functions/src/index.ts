@@ -34,7 +34,7 @@ export { salesAgentSmsWebhook } from './salesAgent/channels/twilio';
 export { salesAgentGmailPush, salesAgentBackfillLeads, salesAgentReplayEmail } from './salesAgent/channels/gmail';
 export { salesAgentGmailAuthUrl, salesAgentGmailOAuthCallback, salesAgentGmailRenewWatch } from './salesAgent/gmailAuth';
 export { salesAgentOutboxTick } from './salesAgent/outbox';
-export { salesAgentSetMode, salesAgentSendReply, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentDraftNow, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSaveSharedInbox, salesAgentStartWhatsApp, salesAgentSimulate } from './salesAgent/router';
+export { salesAgentSetMode, salesAgentSendReply, salesAgentSendInvoice, salesAgentAnswerQuestion, salesAgentInstruct, salesAgentDraftNow, salesAgentApproveDraft, salesAgentDiscardDraft, salesAgentSavePrivate, salesAgentSaveSharedInbox, salesAgentStartWhatsApp, salesAgentSimulate } from './salesAgent/router';
 export { salesAgentCorrectThread } from './salesAgent/correction';
 export { salesAgentDetachMessage } from './salesAgent/split';
 export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush, salesAgentPushDebug } from './salesAgent/push';

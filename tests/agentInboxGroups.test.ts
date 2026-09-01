@@ -12,7 +12,7 @@ import {
     phoneKey,
     threadChannelsOf,
 } from '../utils/agentInboxGroups';
-import { displayUkPhone, phoneFromThread, threadLooksBounced } from '../utils/agentInboxBounce';
+import { displayUkPhone, phoneFromMessages, phoneFromThread, phonesInText, resolveThreadPhone, threadLooksBounced } from '../utils/agentInboxBounce';
 
 const conv = (over: Partial<Conversation>): Conversation => ({
     id: over.id || 'c1',
@@ -172,6 +172,22 @@ describe('groupConversations', () => {
         expect(conversationForChannel(groups[0], 'email').id).toBe('em');
     });
 
+    it('offers a WhatsApp pane on an email lead that left a mobile, without listing it as WhatsApp traffic', () => {
+        const groups = groupConversations([
+            conv({
+                id: 'em',
+                channel: 'email',
+                originChannel: 'email',
+                address: 'anne@x.com',
+                contact: { firstName: 'Anne-Marie', email: 'anne@x.com', phone: '+447700900321' },
+            }),
+        ]);
+        expect(threadChannelsOf(groups[0])).toEqual(['whatsapp', 'email']);
+        expect(groupHasChannel(groups[0], 'whatsapp')).toBe(false);
+        expect(groupHasChannel(groups[0], 'email')).toBe(true);
+        expect(conversationForChannel(groups[0], 'whatsapp').id).toBe('em');
+    });
+
     it('keeps email bodies off the WhatsApp pane even on one conversation', () => {
         const wa = conv({ id: 'wa', channel: 'whatsapp' });
         expect(keepMessageOnChannel({ channel: 'email' }, wa, 'whatsapp')).toBe(false);
@@ -246,5 +262,25 @@ describe('threadLooksBounced', () => {
                 askedAt: 1,
             },
         }))).toBe('+447826555653');
+    });
+
+    it('reads a CarGurus phone line out of the inbound body', () => {
+        expect(phonesInText('*Phone number:* 07471 075500\n*Email:* a@b.com')).toEqual(['07471 075500']);
+        expect(phoneFromMessages([
+            { from: 'customer', direction: 'in', text: 'Cooper S 6dr Auto. Phone number: 07700 900 222' },
+            { from: 'agent', direction: 'out', text: 'Regards\nTel: 07710525694' },
+        ])).toBe('07700 900 222');
+    });
+
+    it('prefers the CRM number when the thread itself has none', () => {
+        expect(resolveThreadPhone(
+            conv({
+                channel: 'email',
+                address: 'anne@x.com',
+                contact: { email: 'anne@x.com' },
+            }),
+            [],
+            '07700 900 321',
+        )).toBe('07700 900 321');
     });
 });

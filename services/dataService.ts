@@ -786,6 +786,14 @@ export const uploadBlob = async (companyId: string, userId: string, blob: Blob, 
     const snapshot = await fileRef.put(blob);
     return snapshot.ref.getDownloadURL();
 };
+/** Invoice PDFs live under invoices/ so the nightly WhatsApp-storage prune
+ *  (which only walks whatsapp/ prefixes) never touches them. The content type
+ *  is set explicitly so the storage rule's MIME check always sees application/pdf. */
+export const uploadInvoicePdf = async (companyId: string, userId: string, blob: Blob, name: string): Promise<string> => {
+    const fileRef = storage.ref(`${companyId}/${userId}/invoices/${name}`);
+    const snapshot = await fileRef.put(blob, { contentType: 'application/pdf' });
+    return snapshot.ref.getDownloadURL();
+};
 
 async function listAllFilesRecursive(ref: firebase.storage.Reference): Promise<firebase.storage.Reference[]> {
     let items: firebase.storage.Reference[] = [];

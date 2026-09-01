@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { SalesDocument, BusinessDetails, Vehicle, PartExchangeVehicle } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
-import { downloadElementAsPdf } from '../../utils/pdf';
+import { downloadPrintablePdf } from './printablePdf';
+import SendDocumentPanel from './SendDocumentPanel';
 import { useData } from '../../hooks/useData';
 import { useToast } from '../ui';
 
@@ -75,54 +76,17 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
     }, [doc.partExchangeDetails]);
 
     const handleDownloadPdf = async () => {
-        const elementToPrint = document.getElementById('printable-content');
-        const pdfRenderer = document.getElementById('pdf-renderer');
-
-        if (!elementToPrint || !pdfRenderer) {
-            console.error("Required elements for PDF generation are not found.");
-            return;
-        }
-
-        const clone = elementToPrint.cloneNode(true) as HTMLElement;
-
-        // A4 at 96dpi: 794px x 1123px
-        const a4Width = 794;
-        const a4Height = 1123;
-        
-        clone.style.width = a4Width + 'px';
-        clone.style.height = a4Height + 'px';
-        clone.style.padding = '23px 38px 265px 38px';
-        clone.style.boxSizing = 'border-box';
-        clone.style.position = 'relative';
-        clone.style.overflow = 'hidden';
-        
-        pdfRenderer.innerHTML = '';
-        pdfRenderer.style.position = 'absolute';
-        pdfRenderer.style.left = '-9999px';
-        pdfRenderer.style.top = '0';
-        pdfRenderer.style.width = a4Width + 'px';
-        pdfRenderer.style.height = a4Height + 'px';
-        pdfRenderer.appendChild(clone);
-        pdfRenderer.classList.remove('hidden');
-
         try {
-            await downloadElementAsPdf(
-                clone,
-                `${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`,
-                {
-                    canvas: { scale: 3, width: a4Width, height: a4Height },
-                    quality: 1.0,
-                    singlePage: true,
-                }
-            );
+            await downloadPrintablePdf(`${doc.documentType.replace(/\s/g, '-')}-${doc.invoiceNumber}.pdf`);
         } catch (error) {
             console.error("Error generating PDF:", error);
             toast.error("Could not generate the PDF. Please try again.");
-        } finally {
-            pdfRenderer.innerHTML = '';
-            pdfRenderer.classList.add('hidden');
         }
     };
+
+    // Sending is for saved documents — the preview before saving has no id to
+    // attach the contact to yet.
+    const canSendToCustomer = !isPreview && !!doc.id && doc.id !== 'temp-id';
 
      const docTitles = { 
         'Sales Invoice': "INVOICE", 
@@ -145,7 +109,9 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                     <button onClick={onClose} className="p-2 rounded-full text-gray-300 hover:bg-gray-700" title="Close"><XMarkIcon className="h-5 w-5" /></button>
                 </div>
             </header>
-            
+
+            {canSendToCustomer && <SendDocumentPanel doc={doc} />}
+
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
                 <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 relative" style={{ padding: '6mm 10mm 70mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
                     <header className="flex justify-between items-start pb-2">

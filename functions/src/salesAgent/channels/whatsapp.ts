@@ -260,7 +260,23 @@ const OWNER_ALERT_FAMILY: TemplateVariant[] = [
     { name: 'owner_alert', params: ([text]) => [text || '-'], render: ([text]) => text || '' },
 ];
 
-const FAMILIES = [ENQUIRY_FAMILY, MISSED_CALL_FAMILY, OWNER_ALERT_FAMILY];
+/**
+ * "The document you asked for is in your email." Meta will not carry a file outside
+ * the 24h window, so a cold customer gets the PDF by email and this as the WhatsApp
+ * half of the pair. UTILITY wording: it reports a transaction the customer knows
+ * about, and asks for nothing. `invoice_notice` must be registered in Meta Business
+ * Manager with the {{1}}/{{2}} body below, exactly, before it can be delivered.
+ */
+const INVOICE_FAMILY: TemplateVariant[] = [
+    {
+        name: 'invoice_notice',
+        params: ([name, doc]) => [name || 'there', doc || 'invoice'],
+        render: ([name, doc]) =>
+            `Hi ${name || 'there'}, your ${doc || 'invoice'} from Radlett Cars is in an email we have just sent you. Please check your inbox and spam folder. Reply here if it has not arrived.`,
+    },
+];
+
+const FAMILIES = [ENQUIRY_FAMILY, MISSED_CALL_FAMILY, OWNER_ALERT_FAMILY, INVOICE_FAMILY];
 
 const familyOf = (templateName: string): TemplateVariant[] | null =>
     FAMILIES.find(f => f.some(v => v.name === templateName)) || null;

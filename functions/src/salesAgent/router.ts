@@ -61,6 +61,8 @@ import {
     sharedInboxSaveBlocked,
 } from './inboxRouting';
 import { startOutboundWhatsApp } from './startWhatsApp';
+import { sendInvoiceDocument, type InvoiceVia } from './invoiceSend';
+import { isOwnCompanyDownloadUrl, ownBucketName } from './mediaUrl';
 import {
     AgentMessage,
     Channel,
@@ -442,6 +444,27 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         forceNew: options.forceNewConversation === true,
         stealFrom: options.stealFrom,
     });
+
+    // Scraped numbers are not identity (a quoted signature is often ours). On a
+    // brand-new email lead with no structured phone, keep one unused mobile so
+    // the inbox can offer WhatsApp. Never steal a number another thread owns.
+    if (isNew && msg.channel === 'email' && !conversation.contact?.phone) {
+        const own = settings.phone ? toE164(settings.phone) : '';
+        // A UK landline off a lead form is not a WhatsApp number. Sending a
+        // template to one is billed and never delivered, so only a mobile is
+        // claimed. Non-UK numbers cannot be told apart and are let through.
+        const candidate = (msg.extractedPhones || [])
+            .map(raw => toE164(raw))
+            .find(e164 => e164.length >= 10 && e164 !== own && (!e164.startsWith('+44') || e164.startsWith('+447')));
+        if (candidate) {
+            const claimed = await indexContactIfFree(companyId, 'whatsapp', candidate, conversation.id);
+            if (claimed) {
+                const next = { ...(conversation.contact || {}), phone: candidate };
+                await updateConversation(companyId, conversation.id, { contact: next });
+                conversation.contact = next;
+            }
+        }
+    }
 
     await mirrorConversationContacts(companyId, conversation, msg.channel, msg.address, options.stealFrom);
 
@@ -959,7 +982,9 @@ export const approveDraft = async (
     companyId: string,
     convId: string,
     edited?: string,
-    signAs: 'agent' | 'owner' = 'agent'
+    signAs: 'agent' | 'owner' = 'agent',
+    via: SendVia = 'auto',
+    phone?: string
 ): Promise<{ text: string; name: string; sendAfter: number; sent: Channel[] }> => {
     const conversation = await getConversation(companyId, convId);
     if (!conversation) throw new Error(`Conversation ${convId} not found`);
@@ -972,8 +997,16 @@ export const approveDraft = async (
     if (signAs === 'owner') text = signAsOwner(text, settings.agentName || 'Dave', settings.ownerName || '');
     if (!text) throw new Error('There is nothing to send.');
 
+    const givenPhone = (phone || '').trim();
+    if (givenPhone && !conversation.contact?.phone) {
+        const e164 = toE164(givenPhone);
+        const contact = { ...(conversation.contact || {}), phone: e164 };
+        await updateConversation(companyId, convId, { contact });
+        conversation.contact = contact;
+    }
+
     const sendAfter = queueSendAfter(settings, 0);
-    const result = await enqueueOrSend(companyId, conversation, settings, text, 'auto', signAs, { sendAfter });
+    const result = await enqueueOrSend(companyId, conversation, settings, text, via, signAs, { sendAfter });
 
     await updateConversation(companyId, convId, { pendingDraft: null });
     delete conversation.pendingDraft;
@@ -1382,6 +1415,11 @@ export const salesAgentSendReply = functions
             : undefined;
 
         if (!text && !media) throw new functions.https.HttpsError('invalid-argument', 'There is nothing to send.');
+        // Same rule as the invoice send: the bytes are fetched by the function,
+        // so the URL must be ours and must be this company's.
+        if (media && !isOwnCompanyDownloadUrl(media.url, companyId, ownBucketName())) {
+            throw new functions.https.HttpsError('permission-denied', 'That attachment is not a file on this account.');
+        }
 
         const conversation = await getConversation(companyId, convId);
         if (!conversation) throw new functions.https.HttpsError('not-found', 'That conversation no longer exists.');
@@ -1495,9 +1533,12 @@ export const salesAgentApproveDraft = functions
         const convId = String(data?.convId || '');
         const edited = data?.text === undefined ? undefined : String(data.text).trim();
         const signAs = data?.signAs === 'owner' ? 'owner' : 'agent';
+        const viaRaw = String(data?.via || 'auto');
+        const via: SendVia = viaRaw === 'email' || viaRaw === 'whatsapp' || viaRaw === 'both' ? viaRaw : 'auto';
+        const givenPhone = String(data?.phone || '').trim() || undefined;
 
         try {
-            const { text, sendAfter, sent } = await approveDraft(companyId, convId, edited, signAs);
+            const { text, sendAfter, sent } = await approveDraft(companyId, convId, edited, signAs, via, givenPhone);
             return { ok: true, text, sendAfter, sent };
         } catch (error: any) {
             throw new functions.https.HttpsError('failed-precondition', error?.message || 'That draft could not be sent.');
@@ -1684,6 +1725,69 @@ export const salesAgentStartWhatsApp = functions
                 throw new functions.https.HttpsError('already-exists', message);
             }
             throw new functions.https.HttpsError('failed-precondition', message);
+        }
+    });
+
+/**
+ * Send a saved document's PDF to its customer, from the invoice modal.
+ *
+ * Same shape as the reply box: sent immediately, mount the Gmail secrets, and
+ * the extra room is for the attachment bytes passing through on both channels.
+ */
+export const salesAgentSendInvoice = functions
+    .runWith({
+        secrets: [...BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'],
+        timeoutSeconds: 300,
+        memory: '2GB',
+    })
+    .https.onCall(async (data, context) => {
+        const companyId = await requireMember(context, data?.companyId);
+
+        const viaRaw = String(data?.via || '');
+        if (viaRaw !== 'email' && viaRaw !== 'whatsapp') {
+            throw new functions.https.HttpsError('invalid-argument', 'via must be email or whatsapp');
+        }
+        const via: InvoiceVia = viaRaw;
+
+        const pdfRaw = data?.pdf && typeof data.pdf === 'object' ? data.pdf as Record<string, string> : null;
+        if (!pdfRaw?.url || pdfRaw.kind !== 'document') {
+            throw new functions.https.HttpsError('invalid-argument', 'The PDF to send is missing.');
+        }
+        // The function fetches this URL itself. Only our own bucket, only this
+        // company's folder — see mediaUrl.ts.
+        if (!isOwnCompanyDownloadUrl(String(pdfRaw.url), companyId, ownBucketName())) {
+            throw new functions.https.HttpsError('permission-denied', 'That PDF is not a file on this account.');
+        }
+
+        try {
+            return {
+                ok: true,
+                ...(await sendInvoiceDocument({
+                    companyId,
+                    via,
+                    email: data?.email ? String(data.email) : undefined,
+                    phone: data?.phone ? String(data.phone) : undefined,
+                    customerName: data?.customerName ? String(data.customerName) : undefined,
+                    vehicleTitle: data?.vehicleTitle ? String(data.vehicleTitle) : undefined,
+                    documentLabel: String(data?.documentLabel || 'invoice'),
+                    invoiceNumber: String(data?.invoiceNumber || ''),
+                    pdf: {
+                        kind: 'document',
+                        url: String(pdfRaw.url),
+                        ...(pdfRaw.mime ? { mime: String(pdfRaw.mime) } : {}),
+                        ...(pdfRaw.filename ? { filename: String(pdfRaw.filename) } : {}),
+                    },
+                })),
+            };
+        } catch (error: any) {
+            const message = error?.message || 'That document could not be sent.';
+            if (/other ledger/i.test(message)) {
+                throw new functions.https.HttpsError('already-exists', message);
+            }
+            if (/no email address|no mobile number|cannot take files/i.test(message)) {
+                throw new functions.https.HttpsError('failed-precondition', message);
+            }
+            throw new functions.https.HttpsError('unavailable', message);
         }
     });
 

@@ -546,6 +546,10 @@ export const setConnectionFlag = (
 export const markConversationRead = (companyId: string, convId: string) =>
     db.ref(`${agentRoot(companyId)}/conversations/${convId}/unread`).set(0);
 
+/** Keep a mobile on an email lead so WhatsApp follow-up has somewhere to go. */
+export const saveConversationPhone = (companyId: string, convId: string, phone: string) =>
+    db.ref(`${agentRoot(companyId)}/conversations/${convId}/contact/phone`).set(phone);
+
 const rtdbKey = (s: string): string => s.replace(/[.#$\[\]\/]/g, '_');
 
 const contactIndexKeys = (conv: Conversation): string[] => {
@@ -747,6 +751,63 @@ export const startAgentWhatsApp = (
 
 export type SendVia = 'auto' | 'email' | 'whatsapp' | 'both';
 
+/**
+ * Send a saved document's PDF to its customer, from the invoice modal.
+ *
+ * The PDF is uploaded by the caller first (uploadInvoicePdf in dataService);
+ * only its Storage URL travels. `via` is the button that was pressed — the
+ * function decides the real route (WhatsApp cannot carry files outside the
+ * customer's 24h window, and falls back to email plus a template nudge).
+ */
+export const sendInvoiceDocument = (
+    companyId: string,
+    input: {
+        via: 'email' | 'whatsapp';
+        email?: string;
+        phone?: string;
+        customerName?: string;
+        vehicleTitle?: string;
+        documentLabel: string;
+        invoiceNumber: string;
+        pdfUrl: string;
+        filename?: string;
+    }
+) =>
+    call<
+        {
+            companyId: string;
+            via: 'email' | 'whatsapp';
+            email?: string;
+            phone?: string;
+            customerName?: string;
+            vehicleTitle?: string;
+            documentLabel: string;
+            invoiceNumber: string;
+            pdf: { kind: 'document'; url: string; mime?: string; filename?: string };
+        },
+        { ok: true; convId: string; created: boolean; sent: 'whatsapp' | 'email' | 'email+whatsapp'; nudgeHeld?: string }
+    >(
+        'salesAgentSendInvoice',
+        {
+            companyId,
+            via: input.via,
+            documentLabel: input.documentLabel,
+            invoiceNumber: input.invoiceNumber,
+            pdf: {
+                kind: 'document',
+                url: input.pdfUrl,
+                mime: 'application/pdf',
+                ...(input.filename ? { filename: input.filename } : {}),
+            },
+            ...(input.email ? { email: input.email } : {}),
+            ...(input.phone ? { phone: input.phone } : {}),
+            ...(input.customerName ? { customerName: input.customerName } : {}),
+            ...(input.vehicleTitle ? { vehicleTitle: input.vehicleTitle } : {}),
+        },
+        120000,
+        'That document was not sent.'
+    );
+
 /** Send a message to the customer as Steve. `via` sends email, WhatsApp, or both. */
 export const sendAgentReply = (
     companyId: string,
@@ -811,10 +872,24 @@ export const instructAgent = (companyId: string, convId: string, text: string) =
  * During office hours it goes out on the spot. After hours it is queued until
  * the next opening; `sendAfter` says when.
  */
-export const approveAgentDraft = (companyId: string, convId: string, text?: string, signAs: 'agent' | 'owner' = 'agent') =>
-    call<{ companyId: string; convId: string; text?: string; signAs: 'agent' | 'owner' }, { ok: boolean; text: string; sendAfter: number; sent?: Channel[] }>(
+export const approveAgentDraft = (
+    companyId: string,
+    convId: string,
+    text?: string,
+    signAs: 'agent' | 'owner' = 'agent',
+    via: SendVia = 'auto',
+    phone?: string
+) =>
+    call<{ companyId: string; convId: string; text?: string; signAs: 'agent' | 'owner'; via?: SendVia; phone?: string }, { ok: boolean; text: string; sendAfter: number; sent?: Channel[] }>(
         'salesAgentApproveDraft',
-        { companyId, convId, signAs, ...(text === undefined ? {} : { text }) },
+        {
+            companyId,
+            convId,
+            signAs,
+            ...(text === undefined ? {} : { text }),
+            ...(via !== 'auto' ? { via } : {}),
+            ...(phone ? { phone } : {}),
+        },
         60000,
         'That draft could not be sent.'
     );
