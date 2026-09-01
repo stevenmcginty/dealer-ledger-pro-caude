@@ -4,6 +4,7 @@ import {
     coerceWhatsAppFile,
     describeWhatsAppFileError,
     describeWhatsAppPickError,
+    friendlyWhatsAppMediaName,
     isWhatsAppStoragePath,
     mimeForWhatsAppFile,
     prepareWhatsAppFile,
@@ -81,6 +82,22 @@ describe('storagePathFromUrl', () => {
         expect(storagePathFromUrl(url)).toBe('co-a/whatsapp/clip.mp4');
         expect(isWhatsAppStoragePath('co-a/whatsapp/clip.mp4')).toBe(true);
         expect(isWhatsAppStoragePath('co-a/uid/receipts/scan.jpg')).toBe(false);
+    });
+});
+
+describe('friendlyWhatsAppMediaName', () => {
+    it('hides a Meta wamid used as a filename', () => {
+        expect(friendlyWhatsAppMediaName('image', 'image-wamid.HBgMNDQ3NDYwNzI0NzY1FQIAEhgUM0EzNU'))
+            .toBe('Photo');
+        expect(friendlyWhatsAppMediaName('video', 'video-wamid.HBgMxxxx'))
+            .toBe('Video');
+        expect(friendlyWhatsAppMediaName('document', 'wamid.HBgMxxxx.pdf'))
+            .toBe('File');
+    });
+
+    it('keeps a real filename', () => {
+        expect(friendlyWhatsAppMediaName('document', 'V5C.pdf')).toBe('V5C.pdf');
+        expect(friendlyWhatsAppMediaName('image', 'back-wheel.jpg')).toBe('back-wheel.jpg');
     });
 });
 

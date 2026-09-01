@@ -117,6 +117,20 @@ export const isWhatsAppStoragePath = (path: string): boolean => {
     return false;
 };
 
+/**
+ * Inbound photos used to be stored as `image-{wamid}`. That string is what a
+ * broken <img> shows as its alt text, which is how the inbox looked like a
+ * pile of dead links. A real name (V5C.pdf) is kept; a Meta id is not.
+ */
+export const friendlyWhatsAppMediaName = (kind: WhatsAppMediaKind, filename?: string): string => {
+    const name = (filename || '').trim();
+    const fallback = kind === 'image' ? 'Photo' : kind === 'video' ? 'Video' : 'File';
+    if (!name) return fallback;
+    if (/wamid/i.test(name)) return fallback;
+    if (/^(image|video|document)-/i.test(name) && name.length > 40) return fallback;
+    return name;
+};
+
 const describeAgainst = (file: File, caps: Record<WhatsAppMediaKind, number>): string | null => {
     const kind = classifyWhatsAppFile(file);
     if (!kind) {

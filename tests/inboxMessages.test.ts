@@ -72,6 +72,29 @@ www.radlettcarsales.com`,
         expect(html).not.toContain('07710 525694');
     });
 
+    it('does not show a Meta wamid as the photo label', () => {
+        const html = htmlOf(msg({
+            text: 'Back wheel',
+            media: {
+                kind: 'image',
+                url: 'https://firebasestorage.googleapis.com/v0/b/motor-ledger-pro.firebasestorage.app/o/co%2Fwhatsapp%2Fphoto.jpg?alt=media&token=abc',
+                filename: 'image-wamid.HBgMNDQ3NDYwNzI0NzY1FQIAEhgUM0EzNU',
+            },
+        }));
+        expect(html).toContain('alt="Photo"');
+        expect(html).toMatch(/referrerpolicy="no-referrer"/i);
+        expect(html).toContain('Back wheel');
+        expect(html).not.toContain('image-wamid');
+        expect(html).not.toContain('HBgMNDQ3');
+    });
+
+    it('explains an unsupported WhatsApp instead of dumping [unsupported]', () => {
+        const html = htmlOf(msg({ text: '[unsupported]' }));
+        expect(html).toContain('WhatsApp did not pass this one');
+        expect(html).toContain('photo album');
+        expect(html).not.toContain('[unsupported]');
+    });
+
     it('renders an email as a card, not a chat dump', () => {
         const html = htmlOf(msg({
             channel: 'email',

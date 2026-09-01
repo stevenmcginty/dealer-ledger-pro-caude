@@ -22,6 +22,14 @@ describe('Firebase hosting CSP', () => {
         expect(csp).toMatch(/script-src[^;]*https:\/\/www\.gstatic\.com/);
     });
 
+    it('allows Firebase Storage images on the firebasestorage.app host', () => {
+        // New buckets live at {project}.firebasestorage.app. An <img> follows the
+        // redirect there; without this host the inbox shows the filename instead
+        // of the photo, while opening the same link in a new tab still works.
+        expect(csp).toMatch(/img-src[^;]*https:\/\/\*\.firebasestorage\.app/);
+        expect(csp).toMatch(/media-src[^;]*https:\/\/\*\.firebasestorage\.app/);
+    });
+
     it('covers every host public/sw.js imports at run time', () => {
         const sw = readFileSync('public/sw.js', 'utf8');
         const origins = [...sw.matchAll(/'(https:\/\/[^'\s]+)'/g)]

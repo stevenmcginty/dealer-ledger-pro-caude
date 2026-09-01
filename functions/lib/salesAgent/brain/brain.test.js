@@ -116,6 +116,7 @@ const prompt_1 = require("./prompt");
     });
     (0, node_test_1.it)('bakes in website, changing stock, opening hours and viewings strictly by appointment', () => {
         const prompt = (0, prompt_1.buildSystemPrompt)({ conversation: baseConv, settings });
+        node_assert_1.strict.ok(prompt.includes('WHATSAPP PHOTOS AND FILES'));
         node_assert_1.strict.ok(prompt.includes('DEALERSHIP KNOWLEDGE'));
         node_assert_1.strict.ok(prompt.includes('stock is always changing'));
         node_assert_1.strict.ok(prompt.includes('https://radlettcarsales.com'));
@@ -200,6 +201,24 @@ const prompt_1 = require("./prompt");
         node_assert_1.strict.ok(!blob.includes('[reaction]'));
         node_assert_1.strict.ok(blob.includes('On my way'));
         node_assert_1.strict.ok(blob.includes('Parking now'));
+    });
+    (0, node_test_1.it)('skips placeholder WhatsApp media lines so Dave is not asked to answer [unsupported]', () => {
+        const contents = (0, prompt_1.buildContents)({
+            conversation: baseConv,
+            history: [
+                { id: 'm1', direction: 'in', channel: 'whatsapp', from: 'customer', text: 'Left the key here', createdAt: 1 },
+                { id: 'm2', direction: 'in', channel: 'whatsapp', from: 'customer', text: '[unsupported]', createdAt: 2 },
+                { id: 'm3', direction: 'in', channel: 'whatsapp', from: 'customer', text: '[photo]', createdAt: 3 },
+                { id: 'm4', direction: 'in', channel: 'whatsapp', from: 'customer', text: 'Back wheel', createdAt: 4 },
+            ],
+            settings,
+            inbound: { companyId: 'company-1', channel: 'whatsapp', address: '+447700900123', text: 'See you in the morning', providerId: 'w1', receivedAt: Date.now() },
+        });
+        const blob = contents.map(c => c.parts?.[0]?.text || '').join('\n');
+        node_assert_1.strict.ok(!blob.includes('[unsupported]'));
+        node_assert_1.strict.ok(!blob.includes('[photo]'));
+        node_assert_1.strict.ok(blob.includes('Left the key here'));
+        node_assert_1.strict.ok(blob.includes('Back wheel'));
     });
 });
 //# sourceMappingURL=brain.test.js.map

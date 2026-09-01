@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+    CameraIcon,
     EnvelopeIcon,
     ExclamationTriangleIcon,
     PaperClipIcon,
@@ -17,6 +18,7 @@ import {
     reactionEmojiOf,
 } from '../../services/salesAgentService';
 import { isLongEmailBody, looksLikeEmailBody, looksLikeForwardedEmail, splitQuotedEmail } from '../../utils/emailQuote';
+import { friendlyWhatsAppMediaName } from '../../utils/whatsappMedia';
 
 const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
     <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
@@ -162,29 +164,58 @@ const LongBody: React.FC<{ text: string; className?: string }> = ({ text, classN
     );
 };
 
-const MediaBlock: React.FC<{ message: AgentMessage }> = ({ message }) => (
-    <>
-        {message.media?.kind === 'image' && (
-            <a href={message.media.url} target="_blank" rel="noreferrer" className="mb-1 block">
-                <img src={message.media.url} alt={message.media.filename || 'Photo'} className="max-h-64 max-w-full rounded-lg object-cover" />
-            </a>
-        )}
-        {message.media?.kind === 'video' && (
-            <video src={message.media.url} controls className="mb-1 max-h-64 w-full rounded-lg bg-black" />
-        )}
-        {message.media?.kind === 'document' && (
+const ImageMedia: React.FC<{ url: string; label: string }> = ({ url, label }) => {
+    const [failed, setFailed] = useState(false);
+    if (failed) {
+        return (
             <a
-                href={message.media.url}
+                href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="mb-1 inline-flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2 text-sm underline"
+                className="mb-1 inline-flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2 text-sm"
             >
-                <PaperClipIcon className="h-4 w-4" />
-                {message.media.filename || 'File'}
+                <CameraIcon className="h-4 w-4" />
+                {label}: tap to open
             </a>
-        )}
-    </>
-);
+        );
+    }
+    return (
+        <a href={url} target="_blank" rel="noreferrer" className="mb-1 block">
+            <img
+                src={url}
+                alt={label}
+                referrerPolicy="no-referrer"
+                onError={() => setFailed(true)}
+                className="max-h-64 max-w-full rounded-lg object-cover"
+            />
+        </a>
+    );
+};
+
+const MediaBlock: React.FC<{ message: AgentMessage }> = ({ message }) => {
+    const media = message.media;
+    if (!media?.url) return null;
+    const label = friendlyWhatsAppMediaName(media.kind, media.filename);
+    return (
+        <>
+            {media.kind === 'image' && <ImageMedia url={media.url} label={label} />}
+            {media.kind === 'video' && (
+                <video src={media.url} controls className="mb-1 max-h-64 w-full rounded-lg bg-black" />
+            )}
+            {media.kind === 'document' && (
+                <a
+                    href={media.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mb-1 inline-flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2 text-sm underline"
+                >
+                    <PaperClipIcon className="h-4 w-4" />
+                    {label}
+                </a>
+            )}
+        </>
+    );
+};
 
 const IconBtn: React.FC<{
     label: string;
@@ -384,6 +415,19 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
             <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
                 <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
                     <span className="font-medium text-[#e9edef]/70">You told {agentName}:</span> {instruction}
+                </p>
+                <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
+                    <TrashIcon className="h-3.5 w-3.5" />
+                </IconBtn>
+            </div>
+        );
+    }
+
+    if ((message.text || '').trim() === '[unsupported]' && !message.media) {
+        return (
+            <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
+                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
+                    WhatsApp did not pass this one. Often a photo album or a view-once.
                 </p>
                 <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
                     <TrashIcon className="h-3.5 w-3.5" />

@@ -535,6 +535,11 @@ const handleInbound = async (msg, options = {}) => {
     if (conversation.mode !== 'agent') {
         return;
     }
+    // Photo albums, captionless media, voice notes: in the thread for Steve,
+    // not a customer turn. Answering `[unsupported]` produced the empty-reply
+    // escalation on Marco's photos.
+    if (msg.kind === 'no_reply')
+        return;
     try {
         await (0, exports.runAgentTurn)(companyId, conversation, { ...msg, text }, settings);
     }

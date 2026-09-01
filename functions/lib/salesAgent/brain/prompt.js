@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildContents = exports.buildSystemPrompt = exports.londonDate = exports.BOUNCE_NOTICE_PREFIX = exports.OWNER_INSTRUCTION_PREFIX = exports.OWNER_INSTRUCTION_QUESTION = exports.formatEmailContext = exports.HISTORY_TURNS = void 0;
+const whatsappInbound_1 = require("../channels/whatsappInbound");
 /** How many past messages get replayed to the model. */
 exports.HISTORY_TURNS = 20;
 const stamp = (at) => at ? new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : '';
@@ -294,6 +295,12 @@ const buildSystemPrompt = (args) => {
     ].join('\n'));
     sections.push(pricePolicy(settings, conversation));
     sections.push([
+        'WHATSAPP PHOTOS AND FILES',
+        '- You cannot see the pixels. The desk can. The photo is already in the Agent Inbox.',
+        '- If the customer sent a photo with a short caption that is not a question, one short line that you have it is enough.',
+        '- Never return an empty reply for a photo. Never escalate just because you cannot see the image.',
+    ].join('\n'));
+    sections.push([
         'HAND OVER TO A HUMAN',
         'Call request_handoff and say someone from the sales team will pick it up when any of these arise: a complaint, legal issues, a finance decline/approval decision, an existing customer with a mechanical fault, or when the customer asks for a person. Do not name them unless the customer already did.',
         '- A Delivery Status Notification, "undeliverable", or mailer-daemon bounce is NOT a customer. Return an empty reply (""), do not write a holding line, do not call ask_owner. The desk is already being told.',
@@ -402,6 +409,10 @@ const buildContents = (args) => {
             continue;
         // Emoji taps are acknowledgements, not turns to answer.
         if (message.kind === 'reaction' || text === '[reaction]')
+            continue;
+        // Album wrappers and captionless media. The pixels are in the inbox; the
+        // placeholder is not a customer question.
+        if ((0, whatsappInbound_1.isWhatsAppPlaceholderText)(text))
             continue;
         if (message.from === 'agent') {
             contents.push({ role: 'model', parts: [{ text }] });

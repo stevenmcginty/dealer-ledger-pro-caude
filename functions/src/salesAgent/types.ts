@@ -281,8 +281,13 @@ export interface InboundMessage {
     /** The whole email as readable text (capped), so the brain reads what the parser did not. */
     fullText?: string;
     media?: MessageMedia;
-    /** WhatsApp reaction webhooks. `text` is the emoji; empty means they removed it. */
-    kind?: 'reaction';
+    /**
+     * WhatsApp reaction webhooks (`text` is the emoji; empty means they removed it).
+     * `no_reply` is a photo/album/voice note that belongs in the thread but must
+     * not trigger Dave — answering `[unsupported]` is how we got empty-reply
+     * escalations on photo albums.
+     */
+    kind?: 'reaction' | 'no_reply';
     /** wamid of the message they tapped. */
     reactionTo?: string;
     receivedAt: number;

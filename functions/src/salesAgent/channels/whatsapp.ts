@@ -24,7 +24,7 @@ import { ChannelSender, DeliveryState, InboundMessage, MessageMedia, OutboxJob, 
 import { handleInbound } from '../router';
 import { WHATSAPP_VIDEO_TARGET, compressVideoForWhatsApp } from './videoCompress';
 import { pruneCompanyWhatsApp, saveInboundWhatsAppFile } from '../whatsappStorage';
-import { whatsappInboundText } from './whatsappInbound';
+import { inboundMediaFileName, inboundMediaMime, inboundNeedsNoReply, whatsappInboundText } from './whatsappInbound';
 
 const GRAPH_VERSION = 'v21.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -572,8 +572,8 @@ const storeInboundMedia = async (
         const fileRes = await fetch(looked.url, { headers: { Authorization: `Bearer ${token}` } });
         if (!fileRes.ok) return undefined;
         const bytes = Buffer.from(await fileRes.arrayBuffer());
-        const mime = meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || 'application/octet-stream';
-        const filename = (meta.filename || `${kind}-${providerId}`).replace(/[^\w.\-]+/g, '_');
+        const mime = inboundMediaMime(kind, meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || '');
+        const filename = inboundMediaFileName(kind, mime, meta.filename);
         const saved = await saveInboundWhatsAppFile(companyId, `${providerId}_${filename}`, bytes, mime);
         void pruneCompanyWhatsApp(companyId).catch(error => {
             console.warn(`WhatsApp: prune after inbound ${providerId} failed`, error);
@@ -642,7 +642,7 @@ const processChange = async (companyId: string, value: WebhookValue): Promise<vo
             ...(message.type === 'reaction' ? {
                 kind: 'reaction' as const,
                 ...(message.reaction?.message_id ? { reactionTo: message.reaction.message_id } : {}),
-            } : {}),
+            } : inboundNeedsNoReply(message) ? { kind: 'no_reply' as const } : {}),
         };
 
         await markRead(companyId, message.id);

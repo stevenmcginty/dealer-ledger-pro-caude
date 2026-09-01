@@ -13,6 +13,7 @@
 import type { Content, Part } from '@google/genai';
 import type { AgentMessage, Conversation, InboundMessage, SalesAgentSettings } from '../types';
 import type { EmailContext, EmailContextItem } from '../channels/gmailContext';
+import { isWhatsAppPlaceholderText } from '../channels/whatsappInbound';
 
 /** How many past messages get replayed to the model. */
 export const HISTORY_TURNS = 20;
@@ -367,6 +368,15 @@ export const buildSystemPrompt = (args: {
 
     sections.push(
         [
+            'WHATSAPP PHOTOS AND FILES',
+            '- You cannot see the pixels. The desk can. The photo is already in the Agent Inbox.',
+            '- If the customer sent a photo with a short caption that is not a question, one short line that you have it is enough.',
+            '- Never return an empty reply for a photo. Never escalate just because you cannot see the image.',
+        ].join('\n'),
+    );
+
+    sections.push(
+        [
             'HAND OVER TO A HUMAN',
             'Call request_handoff and say someone from the sales team will pick it up when any of these arise: a complaint, legal issues, a finance decline/approval decision, an existing customer with a mechanical fault, or when the customer asks for a person. Do not name them unless the customer already did.',
             '- A Delivery Status Notification, "undeliverable", or mailer-daemon bounce is NOT a customer. Return an empty reply (""), do not write a holding line, do not call ask_owner. The desk is already being told.',
@@ -502,6 +512,9 @@ export const buildContents = (args: {
         if (message.from === 'owner' && text.startsWith(BOUNCE_NOTICE_PREFIX)) continue;
         // Emoji taps are acknowledgements, not turns to answer.
         if (message.kind === 'reaction' || text === '[reaction]') continue;
+        // Album wrappers and captionless media. The pixels are in the inbox; the
+        // placeholder is not a customer question.
+        if (isWhatsAppPlaceholderText(text)) continue;
         if (message.from === 'agent') {
             contents.push({ role: 'model', parts: [{ text }] });
         } else if (message.from === 'owner') {

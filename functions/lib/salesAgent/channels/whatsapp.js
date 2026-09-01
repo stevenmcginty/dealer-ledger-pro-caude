@@ -452,8 +452,8 @@ const storeInboundMedia = async (companyId, providerId, message) => {
         if (!fileRes.ok)
             return undefined;
         const bytes = Buffer.from(await fileRes.arrayBuffer());
-        const mime = meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || 'application/octet-stream';
-        const filename = (meta.filename || `${kind}-${providerId}`).replace(/[^\w.\-]+/g, '_');
+        const mime = (0, whatsappInbound_1.inboundMediaMime)(kind, meta.mime_type || looked.mime_type || fileRes.headers.get('content-type') || '');
+        const filename = (0, whatsappInbound_1.inboundMediaFileName)(kind, mime, meta.filename);
         const saved = await (0, whatsappStorage_1.saveInboundWhatsAppFile)(companyId, `${providerId}_${filename}`, bytes, mime);
         void (0, whatsappStorage_1.pruneCompanyWhatsApp)(companyId).catch(error => {
             console.warn(`WhatsApp: prune after inbound ${providerId} failed`, error);
@@ -520,7 +520,7 @@ const processChange = async (companyId, value) => {
             ...(message.type === 'reaction' ? {
                 kind: 'reaction',
                 ...(message.reaction?.message_id ? { reactionTo: message.reaction.message_id } : {}),
-            } : {}),
+            } : (0, whatsappInbound_1.inboundNeedsNoReply)(message) ? { kind: 'no_reply' } : {}),
         };
         await markRead(companyId, message.id);
         try {

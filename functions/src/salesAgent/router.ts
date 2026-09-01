@@ -662,6 +662,11 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         return;
     }
 
+    // Photo albums, captionless media, voice notes: in the thread for Steve,
+    // not a customer turn. Answering `[unsupported]` produced empty-reply
+    // escalations on inbound photo albums (1 Sep).
+    if (msg.kind === 'no_reply') return;
+
     try {
         await runAgentTurn(companyId, conversation, { ...msg, text }, settings);
     } catch (error: any) {

@@ -127,6 +127,7 @@ describe('System prompt generation', () => {
 
     it('bakes in website, changing stock, opening hours and viewings strictly by appointment', () => {
         const prompt = buildSystemPrompt({ conversation: baseConv, settings });
+        assert.ok(prompt.includes('WHATSAPP PHOTOS AND FILES'));
         assert.ok(prompt.includes('DEALERSHIP KNOWLEDGE'));
         assert.ok(prompt.includes('stock is always changing'));
         assert.ok(prompt.includes('https://radlettcarsales.com'));
@@ -219,6 +220,25 @@ describe('inbox context', () => {
         assert.ok(!blob.includes('[reaction]'));
         assert.ok(blob.includes('On my way'));
         assert.ok(blob.includes('Parking now'));
+    });
+
+    it('skips placeholder WhatsApp media lines so Dave is not asked to answer [unsupported]', () => {
+        const contents = buildContents({
+            conversation: baseConv,
+            history: [
+                { id: 'm1', direction: 'in', channel: 'whatsapp', from: 'customer', text: 'Left the key here', createdAt: 1 },
+                { id: 'm2', direction: 'in', channel: 'whatsapp', from: 'customer', text: '[unsupported]', createdAt: 2 },
+                { id: 'm3', direction: 'in', channel: 'whatsapp', from: 'customer', text: '[photo]', createdAt: 3 },
+                { id: 'm4', direction: 'in', channel: 'whatsapp', from: 'customer', text: 'Back wheel', createdAt: 4 },
+            ],
+            settings,
+            inbound: { companyId: 'company-1', channel: 'whatsapp', address: '+447700900123', text: 'See you in the morning', providerId: 'w1', receivedAt: Date.now() },
+        });
+        const blob = contents.map(c => (c.parts?.[0] as { text?: string })?.text || '').join('\n');
+        assert.ok(!blob.includes('[unsupported]'));
+        assert.ok(!blob.includes('[photo]'));
+        assert.ok(blob.includes('Left the key here'));
+        assert.ok(blob.includes('Back wheel'));
     });
 
 });
