@@ -121,6 +121,14 @@ const CustomerManagerModal = () => {
                                             <div>
                                                 <p className="font-semibold text-white">{c.name}</p>
                                                 <p className="text-xs text-gray-400">{c.address.split('\n')[0]}</p>
+                                                {/* How to reach them, at a glance — the list used to show the
+                                                    address only, so a contact captured on an invoice was invisible. */}
+                                                {(c.email || c.phone) && (
+                                                    <p className="mt-1 text-xs text-gray-300 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                                        {c.email && <span className="break-all">{c.email}</span>}
+                                                        {c.phone && <span>{c.phone}</span>}
+                                                    </p>
+                                                )}
                                             </div>
                                             <div className="flex gap-1">
                                                 <button onClick={() => openModal('customerDetailView', c)} className="px-3 py-2 text-xs font-semibold bg-gray-700 rounded-md text-white hover:bg-gray-600">View History</button>

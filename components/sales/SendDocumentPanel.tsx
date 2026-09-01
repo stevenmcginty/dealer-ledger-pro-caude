@@ -17,6 +17,7 @@ import { EnvelopeIcon, WhatsAppIcon } from '../icons';
 import { updateSalesDocument, uploadInvoicePdf } from '../../services/dataService';
 import { sendInvoiceDocument } from '../../services/salesAgentService';
 import { printablePdfBlob } from './printablePdf';
+import { resolveContactCustomer } from '../../utils/customerContact';
 
 const documentLabel = (doc: SalesDocument): string => doc.documentType.toLowerCase();
 
@@ -24,29 +25,6 @@ const vehicleTitleOf = (doc: SalesDocument): string | undefined => {
     const car = doc.carDetails || {};
     const title = [car.make, car.model].filter(Boolean).join(' ').trim();
     return title || undefined;
-};
-
-const sameName = (a: string | undefined, b: string | undefined): boolean =>
-    (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase() && !!(a || '').trim();
-
-/**
- * Which customer record a contact typed here belongs to.
- *
- * `customerId` is trusted only while it still names the customer written on the
- * document. Documents saved before the creator learned to clear a stale id can
- * carry the id of whoever was typed first, and writing to that record puts one
- * customer's email address on another customer's file. A name that matches
- * nobody returns null, and the caller creates a new customer instead.
- */
-export const resolveContactCustomer = <T extends { id: string; name: string }>(
-    customers: T[],
-    doc: { customerId?: string; customerName?: string }
-): T | null => {
-    const byId = customers.find(c => c.id === doc.customerId);
-    if (byId && sameName(byId.name, doc.customerName)) return byId;
-
-    const name = (doc.customerName || '').trim().toLowerCase();
-    return (name ? customers.find(c => c.name.trim().toLowerCase() === name) : undefined) || null;
 };
 
 /** What the panel says after the callable answers. */

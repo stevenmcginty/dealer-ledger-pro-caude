@@ -8,6 +8,7 @@ import UkDateInput from '../common/UkDateInput';
 import { formatCurrency } from '../../utils/helpers';
 import PrintableView from './PrintableView';
 import { useData } from '../../hooks/useData';
+import { planCustomerContactSync, resolveContactCustomer } from '../../utils/customerContact';
 
 interface DocumentCreatorProps {
     companyId: string;
@@ -30,7 +31,7 @@ const toDraft = (p: Payment): PaymentDraft => ({ ...p, amount: p.amount ? String
 const toPayment = (p: PaymentDraft): Payment => ({ ...p, amount: parseFloat(p.amount) || 0 });
 
 const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editingDocument, prefillData, onSubmit, onCancel, financeCompanies, businessDetails }: DocumentCreatorProps) => {
-    const { isVatRegistered, customers } = useData();
+    const { isVatRegistered, customers, addCustomer, updateCustomer } = useData();
     // These states now always refer to the END customer
     const [customerName, setCustomerName] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
@@ -190,8 +191,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         // a document being edited already carries the right id — leave it alone.
         if (!customers.length) return;
 
-        const name = customerName.trim().toLowerCase();
-        const match = name ? customers.find(c => c.name.trim().toLowerCase() === name) : undefined;
+        const match = resolveContactCustomer(customers, { customerName });
         if (match?.id === customerId) return;
 
         // The name now belongs to somebody else, or to nobody. Drop the old link
@@ -322,12 +322,51 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         }
     };
 
+    /**
+     * Put the typed email and mobile on the customer's own record.
+     *
+     * Until now they lived on the invoice and nowhere else, so the CRM, the next
+     * invoice and the agent inbox never learned them. The END customer is the
+     * one they belong to — on a finance invoice that is the person driving the
+     * car away, not the finance house the invoice is addressed to, which is why
+     * this reads the form state rather than the document payload.
+     *
+     * Never allowed to fail the save: the document is what Steve pressed the
+     * button for.
+     */
+    const syncCustomerContact = async (): Promise<string | undefined> => {
+        const plan = planCustomerContactSync(customers, {
+            customerId,
+            customerName,
+            customerAddress,
+            customerEmail,
+            customerPhone,
+        });
+        try {
+            if (plan.action === 'update') {
+                await updateCustomer(plan.customerId, plan.updates);
+                return plan.customerId;
+            }
+            if (plan.action === 'create') {
+                return await addCustomer(plan.customer);
+            }
+        } catch (error) {
+            console.warn('Could not save the customer contact details', error);
+        }
+        return customerId;
+    };
+
     const handleConfirmSave = async () => {
         if (!previewData) return;
         setIsSubmitting(true);
         setSubmissionError(null);
         try {
-            await onSubmit(previewData, editingDocument?.id);
+            const syncedId = await syncCustomerContact();
+            if (syncedId && syncedId !== customerId) setCustomerId(syncedId);
+            await onSubmit(
+                syncedId ? { ...previewData, customerId: syncedId } : previewData,
+                editingDocument?.id
+            );
         } catch (error: any) {
             console.error("Submission failed:", error);
             setSubmissionError(error.message || "Failed to save document. Please try again.");
