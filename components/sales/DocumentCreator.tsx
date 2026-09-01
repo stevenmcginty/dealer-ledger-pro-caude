@@ -186,11 +186,19 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
     // contact details in so the invoice can be emailed / WhatsApped after saving.
     useEffect(() => {
         if (financeCompany) return;
+        // Until the customer list has loaded there is nothing to match against, and
+        // a document being edited already carries the right id — leave it alone.
+        if (!customers.length) return;
+
         const name = customerName.trim().toLowerCase();
-        if (!name) return;
-        const match = customers.find(c => c.name.trim().toLowerCase() === name);
-        if (!match || match.id === customerId) return;
-        setCustomerId(match.id);
+        const match = name ? customers.find(c => c.name.trim().toLowerCase() === name) : undefined;
+        if (match?.id === customerId) return;
+
+        // The name now belongs to somebody else, or to nobody. Drop the old link
+        // either way: the send bar saves a typed email onto whoever this id names,
+        // so a stale id writes the new customer's address onto the previous one.
+        setCustomerId(match?.id);
+        if (!match) return;
         if (!customerEmail.trim() && match.email) setCustomerEmail(match.email);
         if (!customerPhone.trim() && match.phone) setCustomerPhone(match.phone);
         // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -48,8 +48,9 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.salesAgentGmailPush = exports.reprocessGmailMessage = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
+exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.buildMime = exports.salesAgentGmailPush = exports.reprocessGmailMessage = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
+const crypto = __importStar(require("crypto"));
 const companyIds_1 = require("../../utils/companyIds");
 const inboxRouting_1 = require("../inboxRouting");
 const conversations_1 = require("../conversations");
@@ -406,20 +407,50 @@ const threadMessageId = async (gmail, threadId) => {
     }
     return '';
 };
+/** Base64 split into 76-character lines, as RFC 2045 asks for. */
+const base64Lines = (data) => data.toString('base64').replace(/(.{76})/g, '$1\r\n');
 const buildMime = (parts) => {
     const headers = [
         `From: ${encodeHeader(parts.fromName)} <${parts.fromEmail}>`,
         `To: ${parts.to}`,
         `Subject: ${encodeHeader(parts.subject)}`,
         'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset="UTF-8"',
-        'Content-Transfer-Encoding: 8bit',
     ];
+    // No attachment: the byte-for-byte text/plain message this has always built,
+    // in the header order it has always had.
+    if (!parts.attachment) {
+        headers.push('Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: 8bit');
+        if (parts.inReplyTo) {
+            headers.push(`In-Reply-To: ${parts.inReplyTo}`, `References: ${parts.inReplyTo}`);
+        }
+        return `${headers.join('\r\n')}\r\n\r\n${parts.body.replace(/\n/g, '\r\n')}`;
+    }
     if (parts.inReplyTo) {
         headers.push(`In-Reply-To: ${parts.inReplyTo}`, `References: ${parts.inReplyTo}`);
     }
-    return `${headers.join('\r\n')}\r\n\r\n${parts.body.replace(/\n/g, '\r\n')}`;
+    // The boundary is derived from the bytes so the same attachment always
+    // produces the same message (tests, and no crypto import for randomness).
+    const boundary = `=_ledger${crypto.createHash('sha1').update(parts.attachment.data).digest('hex').slice(0, 20)}`;
+    const mime = parts.attachment.mime || 'application/octet-stream';
+    const filename = parts.attachment.filename.replace(/["\r\n]/g, '');
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    const body = [
+        `--${boundary}`,
+        'Content-Type: text/plain; charset="UTF-8"',
+        'Content-Transfer-Encoding: 8bit',
+        '',
+        parts.body.replace(/\n/g, '\r\n'),
+        `--${boundary}`,
+        `Content-Type: ${mime}; name="${filename}"`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${filename}"`,
+        '',
+        base64Lines(parts.attachment.data),
+        `--${boundary}--`,
+    ].join('\r\n');
+    return `${headers.join('\r\n')}\r\n\r\n${body}`;
 };
+exports.buildMime = buildMime;
 exports.gmailSender = {
     send: async (companyId, job) => {
         const credId = await (0, inboxRouting_1.credentialsCompanyId)(companyId);
@@ -432,15 +463,33 @@ exports.gmailSender = {
         if (!fromEmail)
             throw new Error('No Gmail address is connected for this company');
         const rawSubject = job.subject || 'Your enquiry';
-        const subject = /^re:\s/i.test(rawSubject) ? rawSubject : `Re: ${rawSubject}`;
+        // "Re:" belongs on a reply inside a thread. A message that opens a new
+        // thread — an invoice to somebody who never emailed in — is not one.
+        const subject = job.emailThreadId && !/^re:\s/i.test(rawSubject) ? `Re: ${rawSubject}` : rawSubject;
         const inReplyTo = job.emailThreadId ? await threadMessageId(gmail, job.emailThreadId) : '';
-        const mime = buildMime({
+        // Attachments travel as a Storage download URL (token-signed, no auth
+        // needed); the bytes are fetched here, the same way WhatsApp's media
+        // upload fetches them.
+        let attachment;
+        if (job.media) {
+            const fileRes = await fetch(job.media.url);
+            if (!fileRes.ok) {
+                throw new Error(`Could not read the attachment (${fileRes.status}).`);
+            }
+            attachment = {
+                filename: job.media.filename || 'attachment',
+                data: Buffer.from(await fileRes.arrayBuffer()),
+                mime: job.media.mime || fileRes.headers.get('content-type') || 'application/octet-stream',
+            };
+        }
+        const mime = (0, exports.buildMime)({
             fromName: settings.dealershipName || 'Sales',
             fromEmail,
             to: job.to,
             subject,
             body: job.text,
             inReplyTo: inReplyTo || undefined,
+            attachment,
         });
         const sent = await gmail.users.messages.send({
             userId: 'me',

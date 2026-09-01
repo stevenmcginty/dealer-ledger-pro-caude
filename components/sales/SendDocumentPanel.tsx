@@ -26,6 +26,29 @@ const vehicleTitleOf = (doc: SalesDocument): string | undefined => {
     return title || undefined;
 };
 
+const sameName = (a: string | undefined, b: string | undefined): boolean =>
+    (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase() && !!(a || '').trim();
+
+/**
+ * Which customer record a contact typed here belongs to.
+ *
+ * `customerId` is trusted only while it still names the customer written on the
+ * document. Documents saved before the creator learned to clear a stale id can
+ * carry the id of whoever was typed first, and writing to that record puts one
+ * customer's email address on another customer's file. A name that matches
+ * nobody returns null, and the caller creates a new customer instead.
+ */
+export const resolveContactCustomer = <T extends { id: string; name: string }>(
+    customers: T[],
+    doc: { customerId?: string; customerName?: string }
+): T | null => {
+    const byId = customers.find(c => c.id === doc.customerId);
+    if (byId && sameName(byId.name, doc.customerName)) return byId;
+
+    const name = (doc.customerName || '').trim().toLowerCase();
+    return (name ? customers.find(c => c.name.trim().toLowerCase() === name) : undefined) || null;
+};
+
 /** What the panel says after the callable answers. */
 export const sendOutcomeMessage = (
     sent: 'whatsapp' | 'email' | 'email+whatsapp',
@@ -62,13 +85,10 @@ const SendDocumentPanel: React.FC<{ doc: SalesDocument }> = ({ doc }) => {
         if (!companyId) return;
         setSavingContact(true);
         try {
-            // Find the customer by id first, then by name, so the contact lands
-            // on the right record instead of spawning a near-duplicate.
-            let customer = customers.find(c => c.id === doc.customerId);
-            if (!customer) {
-                const name = (doc.customerName || '').trim().toLowerCase();
-                customer = name ? customers.find(c => c.name.trim().toLowerCase() === name) : undefined;
-            }
+            // By id first, then by name, so the contact lands on the right record
+            // instead of spawning a near-duplicate — but never on an id that no
+            // longer names the customer on the document.
+            const customer = resolveContactCustomer(customers, doc);
 
             let customerId = customer?.id;
             if (customer) {
