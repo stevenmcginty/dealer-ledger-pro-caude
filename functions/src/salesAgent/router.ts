@@ -43,7 +43,16 @@ import { NewOutboxJob, enqueue, randomDelayMs, sendNow } from './outbox';
 import { isWithinSendHours, morningJitterMs, resolveSendHours, scheduleSendAfter } from './sendHours';
 import { handleOwnerCommand } from './ownerCommands';
 import { formatLessons, readLessons } from './lessons';
-import { registerWhatsAppRouting, renderFallbackTemplate, templateFallbackFor } from './channels/whatsapp';
+import {
+    OWNER_MESSAGE_PLAIN_TEMPLATE,
+    OWNER_MESSAGE_TEMPLATE,
+    registerWhatsAppRouting,
+    renderFallbackTemplate,
+    renderTemplateFamily,
+    splitForTemplate,
+    templateFallbackFor,
+    templateFamilyApproved,
+} from './channels/whatsapp';
 import { labelEmailThread } from './channels/gmail';
 import { registerTwilioRouting } from './channels/twilio';
 import { ParsedLead, crmLeadSource, messageOrDefault } from './channels/leadParsers';
@@ -1179,6 +1188,60 @@ const whenOn = (at?: number): string =>
         ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(at))
         : 'earlier';
 
+/**
+ * Outside the 24h window, carry the desk's own words inside the approved
+ * `customer_update` template (several messages if they are long). Any words already
+ * waiting on the thread go first. Returns what to tell the desk, or null when Meta has
+ * not approved the template yet so the caller falls back to opener-then-hold.
+ */
+const sendOwnerWordsAsTemplate = async (
+    companyId: string,
+    conversation: Conversation,
+    to: string,
+    text: string,
+    sendAfter: number
+): Promise<string | null> => {
+    if (!text.trim()) return null;
+    const templateName = conversation.vehicleInterest?.title ? OWNER_MESSAGE_TEMPLATE : OWNER_MESSAGE_PLAIN_TEMPLATE;
+    if (!(await templateFamilyApproved(companyId, templateName))) return null;
+
+    const name = conversation.contact?.firstName || 'there';
+    const held = conversation.heldWords?.text;
+    if (held) {
+        await updateConversation(companyId, conversation.id, { heldWords: null });
+        conversation.heldWords = null;
+    }
+
+    const chunks = [...(held ? splitForTemplate(held) : []), ...splitForTemplate(text)];
+    let count = 0;
+    for (const chunk of chunks) {
+        const templateParams = [name, chunk];
+        const job: NewOutboxJob = {
+            companyId,
+            convId: conversation.id,
+            channel: 'whatsapp',
+            to,
+            text: renderTemplateFamily(templateName, templateParams),
+            templateName,
+            templateParams,
+            sendAfter,
+            from: 'owner',
+        };
+        if (sendAfter > Date.now() + 2000) {
+            await enqueue(job);
+        } else {
+            await sendNow({ ...job, id: 'immediate', attempts: 0, createdAt: Date.now() }, 'owner');
+        }
+        count += 1;
+    }
+
+    const who = conversation.contact?.firstName || 'They';
+    const parts = count > 1 ? ` in ${count} messages` : '';
+    return held
+        ? `Sent on WhatsApp${parts}, including the words that were waiting. Outside 24 hours Meta wraps them in the approved update message.`
+        : `Sent on WhatsApp${parts}. ${who} has not written in 24 hours, so Meta wraps your words in the approved update message.`;
+};
+
 /** Their first WhatsApp has opened the window: send what Steve wrote while waiting. */
 const releaseHeldWords = async (
     companyId: string,
@@ -1263,6 +1326,17 @@ const enqueueOrSend = async (
             // when it had not, twice (29 Aug). His own messages refuse; Dave's openers
             // still fall back, because a template is what they are.
             if (from === 'owner') {
+                // Since 4 Sep the words go now, wrapped in the approved "update about
+                // your car" template, whenever Meta has approved it. Until then (and
+                // for a bare opener) the old opener-then-hold path.
+                const wrapped = extra?.opener === true
+                    ? null
+                    : await sendOwnerWordsAsTemplate(companyId, conversation, target.to, text, sendAfter);
+                if (wrapped) {
+                    sent.push('whatsapp');
+                    skippedWhatsApp = wrapped;
+                    continue;
+                }
                 const note = await openerThenHold(companyId, conversation, text, extra?.opener === true);
                 if (note.sentOpener) sent.push('whatsapp');
                 if (note.held) held = true;

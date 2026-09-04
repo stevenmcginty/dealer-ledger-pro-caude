@@ -536,8 +536,8 @@ const handleInbound = async (msg, options = {}) => {
         return;
     }
     // Photo albums, captionless media, voice notes: in the thread for Steve,
-    // not a customer turn. Answering `[unsupported]` produced the empty-reply
-    // escalation on Marco's photos.
+    // not a customer turn. Answering `[unsupported]` produced empty-reply
+    // escalations on inbound photo albums (1 Sep).
     if (msg.kind === 'no_reply')
         return;
     try {
@@ -924,6 +924,53 @@ const openerThenHold = async (companyId, conversation, text, openerOnly) => {
 const whenOn = (at) => at
     ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(at))
     : 'earlier';
+/**
+ * Outside the 24h window, carry the desk's own words inside the approved
+ * `customer_update` template (several messages if they are long). Any words already
+ * waiting on the thread go first. Returns what to tell the desk, or null when Meta has
+ * not approved the template yet so the caller falls back to opener-then-hold.
+ */
+const sendOwnerWordsAsTemplate = async (companyId, conversation, to, text, sendAfter) => {
+    if (!text.trim())
+        return null;
+    const templateName = conversation.vehicleInterest?.title ? whatsapp_1.OWNER_MESSAGE_TEMPLATE : whatsapp_1.OWNER_MESSAGE_PLAIN_TEMPLATE;
+    if (!(await (0, whatsapp_1.templateFamilyApproved)(companyId, templateName)))
+        return null;
+    const name = conversation.contact?.firstName || 'there';
+    const held = conversation.heldWords?.text;
+    if (held) {
+        await (0, conversations_1.updateConversation)(companyId, conversation.id, { heldWords: null });
+        conversation.heldWords = null;
+    }
+    const chunks = [...(held ? (0, whatsapp_1.splitForTemplate)(held) : []), ...(0, whatsapp_1.splitForTemplate)(text)];
+    let count = 0;
+    for (const chunk of chunks) {
+        const templateParams = [name, chunk];
+        const job = {
+            companyId,
+            convId: conversation.id,
+            channel: 'whatsapp',
+            to,
+            text: (0, whatsapp_1.renderTemplateFamily)(templateName, templateParams),
+            templateName,
+            templateParams,
+            sendAfter,
+            from: 'owner',
+        };
+        if (sendAfter > Date.now() + 2000) {
+            await (0, outbox_1.enqueue)(job);
+        }
+        else {
+            await (0, outbox_1.sendNow)({ ...job, id: 'immediate', attempts: 0, createdAt: Date.now() }, 'owner');
+        }
+        count += 1;
+    }
+    const who = conversation.contact?.firstName || 'They';
+    const parts = count > 1 ? ` in ${count} messages` : '';
+    return held
+        ? `Sent on WhatsApp${parts}, including the words that were waiting. Outside 24 hours Meta wraps them in the approved update message.`
+        : `Sent on WhatsApp${parts}. ${who} has not written in 24 hours, so Meta wraps your words in the approved update message.`;
+};
 /** Their first WhatsApp has opened the window: send what Steve wrote while waiting. */
 const releaseHeldWords = async (companyId, conversation, settings) => {
     const words = conversation.heldWords?.text;
@@ -994,6 +1041,17 @@ const enqueueOrSend = async (companyId, conversation, settings, text, via, from,
             // when it had not, twice (29 Aug). His own messages refuse; Dave's openers
             // still fall back, because a template is what they are.
             if (from === 'owner') {
+                // Since 4 Sep the words go now, wrapped in the approved "update about
+                // your car" template, whenever Meta has approved it. Until then (and
+                // for a bare opener) the old opener-then-hold path.
+                const wrapped = extra?.opener === true
+                    ? null
+                    : await sendOwnerWordsAsTemplate(companyId, conversation, target.to, text, sendAfter);
+                if (wrapped) {
+                    sent.push('whatsapp');
+                    skippedWhatsApp = wrapped;
+                    continue;
+                }
                 const note = await openerThenHold(companyId, conversation, text, extra?.opener === true);
                 if (note.sentOpener)
                     sent.push('whatsapp');

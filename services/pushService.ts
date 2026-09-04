@@ -263,18 +263,18 @@ export const showAlertNotification = async (alert: PushAlert): Promise<void> => 
         const isDraft = alert.kind === 'draft';
         const isQuestion = alert.kind === 'question';
         const actions = isDraft
-            ? [{ action: 'approve', title: 'Approve' }, { action: 'review', title: 'Edit' }]
+            ? [{ action: 'approve', title: '✅ Approve' }, { action: 'review', title: '✏️ Edit' }]
             : isQuestion
-                ? [{ action: 'review', title: 'Answer' }]
-                : [{ action: 'review', title: 'Open' }];
+                ? [{ action: 'review', title: '💬 Answer' }]
+                : [{ action: 'review', title: '💬 Reply' }, { action: 'open', title: 'Open' }];
         await registration.showNotification(alert.title || 'Dave', {
             body: alert.body,
-            icon: '/icons/icon-192.png',
+            icon: '/icons/whatsapp-alert.png',
             badge: '/icons/badge-96.png',
             tag: alert.convId || alert.kind || 'dave',
             renotify: true,
             requireInteraction: isDraft || isQuestion,
-            vibrate: [80, 40, 80, 40, 120],
+            vibrate: [100, 50, 100, 50, 150],
             data: { convId: alert.convId, kind: alert.kind, url: alert.url },
             actions,
         } as NotificationOptions);

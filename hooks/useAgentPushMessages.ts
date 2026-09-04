@@ -84,14 +84,32 @@ export const useAgentPushMessages = (): void => {
         // Another toast on top of that is just something to dismiss.
         if (alert.kind === 'draft' || alert.kind === 'question') return;
 
-        const message = alert.body ? `${alert.title}: ${alert.body}` : alert.title;
-        toast.info(message, {
-            label: 'Open inbox',
-            onClick: () => {
-                setViewRef.current('agentInbox');
-                requestAgentConversation(alert.convId);
-            },
-        });
+        const isWa = /\bwhatsapp\b/i.test(alert.title) || /\bwhatsapp\b/i.test(alert.body) || alert.kind === 'inbound';
+        const displayTitle = alert.title || 'WhatsApp';
+        const displayBody = alert.body || (alert.title ? '' : 'New message');
+
+        if (isWa) {
+            toastRef.current.whatsapp(
+                displayBody || 'New message received',
+                {
+                    label: 'Reply',
+                    onClick: () => {
+                        setViewRef.current('agentInbox');
+                        requestAgentConversation(alert.convId);
+                    },
+                },
+                displayTitle
+            );
+        } else {
+            const message = alert.body ? `${alert.title}: ${alert.body}` : alert.title;
+            toast.info(message, {
+                label: 'Open inbox',
+                onClick: () => {
+                    setViewRef.current('agentInbox');
+                    requestAgentConversation(alert.convId);
+                },
+            });
+        }
     };
 
     useEffect(() => {
@@ -143,14 +161,32 @@ export const useAgentPushMessages = (): void => {
                     return;
                 }
                 requestAgentConversation(convId);
+                const rawTitle = String(event.data?.title || '');
                 const body = String(event.data?.body || '');
-                toastRef.current.info(body ? `${String(event.data?.title || 'Inbox')}: ${body}` : 'New message', {
-                    label: 'Open inbox',
-                    onClick: () => {
-                        setViewRef.current('agentInbox');
-                        requestAgentConversation(convId);
-                    },
-                });
+                const isWa = /\bwhatsapp\b/i.test(rawTitle) || /\bwhatsapp\b/i.test(body) || kind === 'inbound';
+                const title = rawTitle || (isWa ? 'WhatsApp' : 'Inbox');
+
+                if (isWa) {
+                    toastRef.current.whatsapp(
+                        body || 'New message received',
+                        {
+                            label: 'Reply',
+                            onClick: () => {
+                                setViewRef.current('agentInbox');
+                                requestAgentConversation(convId);
+                            },
+                        },
+                        title
+                    );
+                } else {
+                    toastRef.current.info(body ? `${title}: ${body}` : 'New message', {
+                        label: 'Open inbox',
+                        onClick: () => {
+                            setViewRef.current('agentInbox');
+                            requestAgentConversation(convId);
+                        },
+                    });
+                }
             }
         };
         navigator.serviceWorker.addEventListener('message', onMessage);

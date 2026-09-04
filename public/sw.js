@@ -2,7 +2,7 @@
 // hashed /assets/ files. Everything else — Firebase RTDB long-polling, Google
 // APIs, Cloud Functions — must go straight to the network. Wrapping those in
 // respondWith() is what made a PWA refresh hang until site data was cleared.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v8';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v9';
 
 // --- Cloud Messaging ------------------------------------------------------
 // Owner alerts from the sales agent arrive here as web push. There is no second
@@ -72,20 +72,20 @@ self.addEventListener('push', event => {
   const isDraft = kind === 'draft';
   const isQuestion = kind === 'question';
   const actions = isDraft
-    ? [{ action: 'approve', title: 'Approve' }, { action: 'review', title: 'Edit' }]
+    ? [{ action: 'approve', title: '✅ Approve' }, { action: 'review', title: '✏️ Edit' }]
     : isQuestion
-      ? [{ action: 'review', title: 'Answer' }]
-      : [{ action: 'review', title: 'Open' }];
+      ? [{ action: 'review', title: '💬 Answer' }]
+      : [{ action: 'reply', title: '💬 Reply' }, { action: 'review', title: 'Open' }];
 
   event.waitUntil((async () => {
     await self.registration.showNotification(n.title || 'Dave', {
       body: n.body || '',
-      icon: n.icon || '/icons/icon-192.png',
+      icon: n.icon || '/icons/whatsapp-alert.png',
       badge: n.badge || '/icons/badge-96.png',
       tag: n.tag || convId || kind || 'dave',
       renotify: true,
       requireInteraction: isDraft || isQuestion,
-      vibrate: [80, 40, 80, 40, 120],
+      vibrate: [100, 50, 100, 50, 150],
       data: { convId, kind, url: d.url || '' },
       actions,
     });
@@ -108,7 +108,7 @@ self.addEventListener('push', event => {
 
 // Own the tap. Registered before firebase.messaging() so we run first and can
 // stop FCM opening Settings / a second window. On a phone the shade buttons
-// (Approve / Edit) land here as event.action.
+// (Approve / Edit / Reply) land here as event.action.
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   if (typeof event.stopImmediatePropagation === 'function') {

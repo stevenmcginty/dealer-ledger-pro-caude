@@ -1769,9 +1769,7 @@ const AgentInboxPage = () => {
                             {!asking && replyMode === 'human' && pane === 'whatsapp' && whatsappNeedsOpener && sendViaNow !== 'email' && (
                                 <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
                                     <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
-                                        {active?.whatsappOpenerAt
-                                            ? 'Opener sent. Type your words and they go the moment they reply on WhatsApp.'
-                                            : 'First WhatsApp is the approved opener (Meta\u2019s rule). Type your words: the opener goes now and your words follow the moment they reply.'}
+                                        {'They have not written on WhatsApp in 24 hours, so Meta\u2019s rule applies: your words go now inside the approved \u201cupdate about your car\u201d message. Or send just the opener.'}
                                     </p>
                                     {!reply.trim() && (
                                         <button

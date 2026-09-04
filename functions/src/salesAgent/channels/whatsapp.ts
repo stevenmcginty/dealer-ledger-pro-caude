@@ -276,7 +276,67 @@ const INVOICE_FAMILY: TemplateVariant[] = [
     },
 ];
 
-const FAMILIES = [ENQUIRY_FAMILY, MISSED_CALL_FAMILY, OWNER_ALERT_FAMILY, INVOICE_FAMILY];
+/**
+ * The desk's own words to somebody who has not written to us on WhatsApp in the last
+ * 24 hours. Meta only carries free text inside that window; outside it every message
+ * must be an approved template, so this is a template that is nearly all {{2}}.
+ * Marco dropped his car off, Chris wrote him a full update about the work, and all
+ * Marco got was "the car is still available" while Chris's words sat waiting for a
+ * reply that was never coming (4 Sep). UTILITY wording: a business reporting to its
+ * own customer about their own car. `owner_message` is the plain version for a thread
+ * that is not about a car (a supplier, say).
+ */
+export const OWNER_MESSAGE_TEMPLATE = 'customer_update';
+export const OWNER_MESSAGE_PLAIN_TEMPLATE = 'owner_message';
+/** Meta caps a rendered body at 1024 characters; the wrapper takes ~120 of them. */
+export const OWNER_MESSAGE_CHUNK = 800;
+
+const OWNER_MESSAGE_FAMILY: TemplateVariant[] = [
+    {
+        name: OWNER_MESSAGE_TEMPLATE,
+        params: ([name, words]) => [name || 'there', words || '-'],
+        render: ([name, words]) =>
+            `Hi ${name || 'there'}, this is Radlett Cars with an update about your car. ${words || '-'} Reply to this message if you have any questions.`,
+    },
+    {
+        name: OWNER_MESSAGE_PLAIN_TEMPLATE,
+        params: ([name, words]) => [name || 'there', words || '-'],
+        render: ([name, words]) =>
+            `Hi ${name || 'there'}, this is Radlett Cars. ${words || '-'} You can reply to this message.`,
+    },
+];
+
+/**
+ * Cut the desk's words into pieces a template parameter can carry: no newlines, and
+ * short enough that the rendered body stays under Meta's cap. Breaks at the end of a
+ * sentence where it can, at a space where it must.
+ */
+export const splitForTemplate = (text: string, max = OWNER_MESSAGE_CHUNK): string[] => {
+    const clean = (text || '').replace(/[ \t]+/g, ' ').replace(/\s*[\r\n]+\s*/g, ' — ').trim();
+    if (!clean) return [];
+    const parts: string[] = [];
+    let rest = clean;
+    while (rest.length > max) {
+        const window = rest.slice(0, max);
+        let cut = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));
+        if (cut < max / 3) cut = window.lastIndexOf(' ');
+        if (cut < max / 3) cut = max - 1;
+        parts.push(rest.slice(0, cut + 1).trim());
+        rest = rest.slice(cut + 1).trim();
+    }
+    if (rest) parts.push(rest);
+    return parts;
+};
+
+/** Has Meta approved any member of this template's family right now? */
+export const templateFamilyApproved = async (companyId: string, templateName: string): Promise<boolean> => {
+    const family = familyOf(templateName);
+    if (!family) return false;
+    const approved = await approvedTemplateNames(companyId);
+    return family.some(v => approved.has(v.name));
+};
+
+const FAMILIES = [ENQUIRY_FAMILY, MISSED_CALL_FAMILY, OWNER_ALERT_FAMILY, INVOICE_FAMILY, OWNER_MESSAGE_FAMILY];
 
 const familyOf = (templateName: string): TemplateVariant[] | null =>
     FAMILIES.find(f => f.some(v => v.name === templateName)) || null;
@@ -379,7 +439,11 @@ export const resolveTemplate = async (
 
     const approved = await approvedTemplateNames(companyId);
     const usable = family.filter(v => !v.bounceOnly || options.bounced);
-    const variant = usable.find(v => approved.has(v.name)) || family.find(v => approved.has(v.name));
+    // The member the caller asked for wins when Meta has approved it; otherwise the
+    // cheapest approved member of the family.
+    const variant = usable.find(v => v.name === templateName && approved.has(v.name))
+        || usable.find(v => approved.has(v.name))
+        || family.find(v => approved.has(v.name));
     if (!variant) {
         approvedCache.clear();
         throw new Error(TEMPLATE_PENDING_MESSAGE);

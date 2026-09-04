@@ -125,12 +125,15 @@ const sendOwnerPush = async (companyId, settings, alert) => {
         const isQuestion = alert.kind === 'question';
         const actions = isDraft
             ? [
-                { action: 'approve', title: 'Approve' },
-                { action: 'review', title: 'Edit' },
+                { action: 'approve', title: '✅ Approve' },
+                { action: 'review', title: '✏️ Edit' },
             ]
             : isQuestion
-                ? [{ action: 'review', title: 'Answer' }]
-                : [{ action: 'review', title: 'Open' }];
+                ? [{ action: 'review', title: '💬 Answer' }]
+                : [
+                    { action: 'review', title: '💬 Reply' },
+                    { action: 'open', title: 'Open' },
+                ];
         for (const batch of chunk(tokens, MULTICAST_LIMIT)) {
             const response = await admin.messaging().sendEachForMulticast({
                 tokens: batch.map(entry => entry.token),
@@ -145,14 +148,14 @@ const sendOwnerPush = async (companyId, settings, alert) => {
                     notification: {
                         title,
                         body,
-                        icon: '/icons/icon-192.png',
+                        icon: '/icons/whatsapp-alert.png',
                         badge: '/icons/badge-96.png',
                         // One conversation replaces its own previous alert rather than
                         // stacking three notifications for the same customer.
                         tag: alert.convId || alert.kind,
                         renotify: true,
                         requireInteraction: isDraft || isQuestion,
-                        vibrate: [80, 40, 80],
+                        vibrate: [100, 50, 100, 50, 150],
                         actions,
                     },
                     fcmOptions: { link },

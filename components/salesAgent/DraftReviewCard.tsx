@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, useToast } from '../ui';
 import Spinner from '../common/Spinner';
+import { WhatsAppIcon } from '../icons';
 import {
     CHANNEL_LABELS,
     Conversation,
@@ -97,28 +98,42 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
 
     const rewriting = busy === 'rewrite';
 
+    const isWa = conv.channel === 'whatsapp' || sendVia === 'whatsapp';
+
     return (
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-1.5">
                 <p className="text-sm font-semibold text-white">{conversationName(conv)}</p>
                 <span className="font-mono text-[11px] text-gray-500">#{conv.shortId}</span>
-                <Badge size="sm" variant="warning">{CHANNEL_LABELS[conv.channel] || conv.channel}</Badge>
+                {isWa ? (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold bg-[#25d366]/20 text-[#25d366] border border-[#25d366]/40">
+                        <WhatsAppIcon className="h-3 w-3" /> WhatsApp
+                    </span>
+                ) : (
+                    <Badge size="sm" variant="warning">{CHANNEL_LABELS[conv.channel] || conv.channel}</Badge>
+                )}
                 {conv.vehicleInterest?.title && (
                     <span className="truncate text-[11px] text-gray-400">{conv.vehicleInterest.title}</span>
                 )}
             </div>
 
             {draft.customerText && (
-                <div>
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">They said</p>
-                    <p className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-gray-900/70 px-3 py-2 text-sm text-gray-200">
+                <div className={`rounded-xl px-3.5 py-2.5 text-sm shadow-sm ${
+                    isWa
+                        ? 'bg-[#202c33] border border-gray-700/60 border-l-4 border-l-[#25d366] text-gray-100'
+                        : 'bg-gray-900/70 border border-gray-700/60 text-gray-200'
+                }`}>
+                    <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isWa ? 'text-[#25d366]' : 'text-gray-500'}`}>
+                        {isWa ? 'Customer wrote on WhatsApp' : 'They said'}
+                    </p>
+                    <p className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words">
                         {draft.customerText}
                     </p>
                 </div>
             )}
 
             <div>
-                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                <p className={`text-[11px] font-medium uppercase tracking-wide ${isWa ? 'text-[#25d366]' : 'text-gray-500'}`}>
                     {agentName} drafted · {formatAgentTime(draft.createdAt)}
                     {draft.subject ? ` · ${draft.subject}` : ''}
                 </p>
@@ -128,7 +143,11 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                     onChange={e => setText(e.target.value)}
                     disabled={!!busy}
                     aria-label={`The reply ${agentName} has drafted`}
-                    className="mt-1 w-full resize-y rounded-lg border border-amber-500/40 bg-gray-900/70 px-3 py-2 text-sm leading-relaxed text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40 disabled:opacity-60"
+                    className={`mt-1 w-full resize-y rounded-lg border ${
+                        isWa
+                            ? 'border-[#25d366]/50 focus:border-[#25d366] focus:ring-2 focus:ring-[#25d366]/40'
+                            : 'border-amber-500/40 focus:ring-2 focus:ring-amber-500/40'
+                    } bg-gray-900/70 px-3 py-2 text-sm leading-relaxed text-white placeholder-gray-500 focus:outline-none disabled:opacity-60`}
                 />
             </div>
 
@@ -143,7 +162,7 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                                 onClick={() => setSignAs(who)}
                                 disabled={!!busy}
                                 className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                    signAs === who ? 'bg-brand-600 text-white' : 'bg-gray-900/60 text-gray-300 hover:bg-gray-800'
+                                    signAs === who ? (isWa ? 'bg-[#25d366] text-white' : 'bg-brand-600 text-white') : 'bg-gray-900/60 text-gray-300 hover:bg-gray-800'
                                 }`}
                             >
                                 {who === 'agent' ? agentName : ownerName}
@@ -164,16 +183,28 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                 />
             )}
 
-            <div className="flex flex-wrap gap-2">
-                <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={handleApprove}
-                    loading={busy === 'approve'}
-                    disabled={!text.trim() || !!busy}
-                >
-                    {sendViaLabel(sendVia)}{signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}
-                </Button>
+            <div className="flex flex-wrap gap-2 items-center">
+                {isWa ? (
+                    <button
+                        type="button"
+                        onClick={handleApprove}
+                        disabled={!text.trim() || !!busy}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#25d366] hover:bg-[#20ba5a] px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-[#25d366]/25 disabled:opacity-50 transition-all active:scale-95"
+                    >
+                        <WhatsAppIcon className="h-4 w-4" />
+                        {busy === 'approve' ? 'Sending…' : `${sendViaLabel(sendVia)}${signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}`}
+                    </button>
+                ) : (
+                    <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={handleApprove}
+                        loading={busy === 'approve'}
+                        disabled={!text.trim() || !!busy}
+                    >
+                        {sendViaLabel(sendVia)}{signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}
+                    </Button>
+                )}
                 <Button
                     size="sm"
                     variant="ghost"
@@ -259,11 +290,18 @@ export const QuestionReviewCard: React.FC<QuestionReviewCardProps> = ({ conv, co
 
     if (!question) return null;
 
+    const isWa = conv.channel === 'whatsapp';
+
     return (
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-1.5">
                 <p className="text-sm font-semibold text-white">{conversationName(conv)}</p>
                 <span className="font-mono text-[11px] text-gray-500">#{conv.shortId}</span>
+                {isWa ? (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold bg-[#25d366]/20 text-[#25d366] border border-[#25d366]/40">
+                        <WhatsAppIcon className="h-3 w-3" /> WhatsApp
+                    </span>
+                ) : null}
                 <Badge size="sm" variant="warning">Waiting on you</Badge>
             </div>
             <p className="text-sm text-gray-100">{question.question}</p>
@@ -281,11 +319,27 @@ export const QuestionReviewCard: React.FC<QuestionReviewCardProps> = ({ conv, co
                         handleAnswer();
                     }
                 }}
-                className="w-full resize-y rounded-lg border border-amber-500/40 bg-gray-900/70 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                className={`w-full resize-y rounded-lg border ${
+                    isWa
+                        ? 'border-[#25d366]/50 focus:border-[#25d366] focus:ring-2 focus:ring-[#25d366]/40'
+                        : 'border-amber-500/40 focus:ring-2 focus:ring-amber-500/40'
+                } bg-gray-900/70 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none`}
             />
-            <Button size="sm" variant="primary" onClick={handleAnswer} loading={busy} disabled={!answer.trim() || busy}>
-                Send answer
-            </Button>
+            {isWa ? (
+                <button
+                    type="button"
+                    onClick={handleAnswer}
+                    disabled={!answer.trim() || busy}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#25d366] hover:bg-[#20ba5a] px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-[#25d366]/25 disabled:opacity-50 transition-all active:scale-95"
+                >
+                    <WhatsAppIcon className="h-4 w-4" />
+                    {busy ? 'Sending…' : 'Send answer'}
+                </button>
+            ) : (
+                <Button size="sm" variant="primary" onClick={handleAnswer} loading={busy} disabled={!answer.trim() || busy}>
+                    Send answer
+                </Button>
+            )}
         </div>
     );
 };

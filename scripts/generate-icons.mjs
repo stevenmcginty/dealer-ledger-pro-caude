@@ -121,6 +121,12 @@ const PALETTES = {
       { offset: '100%', color: '#312e81' },
     ],
   },
+  whatsapp: {
+    stops: [
+      { offset: '0%', color: '#25d366' },
+      { offset: '100%', color: '#128c7e' },
+    ],
+  },
 };
 
 const ICONS = [
@@ -133,6 +139,9 @@ const ICONS = [
   { file: 'shortcut-expense.png', size: 192, glyph: 'card', rounded: false, scale: 0.58, palette: 'expense' },
   { file: 'shortcut-car.png', size: 192, glyph: 'car', rounded: false, scale: 0.62, palette: 'app' },
   { file: 'shortcut-invoice.png', size: 192, glyph: 'document', rounded: false, scale: 0.58, palette: 'invoice' },
+  { file: 'whatsapp-alert.png', size: 192, glyph: 'car', circle: true, scale: 0.62, palette: 'whatsapp' },
+  { file: 'whatsapp-alert-512.png', size: 512, glyph: 'car', circle: true, scale: 0.62, palette: 'whatsapp' },
+  { file: 'badge-96.png', size: 96, glyph: 'car', badgeOnly: true, scale: 1.08 },
 ];
 
 const PROBE = 512;
@@ -187,8 +196,19 @@ async function measureGlyphCentre(glyph) {
   return { cx, cy };
 }
 
-function buildSvg({ size, glyph, rounded, scale, palette }, centre) {
-  const rx = rounded ? Math.round(size * 0.22) : 0;
+function buildSvg({ size, glyph, rounded, circle, badgeOnly, scale, palette }, centre) {
+  if (badgeOnly) {
+    const k = (size * scale) / 24;
+    const transform = `translate(${size / 2} ${size / 2}) scale(${k}) translate(${-centre.cx} ${-centre.cy})`;
+    const paths = glyphMarkup(glyph);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <g transform="${transform}" fill="#ffffff">
+    ${paths}
+  </g>
+</svg>`;
+  }
+
+  const rx = circle ? Math.round(size / 2) : rounded ? Math.round(size * 0.22) : 0;
   const k = (size * scale) / 24;
   const transform = `translate(${size / 2} ${size / 2}) scale(${k}) translate(${-centre.cx} ${-centre.cy})`;
   const paths = glyphMarkup(glyph);
