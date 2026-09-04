@@ -36,6 +36,8 @@
     "node_modules",
     "dist",
     "functions",
+    "functions/**",
+    "tests",
     "scripts",
     "public"
   ]
