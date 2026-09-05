@@ -35,7 +35,7 @@ import {
     routingPath,
     updateConversation,
 } from '../conversations';
-import { GMAIL_SECRETS, gmailClientFor, startGmailWatch } from '../gmailAuth';
+import { GMAIL_SECRETS, gmailClientFor, isInvalidGrant, markGmailDisconnected, startGmailWatch } from '../gmailAuth';
 import { handleInbound } from '../router';
 import { ChannelSender, InboundMessage, extractUkMobiles, rtdbKey } from '../types';
 import { isUsableEmail } from '../identity';
@@ -283,11 +283,103 @@ const recordOwnerSentMessage = async (
 };
 
 /**
+ * Everything that landed in INBOX since `startHistoryId`, put through the inbox
+ * pipeline, then everything the desk sent from Gmail itself, recorded. Returns how
+ * many inbound messages were handled and moves the stored history floor forward.
+ *
+ * Shared by the push and by a reconnect, so a token that died and was replaced
+ * catches up exactly the way a normal push would have.
+ */
+export const catchUpGmail = async (
+    companyId: string,
+    emailAddress: string,
+    startHistoryId: string,
+    gmail: gmail_v1.Gmail,
+    pushHistoryId?: string
+): Promise<number> => {
+    const seen = new Set<string>();
+    let latestHistoryId = String(pushHistoryId || startHistoryId);
+    let pageToken: string | undefined;
+
+    do {
+        const page = await gmail.users.history.list({
+            userId: 'me',
+            startHistoryId,
+            historyTypes: ['messageAdded'],
+            labelId: 'INBOX',
+            maxResults: 500,
+            pageToken,
+        });
+
+        if (page.data.historyId) latestHistoryId = String(page.data.historyId);
+
+        for (const record of page.data.history || []) {
+            for (const added of record.messagesAdded || []) {
+                const id = added.message?.id;
+                if (id) seen.add(id);
+            }
+        }
+
+        pageToken = page.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    for (const id of seen) {
+        try {
+            const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+            await processMessage(companyId, emailAddress, full.data);
+        } catch (error) {
+            console.error(`Gmail: handling message ${id} for company ${companyId} failed`, error);
+        }
+    }
+
+    // Second pass: what the desk sent from Gmail itself.
+    try {
+        const sent = new Set<string>();
+        let sentPage: string | undefined;
+        do {
+            const page = await gmail.users.history.list({
+                userId: 'me',
+                startHistoryId,
+                historyTypes: ['messageAdded'],
+                labelId: 'SENT',
+                maxResults: 500,
+                pageToken: sentPage,
+            });
+            for (const record of page.data.history || []) {
+                for (const added of record.messagesAdded || []) {
+                    const id = added.message?.id;
+                    if (id && !seen.has(id)) sent.add(id);
+                }
+            }
+            sentPage = page.data.nextPageToken || undefined;
+        } while (sentPage);
+
+        for (const id of sent) {
+            try {
+                const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+                await recordOwnerSentMessage(companyId, emailAddress, full.data);
+            } catch (error) {
+                console.error(`Gmail: recording sent message ${id} for company ${companyId} failed`, error);
+            }
+        }
+    } catch (error) {
+        console.warn(`Gmail: sent-mail pass for ${emailAddress} failed`, error);
+    }
+
+    await db().ref(privatePath(companyId, 'gmail/historyId')).set(latestHistoryId);
+    return seen.size;
+};
+
+/**
  * The Pub/Sub push.
  *
  * A 404 from history.list means the stored id has aged out (Gmail keeps roughly a week).
  * There is no way to recover the gap, so the watch is restarted from now rather than
  * replaying an unbounded backfill nobody asked for.
+ *
+ * `invalid_grant` means the refresh token is dead. Retrying cannot help, so the push
+ * is swallowed after flagging the disconnect; the mail is still in Gmail and is
+ * caught up from the stored history floor when someone reconnects.
  */
 export const salesAgentGmailPush = functions
     .runWith({ timeoutSeconds: 300, memory: '512MB', secrets: [...GMAIL_SECRETS, ...BRAIN_SECRETS] })
@@ -310,40 +402,20 @@ export const salesAgentGmailPush = functions
         const priv = await readPrivate(companyId);
         const startHistoryId = priv.gmail?.historyId;
 
-        if (!startHistoryId) {
-            // No floor to work from; set one and let the next push do the work.
-            await startGmailWatch(companyId);
-            return null;
-        }
-
-        const gmail = await gmailClientFor(companyId);
-        const seen = new Set<string>();
-        let latestHistoryId = String(payload.historyId || startHistoryId);
-        let pageToken: string | undefined;
-
         try {
-            do {
-                const page = await gmail.users.history.list({
-                    userId: 'me',
-                    startHistoryId,
-                    historyTypes: ['messageAdded'],
-                    labelId: 'INBOX',
-                    maxResults: 500,
-                    pageToken,
-                });
+            if (!startHistoryId) {
+                // No floor to work from; set one and let the next push do the work.
+                await startGmailWatch(companyId);
+                return null;
+            }
 
-                if (page.data.historyId) latestHistoryId = String(page.data.historyId);
-
-                for (const record of page.data.history || []) {
-                    for (const added of record.messagesAdded || []) {
-                        const id = added.message?.id;
-                        if (id) seen.add(id);
-                    }
-                }
-
-                pageToken = page.data.nextPageToken || undefined;
-            } while (pageToken);
+            const gmail = await gmailClientFor(companyId);
+            await catchUpGmail(companyId, emailAddress, startHistoryId, gmail, payload.historyId ? String(payload.historyId) : undefined);
         } catch (error: any) {
+            if (isInvalidGrant(error)) {
+                await markGmailDisconnected(companyId, error);
+                return null;
+            }
             if (error?.code === 404 || error?.response?.status === 404) {
                 console.warn(`Gmail history for ${emailAddress} has expired; restarting the watch`);
                 await startGmailWatch(companyId);
@@ -352,50 +424,6 @@ export const salesAgentGmailPush = functions
             throw error;
         }
 
-        for (const id of seen) {
-            try {
-                const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
-                await processMessage(companyId, emailAddress, full.data);
-            } catch (error) {
-                console.error(`Gmail: handling message ${id} for company ${companyId} failed`, error);
-            }
-        }
-
-        // Second pass: what the desk sent from Gmail itself.
-        try {
-            const sent = new Set<string>();
-            let sentPage: string | undefined;
-            do {
-                const page = await gmail.users.history.list({
-                    userId: 'me',
-                    startHistoryId,
-                    historyTypes: ['messageAdded'],
-                    labelId: 'SENT',
-                    maxResults: 500,
-                    pageToken: sentPage,
-                });
-                for (const record of page.data.history || []) {
-                    for (const added of record.messagesAdded || []) {
-                        const id = added.message?.id;
-                        if (id && !seen.has(id)) sent.add(id);
-                    }
-                }
-                sentPage = page.data.nextPageToken || undefined;
-            } while (sentPage);
-
-            for (const id of sent) {
-                try {
-                    const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
-                    await recordOwnerSentMessage(companyId, emailAddress, full.data);
-                } catch (error) {
-                    console.error(`Gmail: recording sent message ${id} for company ${companyId} failed`, error);
-                }
-            }
-        } catch (error) {
-            console.warn(`Gmail: sent-mail pass for ${emailAddress} failed`, error);
-        }
-
-        await db().ref(privatePath(companyId, 'gmail/historyId')).set(latestHistoryId);
         return null;
     });
 

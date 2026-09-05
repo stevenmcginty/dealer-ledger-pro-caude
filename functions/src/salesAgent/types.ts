@@ -93,7 +93,15 @@ export interface SalesAgentSettings {
 export interface SalesAgentPrivate {
     whatsapp?: { phoneNumberId: string; businessAccountId: string; accessToken: string; verifyToken: string; appSecret?: string };
     twilio?: { accountSid: string; authToken: string; fromNumber: string };
-    gmail?: { refreshToken: string; email: string; historyId?: string; watchExpiration?: number };
+    gmail?: {
+        refreshToken: string;
+        email: string;
+        historyId?: string;
+        watchExpiration?: number;
+        /** Set when Google refused the refresh token; cleared by a reconnect. */
+        disconnectedAt?: number | null;
+        connectedAt?: number;
+    };
 }
 
 export interface StockItem {
