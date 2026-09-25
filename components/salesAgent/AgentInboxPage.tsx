@@ -155,6 +155,7 @@ const AgentInboxPage = () => {
     const [answering, setAnswering] = useState(false);
     const [changingMode, setChangingMode] = useState(false);
     const [agentName, setAgentName] = useState('Dave');
+    const [gmailDown, setGmailDown] = useState(false);
     const [draftText, setDraftText] = useState('');
     const [promptText, setPromptText] = useState('');
     const [draftBusy, setDraftBusy] = useState<'' | 'approve' | 'discard'>('');
@@ -252,7 +253,12 @@ const AgentInboxPage = () => {
 
     useEffect(() => {
         if (!companyId) return;
-        return subscribeToSalesAgentSettings(companyId, settings => setAgentName(settings.agentName || 'Dave'));
+        return subscribeToSalesAgentSettings(companyId, settings => {
+            setAgentName(settings.agentName || 'Dave');
+            // Only a flag the server has set to false counts: a company that never
+            // linked Gmail has no key at all and should not be nagged.
+            setGmailDown(settings.connections?.gmail === false);
+        });
     }, [companyId]);
 
     const conversations = useMemo(() => {
@@ -922,6 +928,18 @@ const AgentInboxPage = () => {
                 className={`min-h-0 w-full flex-col border-r border-white/[0.06] bg-gray-900 lg:flex lg:w-[23rem] xl:w-[26rem] ${activeGroup ? 'hidden lg:flex' : 'flex'}`}
                 aria-label="Conversations"
             >
+                {gmailDown && (
+                    <div role="alert" className="flex-shrink-0 border-b border-red-500/30 bg-red-950/60 px-4 py-3 text-[13px] text-red-100">
+                        <p className="font-semibold">Gmail is not connected. No new emails are coming in.</p>
+                        <button
+                            type="button"
+                            onClick={() => setView('settings')}
+                            className="mt-1.5 min-h-[44px] text-left font-semibold text-white underline underline-offset-2 hover:text-red-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                        >
+                            Settings → Sales agent → Reconnect
+                        </button>
+                    </div>
+                )}
                 <ThreadList
                     sections={sections}
                     activeGroupId={activeGroup?.id || null}
