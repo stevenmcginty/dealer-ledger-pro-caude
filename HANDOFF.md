@@ -4,7 +4,7 @@
 
 Steve's ask: the bell was swamped with old emails; MOTs first; emails only in the Agent Inbox; new look and feel for the inbox; better Dave replies.
 
-### Done (built, tests green, NOT committed, NOT deployed)
+### Done (commit 8e0bbc2, pushed; hosting + 19 Dave functions deployed 25 Sep)
 - Bell (`components/nav/NotificationBell.tsx`, `LedgerCore.tsx`, `types.ts`): MOTs first (stock dates merged with the DVSA sweep, overdue first, 60-day window with a "show later" toggle); no emails at all; Dave drafts/questions are one row that opens the inbox; WhatsApp only unseen or last 48h, max 8. "Seen" is written when the bell closes.
 - Push hook (`hooks/useAgentPushMessages.ts`): no email toasts; a Dave draft/question arriving while the app is open is a toast with "Review" — nothing switches page until Steve taps.
 - Agent Inbox (`components/salesAgent/AgentInboxPage.tsx` + new `components/salesAgent/inbox/*`, `utils/agentInboxSections.ts`, test `tests/agentInboxSections.test.ts`): sections Needs you / Recent / Earlier (folded, 14+ days quiet); Dave's draft card above the composer; inline question answers; composer shows channel and number.
@@ -16,6 +16,6 @@ Steve's ask: the bell was swamped with old emails; MOTs first; emails only in th
 
 ### Next
 - Steve to look at the bell with live data.
-- Commit only the files above (other sessions share this repo; `functions/lib/**` and `.firebase/**` changes are not ours).
-- Deploy hosting for the bell/inbox; deploy the functions for the Dave prompt.
+- Watch Dave's first few live replies; old prompt is in git (`git show 0ec3e66:functions/src/salesAgent/brain/prompt.ts`).
+- `functions/lib/**` and `.firebase/**` were already modified before this work; left uncommitted.
 - `docs/sales-agent/SPEC.md` is out of date with the prompt and contradicts itself on viewings (rule 3 vs rule 8).
