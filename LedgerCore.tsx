@@ -127,6 +127,8 @@ const LedgerCore = () => {
             message: `MOT due for ${v.reg} on ${formatDate(v.motDueDate)}`,
             vehicleId: v.id,
             date: v.motDueDate,
+            reg: v.reg,
+            vehicleLabel: [v.make, v.model].filter(Boolean).join(' '),
           });
         }
       }

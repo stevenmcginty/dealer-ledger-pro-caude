@@ -25,10 +25,10 @@ const OPTIONS: Array<{ id: SendViaChoice; label: string }> = [
 ];
 
 const optionClass = (id: SendViaChoice, on: boolean): string => {
-    if (!on) return 'text-[#8696a0] hover:text-white';
-    if (id === 'email') return 'bg-sky-600 text-white shadow';
-    if (id === 'whatsapp') return 'bg-[#25d366] text-[#111b21] shadow';
-    return 'bg-[#005c4b] text-white shadow';
+    if (!on) return 'text-gray-400 hover:text-gray-100';
+    if (id === 'email') return 'bg-sky-500/15 text-sky-200 ring-1 ring-inset ring-sky-400/40';
+    if (id === 'whatsapp') return 'bg-emerald-500/15 text-emerald-200 ring-1 ring-inset ring-emerald-400/40';
+    return 'bg-teal-500/15 text-teal-100 ring-1 ring-inset ring-teal-400/40';
 };
 
 const SendViaBar: React.FC<{
@@ -68,26 +68,29 @@ const SendViaBar: React.FC<{
 
     return (
         <div className="space-y-1.5">
-            <div className="flex gap-1 rounded-full bg-black/35 p-0.5" role="radiogroup" aria-label="Send via">
-                {OPTIONS.map(opt => {
-                    const on = value === opt.id;
-                    const ok = enabledFor(opt.id);
-                    return (
-                        <button
-                            key={opt.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={on}
-                            disabled={disabled || !ok}
-                            onClick={() => ok && onChange(opt.id)}
-                            className={`flex h-9 min-h-[36px] flex-1 items-center justify-center gap-1 rounded-full text-[12px] font-semibold transition-colors disabled:opacity-35 ${optionClass(opt.id, on)}`}
-                        >
-                            {opt.id === 'email' && <EnvelopeIcon className="h-3.5 w-3.5" aria-hidden />}
-                            {opt.id === 'whatsapp' && <WhatsAppIcon className="h-3.5 w-3.5" aria-hidden />}
-                            {opt.label}
-                        </button>
-                    );
-                })}
+            <div className="flex items-center gap-2">
+                <span className="hidden flex-shrink-0 pl-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400 sm:inline" aria-hidden>Send via</span>
+                <div className="flex min-w-0 flex-1 gap-1 rounded-xl bg-black/30 p-0.5 ring-1 ring-inset ring-white/[0.05] sm:p-1" role="radiogroup" aria-label="Send via">
+                    {OPTIONS.map(opt => {
+                        const on = value === opt.id;
+                        const ok = enabledFor(opt.id);
+                        return (
+                            <button
+                                key={opt.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={on}
+                                disabled={disabled || !ok}
+                                onClick={() => ok && onChange(opt.id)}
+                                className={`flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg text-[12.5px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:opacity-35 sm:h-8 ${optionClass(opt.id, on)}`}
+                            >
+                                {opt.id === 'email' && <EnvelopeIcon className="h-3.5 w-3.5" aria-hidden />}
+                                {opt.id === 'whatsapp' && <WhatsAppIcon className="h-3.5 w-3.5" aria-hidden />}
+                                {opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
             {!canWhatsApp && onAddPhone && (
@@ -101,20 +104,20 @@ const SendViaBar: React.FC<{
                             inputMode="tel"
                             autoComplete="tel"
                             aria-label="Mobile number for WhatsApp"
-                            className="h-9 min-w-0 flex-1 rounded-full bg-black/35 px-3 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/40"
+                            className="h-11 min-w-0 flex-1 rounded-xl bg-black/30 px-3 text-[16px] text-white placeholder-gray-500 ring-1 ring-inset ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-emerald-400/40 sm:h-9 sm:text-[13px]"
                         />
                         <button
                             type="button"
                             onClick={() => void savePhone()}
                             disabled={saving || draftPhone.replace(/\D/g, '').length < 10}
-                            className="h-9 rounded-full bg-[#25d366] px-3 text-[12px] font-semibold text-[#111b21] disabled:opacity-40"
+                            className="h-11 rounded-xl bg-emerald-500 px-3.5 text-[13px] font-semibold text-gray-950 hover:bg-emerald-400 disabled:opacity-40 sm:h-9"
                         >
                             {saving ? <Spinner className="h-3.5 w-3.5" /> : 'Save'}
                         </button>
                         <button
                             type="button"
                             onClick={() => { setAdding(false); setDraftPhone(''); }}
-                            className="text-[12px] text-[#8696a0] hover:text-white"
+                            className="h-11 px-2 text-[12.5px] text-gray-400 hover:text-white sm:h-9"
                         >
                             Cancel
                         </button>
@@ -123,7 +126,7 @@ const SendViaBar: React.FC<{
                     <button
                         type="button"
                         onClick={() => setAdding(true)}
-                        className="flex items-center gap-1.5 px-1 py-1 text-[12px] font-medium text-[#25d366] hover:underline"
+                        className="flex min-h-[36px] items-center gap-1.5 px-1 text-[12.5px] font-medium text-emerald-300 hover:underline"
                     >
                         <PhoneIcon className="h-3.5 w-3.5" />
                         Add a mobile to send WhatsApp
@@ -132,7 +135,7 @@ const SendViaBar: React.FC<{
             )}
 
             {canWhatsApp && (value === 'whatsapp' || value === 'both') && needsOpener && (
-                <p className="px-1 text-[11px] leading-snug text-[#8696a0]">
+                <p className="px-1 text-[11.5px] leading-snug text-gray-400">
                     WhatsApp: they get the short opener now. Your full reply follows when they answer.
                 </p>
             )}

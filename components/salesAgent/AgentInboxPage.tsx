@@ -1,34 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { Badge, Button, useToast } from '../ui';
+import { Button, useToast } from '../ui';
 import Spinner from '../common/Spinner';
 import Modal from '../common/Modal';
 import {
-    ArrowLeftIcon,
-    ArrowTopRightOnSquareIcon,
-    CarIcon,
-    ChevronDownIcon,
-    EllipsisVerticalIcon,
     EnvelopeIcon,
     ExclamationTriangleIcon,
-    MagnifyingGlassIcon,
+    InboxIcon,
     PaperClipIcon,
-    PhoneIcon,
-    PlusIcon,
     SparklesIcon,
     TrashIcon,
-    UsersIcon,
     WhatsAppIcon,
     XMarkIcon,
 } from '../icons';
 import {
     AgentMessage,
     CHANNEL_LABELS,
-    Channel,
     Conversation,
     ConversationMode,
-    STAGE_LABELS,
     SharedInboxMeta,
     answerAgentQuestion,
     approveAgentDraft,
@@ -42,7 +32,6 @@ import {
     deleteAgentMessage,
     discardAgentDraft,
     draftNow,
-    formatAgentTime,
     instructAgent,
     instructionText,
     markConversationRead,
@@ -76,6 +65,7 @@ import {
     partitionSharedGroups,
     threadChannelsOf,
 } from '../../utils/agentInboxGroups';
+import { needsReasonOf, sectionGroups } from '../../utils/agentInboxSections';
 import { dismissConversationNotifications } from '../../utils/inboxNotify';
 import {
     WHATSAPP_ACCEPT,
@@ -85,10 +75,14 @@ import {
     prepareWhatsAppFile,
 } from '../../utils/whatsappMedia';
 import StartWhatsAppSheet from './StartWhatsAppSheet';
-import SendViaBar, { sendViaLabel, type SendViaChoice } from './SendViaBar';
+import SendViaBar, { type SendViaChoice } from './SendViaBar';
 import { ThreadMessage } from './inboxMessages';
 import { DEMO_CONVERSATIONS, DEMO_MESSAGES } from './inboxDemo';
 import { displayUkPhone, resolveThreadPhone, threadLooksBounced } from '../../utils/agentInboxBounce';
+import ThreadList from './inbox/ThreadList';
+import ThreadHeader from './inbox/ThreadHeader';
+import { DraftCard, QuestionCard, SendRouteIcon, sendButtonClass } from './inbox/DaveCards';
+import { ComposeError, type InlineError, dayLabel, describeError } from './inbox/parts';
 
 const whatsappOpener = (firstName?: string, vehicleTitle?: string): string => {
     const name = (firstName || 'there').trim() || 'there';
@@ -140,142 +134,6 @@ const writeShowOtherLedger = (on: boolean): void => {
     }
 };
 
-/** A failure shown under the compose bar: plain English up front, the technical bit behind a toggle. */
-type InlineError = { message: string; detail?: string };
-
-const describeError = (err: any, fallback: string): InlineError => {
-    const code = typeof err?.code === 'string' ? err.code : '';
-    const detail = [code, typeof err?.details === 'string' ? err.details : err?.details ? JSON.stringify(err.details) : '']
-        .filter(Boolean)
-        .join(' · ');
-    if (code === 'storage/unauthorized') {
-        return {
-            message: 'Firebase would not store that file. Photos, MP4 videos and PDFs are allowed — if this keeps happening the storage rules need deploying.',
-            detail: detail || undefined,
-        };
-    }
-    return { message: (typeof err?.message === 'string' && err.message.trim()) || fallback, detail: detail || undefined };
-};
-
-const ComposeError: React.FC<{ error: InlineError; onDismiss: () => void }> = ({ error, onDismiss }) => {
-    const [open, setOpen] = useState(false);
-    return (
-        <div role="alert" className="mb-2 rounded-xl border border-red-400/25 bg-red-950/40 px-3 py-2 text-[13px] leading-snug text-red-100">
-            <div className="flex items-start gap-2">
-                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-300" />
-                <p className="min-w-0 flex-1">{error.message}</p>
-                <button type="button" onClick={onDismiss} aria-label="Dismiss" className="-mr-1 -mt-0.5 flex-shrink-0 rounded-full p-1 text-red-200/70 hover:bg-white/10 hover:text-white">
-                    <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
-            </div>
-            {error.detail && (
-                <div className="mt-1 pl-6">
-                    <button type="button" onClick={() => setOpen(o => !o)} className="text-[11px] font-medium text-red-200/70 hover:text-white">
-                        {open ? 'Hide details' : 'Details'}
-                    </button>
-                    {open && <p className="mt-1 break-all font-mono text-[11px] text-red-100/70">{error.detail}</p>}
-                </div>
-            )}
-        </div>
-    );
-};
-
-const MenuItem: React.FC<{ onClick: () => void; disabled?: boolean; danger?: boolean; children: React.ReactNode }> = ({ onClick, disabled, danger, children }) => (
-    <button
-        type="button"
-        role="menuitem"
-        onClick={onClick}
-        disabled={disabled}
-        className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm disabled:opacity-40 ${
-            danger ? 'text-red-300 hover:bg-red-500/10' : 'text-[#e9edef] hover:bg-white/5'
-        }`}
-    >
-        {children}
-    </button>
-);
-
-const initials = (name: string): string => {
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    return name.slice(0, 2).toUpperCase() || '?';
-};
-
-const avatarTone = (name: string, whatsapp: boolean): string => {
-    if (whatsapp) return 'bg-[#075e54] text-[#d1f4de]';
-    const tones = ['bg-sky-800 text-sky-100', 'bg-indigo-800 text-indigo-100', 'bg-slate-700 text-white'];
-    return tones[name.split('').reduce((n, c) => n + c.charCodeAt(0), 0) % tones.length];
-};
-
-/** Tiny muted channel glyphs — quieter than pills, still tells Steve how they talk. */
-const ChannelGlyphs: React.FC<{ channels: Channel[] }> = ({ channels }) => (
-    <span className="inline-flex flex-shrink-0 translate-y-[2px] items-center gap-1 text-[#8696a0]" aria-hidden>
-        {channels.includes('whatsapp') && <WhatsAppIcon className="h-3.5 w-3.5" />}
-        {channels.includes('email') && <EnvelopeIcon className="h-3.5 w-3.5" />}
-        {channels.includes('sms') && <PhoneIcon className="h-3.5 w-3.5" />}
-    </span>
-);
-
-const GroupRow: React.FC<{
-    group: CustomerGroup;
-    active: boolean;
-    onClick: () => void;
-}> = ({ group, active, onClick }) => {
-    const wa = group.channels.includes('whatsapp');
-    const attention = group.waiting ? 'Needs you' : group.pending ? 'Draft' : group.escalated ? 'Escalated' : null;
-
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={`flex min-h-[44px] w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
-                active ? 'bg-[#2a3942]' : 'hover:bg-white/[0.04]'
-            }`}
-        >
-            <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarTone(group.name, wa)}`}>
-                {initials(group.name)}
-            </div>
-            <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-[#e9edef]">{group.name}</span>
-                    <span className={`flex-shrink-0 text-[11px] ${group.unread ? 'font-semibold text-[#25d366]' : 'text-[#8696a0]'}`}>
-                        {formatAgentTime(group.updatedAt)}
-                    </span>
-                </div>
-                <div className="mt-0.5 flex items-center gap-2">
-                    <p className={`min-w-0 flex-1 truncate text-[13px] ${group.unread ? 'font-medium text-[#e9edef]' : 'text-[#8696a0]'}`}>
-                        <span className={`font-semibold ${
-                            group.latest.channel === 'whatsapp' ? 'text-[#25d366]' : group.latest.channel === 'email' ? 'text-sky-300' : 'text-violet-300'
-                        }`}>
-                            {group.latest.channel === 'whatsapp' ? 'WhatsApp' : group.latest.channel === 'email' ? 'Email' : 'SMS'}
-                        </span>
-                        <span className="mx-1.5 text-[#8696a0]/40" aria-hidden>·</span>
-                        {group.preview || 'No messages yet'}
-                    </p>
-                    {attention ? (
-                        <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                            {attention}
-                        </span>
-                    ) : group.unread > 0 ? (
-                        <span className="flex h-5 min-w-[1.25rem] flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-bold text-[#111b21]">
-                            {group.unread > 99 ? '99+' : group.unread}
-                        </span>
-                    ) : null}
-                </div>
-                {(group.channels.length > 1 || group.shared) && (
-                    <div className="mt-1 flex items-center gap-1.5">
-                        {group.channels.length > 1 && <ChannelGlyphs channels={group.channels} />}
-                        {group.shared && (
-                            <span className="inline-flex rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-[#8696a0]">
-                                Other ledger
-                            </span>
-                        )}
-                    </div>
-                )}
-            </div>
-        </button>
-    );
-};
-
 const AgentInboxPage = () => {
     const { companyId, leads, setSelectedLeadId } = useData();
     const { setView } = useUI();
@@ -311,7 +169,6 @@ const AgentInboxPage = () => {
     const [sendStatus, setSendStatus] = useState<string | null>(null);
     const [sendError, setSendError] = useState<InlineError | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [answerMode, setAnswerMode] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [carFixOpen, setCarFixOpen] = useState(false);
     const [carFixNote, setCarFixNote] = useState('');
@@ -321,7 +178,7 @@ const AgentInboxPage = () => {
     const [showOther, setShowOther] = useState(readShowOtherLedger);
     const [selectedMsgKey, setSelectedMsgKey] = useState<string | null>(null);
     const [bannerCollapsed, setBannerCollapsed] = useState(false);
-    /** Dave's draft card starts collapsed so the Me composer stays on screen. */
+    /** Dave's draft starts folded — still one tap to approve — so the thread and composer keep the screen. */
     const [draftOpen, setDraftOpen] = useState(false);
     /** Keyboard overlap on phones — visualViewport height, not layout height. */
     const [kbInset, setKbInset] = useState(0);
@@ -342,7 +199,7 @@ const AgentInboxPage = () => {
     const growBox = (el: HTMLTextAreaElement | null) => {
         if (!el) return;
         el.style.height = 'auto';
-        el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+        el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
     };
 
     useEffect(() => {
@@ -437,6 +294,23 @@ const AgentInboxPage = () => {
         });
     }, [allGroups, showOther, filter, query]);
 
+    // Needs you → Recent → Earlier. `now` moves with the data, which is often enough for a 14-day fold.
+    const listNow = useMemo(() => Date.now(), [groups]);
+    const sections = useMemo(() => sectionGroups(groups, listNow), [groups, listNow]);
+    const orderedGroups = useMemo(
+        () => [...sections.needsYou, ...sections.recent, ...sections.earlier],
+        [sections]
+    );
+    // The header summary ignores the search box: typing a name must not make "3 need you" vanish.
+    const summary = useMemo(() => {
+        const base = (showOther ? allGroups : partitionSharedGroups(allGroups).mine)
+            .filter(group => groupHasChannel(group, filter));
+        return {
+            needsYou: base.filter(group => needsReasonOf(group, listNow)).length,
+            unread: base.reduce((n, group) => n + (group.unread || 0), 0),
+        };
+    }, [allGroups, showOther, filter, listNow]);
+
     const linkHandled = useRef(false);
     useEffect(() => {
         if (linkHandled.current) return;
@@ -503,7 +377,6 @@ const AgentInboxPage = () => {
         setPhrasingSince(null);
         setSendError(null);
         setMenuOpen(false);
-        setAnswerMode(false);
         setDetailsOpen(false);
         setCarFixOpen(false);
         setCarFixNote('');
@@ -568,10 +441,6 @@ const AgentInboxPage = () => {
         setThreadChannel(filter);
     }, [filter]);
 
-    useEffect(() => {
-        if (answerMode) replyBoxRef.current?.focus();
-    }, [answerMode]);
-
     const allMessages = useMemo(() => {
         if (!activeGroup) return [];
         const list: Array<AgentMessage & { conv: Conversation }> = [];
@@ -621,10 +490,10 @@ const AgentInboxPage = () => {
     }, [filter]);
 
     useEffect(() => {
-        if (activeGroupId || activeConvId || !groups.length) return;
+        if (activeGroupId || activeConvId || !orderedGroups.length) return;
         if (typeof window !== 'undefined' && window.innerWidth < 1024) return;
-        openGroup(groups[0]);
-    }, [groups, activeGroupId, activeConvId, openGroup]);
+        openGroup(orderedGroups[0]);
+    }, [orderedGroups, activeGroupId, activeConvId, openGroup]);
 
     const handleMode = useCallback(async (mode: ConversationMode) => {
         if (!companyId || !active) return;
@@ -978,8 +847,8 @@ const AgentInboxPage = () => {
 
     if (!companyId || own === null) {
         return (
-            <div className="flex h-full items-center justify-center">
-                <Spinner className="h-8 w-8 text-[#25d366]" />
+            <div className="flex h-full items-center justify-center bg-gray-950">
+                <Spinner className="h-8 w-8 text-brand-400" />
             </div>
         );
     }
@@ -992,7 +861,6 @@ const AgentInboxPage = () => {
     const whatsappAlreadySent = allMessages.some(m => m.direction === 'out' && m.channel === 'whatsapp');
     const whatsappNeedsOpener = !!phoneOnFile && !(active?.lastCustomerMessageAt);
     const lastEmailOut = [...allMessages].reverse().find(m => m.direction === 'out' && m.channel === 'email');
-    const asking = !!questionHost?.pendingQuestion && answerMode;
     const hasDraft = !!draftHost?.pendingDraft;
     const offerWhatsAppFollowUp = !!(
         active
@@ -1002,7 +870,6 @@ const AgentInboxPage = () => {
         && !hasDraft
         && !bounced
         && pane === 'email'
-        && !asking
     );
     const customerWaiting = !!(
         active
@@ -1023,388 +890,109 @@ const AgentInboxPage = () => {
                 whatsappAlreadySent,
                 firstReply: !active?.lastOutboundAt,
             });
-    const showSendVia = !asking && (!!phoneOnFile || emailOk || !!handleAddPhone);
+    const showSendVia = !!phoneOnFile || emailOk || !!handleAddPhone;
     const emailPane = pane === 'email';
-    const showChannelSwitch = paneChannels.length > 1;
-    const tabs: Array<{ id: InboxFilter; label: string; count: number; accent?: string }> = [
-        { id: 'all', label: 'All', count: counts.all },
-        { id: 'whatsapp', label: 'WhatsApp', count: counts.whatsapp, accent: 'text-[#25d366]' },
-        { id: 'email', label: 'Email', count: counts.email, accent: 'text-sky-300' },
-    ];
+    const agentComposing = replyMode === 'agent' && !attachment;
+    const sendDestination = agentComposing
+        ? `${agentName} writes it, you approve`
+        : sendViaNow === 'email'
+            ? (emailOnFile ? `to ${emailOnFile}` : '')
+            : sendViaNow === 'whatsapp'
+                ? (phoneOnFile ? `to ${displayUkPhone(phoneOnFile)} on WhatsApp` : '')
+                : (phoneOnFile && emailOnFile ? `to ${emailOnFile} and ${displayUkPhone(phoneOnFile)}` : '');
+    const firstName = active?.contact?.firstName || activeGroup?.name.split(' ')[0] || '';
+    const submitComposer = () => {
+        if (attachment || replyMode === 'human') handleSend();
+        else if (reply.trim()) handleInstruct();
+        else if (active) void requestDraft(active, true);
+    };
+
+    const closeThread = () => { setActiveGroupId(null); setActiveConvId(null); };
+    const chatTexture = {
+        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.028) 1px, transparent 0)',
+        backgroundSize: '24px 24px',
+    };
 
     return (
         <div
-            className="flex h-full min-h-0 bg-[#0b141a] text-[#e9edef]"
+            className="flex h-full min-h-0 bg-gray-950 text-gray-100"
             style={kbInset ? { height: `calc(100% - ${kbInset}px)` } : undefined}
         >
-            <aside className={`min-h-0 w-full flex-col border-r border-white/5 bg-[#111b21] lg:flex lg:w-[22rem] xl:w-[26rem] ${activeGroup ? 'hidden lg:flex' : 'flex'}`}>
-                <div className="flex items-center justify-between gap-2 px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setView('dashboard')}
-                            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white lg:hidden"
-                            aria-label="Back to the app"
-                        >
-                            <ArrowLeftIcon className="h-5 w-5" />
-                        </button>
-                        <div className="min-w-0">
-                            <h2 className="text-lg font-semibold text-white">Inbox</h2>
-                            <p className="text-[11px] text-[#8696a0]">
-                                {inbox
-                                    ? `${inbox.name || 'Shared number'} · every ledger`
-                                    : 'One person, one channel at a time'}
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setComposeOpen(true)}
-                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-[#25d366] px-3.5 text-xs font-semibold text-[#111b21] hover:bg-[#20bd5a]"
-                    >
-                        <PlusIcon className="h-4 w-4" />
-                        WhatsApp
-                    </button>
-                </div>
-
-                <div className="flex gap-1 px-3 pb-2">
-                    {tabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setFilter(tab.id)}
-                            className={`flex-1 rounded-full px-2 py-1.5 text-xs font-semibold transition-colors ${
-                                filter === tab.id
-                                    ? tab.id === 'whatsapp'
-                                        ? 'bg-[#25d366] text-[#111b21]'
-                                        : tab.id === 'email'
-                                            ? 'bg-sky-500 text-white'
-                                            : 'bg-[#2a3942] text-white'
-                                    : 'text-[#8696a0] hover:bg-white/5 hover:text-white'
-                            }`}
-                        >
-                            {tab.label}{' '}
-                            <span className="opacity-70">{tab.count}</span>
-                        </button>
-                    ))}
-                </div>
-
-                <div className="px-3 pb-2">
-                    <label className="flex items-center gap-2 rounded-lg bg-[#202c33] px-3 py-2">
-                        <MagnifyingGlassIcon className="h-4 w-4 text-[#8696a0]" />
-                        <input
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder="Search name, number or email"
-                            className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder-[#8696a0] outline-none"
-                        />
-                    </label>
-                </div>
-
-                {otherLedgerCount > 0 && (
-                    <div className="px-3 pb-1">
-                        <button
-                            type="button"
-                            onClick={toggleShowOther}
-                            aria-pressed={showOther}
-                            className="flex min-h-[44px] w-full items-center justify-between rounded-lg px-3 text-[12px] font-medium text-[#8696a0] transition-colors hover:bg-white/5 hover:text-white"
-                        >
-                            <span>
-                                Other ledger&apos;s leads
-                                {!showOther && (
-                                    <span className="ml-1.5 rounded-full bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-semibold text-[#e9edef]">
-                                        {otherLedgerCount} hidden
-                                    </span>
-                                )}
-                            </span>
-                            <span className={showOther ? 'font-semibold text-[#e9edef]' : ''}>
-                                {showOther ? 'Hide' : 'Show'}
-                            </span>
-                        </button>
-                    </div>
-                )}
-
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                    {groups.length === 0 ? (
-                        <div className="px-6 py-16 text-center">
-                            <WhatsAppIcon className="mx-auto h-10 w-10 text-[#25d366]/40" />
-                            <p className="mt-3 text-sm font-medium text-[#e9edef]">No conversations yet</p>
-                            <p className="mt-1 text-xs text-[#8696a0]">
-                                Incoming WhatsApp and email land here. You can also start a WhatsApp to a new number.
-                            </p>
-                        </div>
-                    ) : groups.map(group => (
-                        <GroupRow
-                            key={group.id}
-                            group={group}
-                            active={activeGroup?.id === group.id}
-                            onClick={() => openGroup(group)}
-                        />
-                    ))}
-                </div>
+            <aside
+                className={`min-h-0 w-full flex-col border-r border-white/[0.06] bg-gray-900 lg:flex lg:w-[23rem] xl:w-[26rem] ${activeGroup ? 'hidden lg:flex' : 'flex'}`}
+                aria-label="Conversations"
+            >
+                <ThreadList
+                    sections={sections}
+                    activeGroupId={activeGroup?.id || null}
+                    onOpen={openGroup}
+                    agentName={agentName}
+                    now={listNow}
+                    filter={filter}
+                    onFilter={setFilter}
+                    counts={counts}
+                    query={query}
+                    onQuery={setQuery}
+                    otherLedgerCount={otherLedgerCount}
+                    showOther={showOther}
+                    onToggleOther={toggleShowOther}
+                    inboxName={inbox ? (inbox.name || 'Shared number') : null}
+                    needsYouTotal={summary.needsYou}
+                    unreadTotal={summary.unread}
+                    onBack={() => setView('dashboard')}
+                    onStartWhatsApp={() => setComposeOpen(true)}
+                />
             </aside>
 
             <section className={`min-h-0 min-w-0 flex-1 flex-col ${activeGroup ? 'flex' : 'hidden lg:flex'}`}>
                 {active && activeGroup ? (
                     <>
-                        <div className="relative border-b border-white/5 bg-[#202c33] px-2 py-1.5 sm:px-3 sm:py-2">
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => { setActiveGroupId(null); setActiveConvId(null); }}
-                                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white lg:hidden"
-                                    aria-label="Back to the list"
-                                >
-                                    <ArrowLeftIcon className="h-5 w-5" />
-                                </button>
-                                <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarTone(activeGroup.name, activeGroup.channels.includes('whatsapp'))}`}>
-                                    {initials(activeGroup.name)}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="min-w-0 truncate text-[16px] font-semibold leading-tight text-white">{activeGroup.name}</h2>
-                                        {active.escalated && !bounced && <Badge size="sm" variant="danger">Escalated</Badge>}
-                                    </div>
-                                    <div className="mt-0.5 text-[12px] leading-tight text-[#8696a0]">
-                                        {active.vehicleInterest?.title && (
-                                            <span className="flex min-w-0 items-center gap-1">
-                                                <CarIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25d366]" />
-                                                <span className="truncate">{active.vehicleInterest.title}</span>
-                                            </span>
-                                        )}
-                                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                                            {phoneOnFile ? (
-                                                <a href={`tel:${phoneOnFile}`} className="inline-flex min-w-0 items-center gap-1 truncate text-[#25d366] hover:underline">
-                                                    <PhoneIcon className="h-3 w-3 flex-shrink-0" />
-                                                    {displayUkPhone(phoneOnFile)}
-                                                </a>
-                                            ) : !active.vehicleInterest?.title ? (
-                                                <span className="truncate">{emailOnFile || active.address}</span>
-                                            ) : null}
-                                            {(phoneOnFile || !active.vehicleInterest?.title) && (
-                                                <span className="text-[#8696a0]/40" aria-hidden>·</span>
-                                            )}
-                                            <span className={`flex-shrink-0 font-medium ${
-                                                active.mode === 'agent' ? 'text-sky-300' : active.mode === 'human' ? 'text-emerald-300' : 'text-amber-300'
-                                            }`}>
-                                                {active.mode === 'agent' ? agentName : active.mode === 'human' ? 'You' : 'Paused'}
-                                            </span>
-                                        </span>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setMenuOpen(o => !o)}
-                                    aria-haspopup="menu"
-                                    aria-expanded={menuOpen}
-                                    aria-label="Conversation options"
-                                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
-                                >
-                                    <EllipsisVerticalIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            {showChannelSwitch ? (
-                                <div className="mt-2 flex rounded-lg bg-black/35 p-0.5" role="tablist" aria-label="Channel">
-                                    {paneChannels.map(ch => {
-                                        const on = pane === ch;
-                                        const n = channelCounts[ch];
-                                        return (
-                                            <button
-                                                key={ch}
-                                                type="button"
-                                                role="tab"
-                                                aria-selected={on}
-                                                onClick={() => setThreadChannel(ch)}
-                                                className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-[12px] font-semibold transition-colors ${
-                                                    on
-                                                        ? ch === 'whatsapp'
-                                                            ? 'bg-[#25d366] text-[#111b21] shadow'
-                                                            : 'bg-sky-600 text-white shadow'
-                                                        : 'text-[#8696a0] hover:text-white'
-                                                }`}
-                                            >
-                                                {ch === 'whatsapp' ? <WhatsAppIcon className="h-3.5 w-3.5" /> : <EnvelopeIcon className="h-3.5 w-3.5" />}
-                                                {ch === 'whatsapp' ? 'WhatsApp' : 'Email'}
-                                                <span className={`tabular-nums ${on ? 'opacity-80' : 'opacity-50'}`}>{n}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <p className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide ${
-                                    pane === 'whatsapp' ? 'text-[#25d366]' : 'text-sky-300'
-                                }`}>
-                                    {pane === 'whatsapp' ? <WhatsAppIcon className="h-3.5 w-3.5" /> : <EnvelopeIcon className="h-3.5 w-3.5" />}
-                                    {pane === 'whatsapp' ? 'WhatsApp' : 'Email'}
-                                </p>
-                            )}
-
-                            {carFixOpen && (
-                                <div className="mt-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2.5">
-                                    <p className="text-[12px] leading-snug text-[#e9edef]">
-                                        {active.vehicleInterest?.title
-                                            ? <>{agentName} has this down as the <span className="font-medium text-amber-200">{active.vehicleInterest.title}</span>. Which car is it really?</>
-                                            : <>Which car is this enquiry about?</>}
-                                    </p>
-                                    <textarea
-                                        value={carFixNote}
-                                        onChange={e => setCarFixNote(e.target.value)}
-                                        onKeyDown={e => {
-                                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleCarFix(); }
-                                        }}
-                                        rows={2}
-                                        autoFocus
-                                        placeholder="It's the black Boxster, not the Taycan. That one sold months ago."
-                                        className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-[13px] text-[#e9edef] placeholder:text-[#8696a0]/70 focus:border-amber-400/40 focus:outline-none"
-                                    />
-                                    <div className="mt-2 flex items-center justify-between gap-2">
-                                        <p className="text-[11px] leading-snug text-[#8696a0]">
-                                            {agentName} re-pins the thread, bins the draft and remembers this. If the car is the other ledger's, the thread goes to them.
-                                        </p>
-                                        <div className="flex flex-shrink-0 items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => { setCarFixOpen(false); setCarFixNote(''); }}
-                                                className="text-[12px] font-medium text-[#8696a0] hover:text-white"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <Button size="sm" onClick={handleCarFix} disabled={carFixBusy || !carFixNote.trim()}>
-                                                {carFixBusy ? <Spinner className="h-3.5 w-3.5" /> : `Tell ${agentName}`}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {detailsOpen && (
-                            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-black/25 px-3 py-2.5 text-[12px] text-[#e9edef]">
-                                {phoneOnFile && (
-                                    <>
-                                        <dt className="text-[#8696a0]">Mobile</dt>
-                                        <dd><a href={`tel:${phoneOnFile}`} className="inline-flex items-center gap-1 text-[#25d366] hover:underline"><PhoneIcon className="h-3 w-3" />{displayUkPhone(phoneOnFile)}</a></dd>
-                                    </>
-                                )}
-                                {emailOnFile && (
-                                    <>
-                                        <dt className="text-[#8696a0]">Email</dt>
-                                        <dd className={`break-all ${bounced ? 'text-red-300' : ''}`}>{emailOnFile}{bounced ? ' · bounces' : ''}</dd>
-                                    </>
-                                )}
-                                {!emailOnFile && !phoneOnFile && (
-                                    <>
-                                        <dt className="text-[#8696a0]">From</dt>
-                                        <dd className="break-all">{active.address}</dd>
-                                    </>
-                                )}
-                                {active.partExOrFinance && (
-                                    <>
-                                        <dt className="text-[#8696a0]">Deal</dt>
-                                        <dd>{active.partExOrFinance}</dd>
-                                    </>
-                                )}
-                                {active.preferredTime && (
-                                    <>
-                                        <dt className="text-[#8696a0]">Prefers</dt>
-                                        <dd>{active.preferredTime}</dd>
-                                    </>
-                                )}
-                                {active.booking && (
-                                    <>
-                                        <dt className="text-[#8696a0]">Booked</dt>
-                                        <dd className="text-emerald-300">{active.booking.window}</dd>
-                                    </>
-                                )}
-                                <dt className="text-[#8696a0]">Stage</dt>
-                                <dd>{STAGE_LABELS[active.stage] || active.stage}{activeGroup.shared ? ' · other ledger' : ''}</dd>
-                                <dt className="text-[#8696a0]">Ref</dt>
-                                <dd className="font-mono text-[#8696a0]">#{active.shortId}</dd>
-                                {active.contact?.leadId && (
-                                    <>
-                                        <dt className="text-[#8696a0]">CRM</dt>
-                                        <dd>
-                                            <button type="button" onClick={openLead} className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200">
-                                                <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-                                                {linkedLead
-                                                    ? `Lead: ${[linkedLead.firstName, linkedLead.lastName].filter(Boolean).join(' ') || 'open'}`
-                                                    : 'Open lead'}
-                                            </button>
-                                        </dd>
-                                    </>
-                                )}
-                            </dl>
-                            )}
-
-                            {menuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} aria-hidden />
-                                    <div role="menu" className="absolute right-2 top-12 z-30 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#233138] py-1 shadow-2xl">
-                                        {active.mode !== 'human' && (
-                                            <MenuItem onClick={() => { setMenuOpen(false); handleMode('human'); }} disabled={changingMode}>Take over — I'll answer</MenuItem>
-                                        )}
-                                        {active.mode !== 'agent' && (
-                                            <MenuItem onClick={() => { setMenuOpen(false); handleMode('agent'); }} disabled={changingMode}>
-                                                <SparklesIcon className="h-4 w-4 text-[#25d366]" />
-                                                Hand back to {agentName}
-                                            </MenuItem>
-                                        )}
-                                        {active.mode !== 'paused' && (
-                                            <MenuItem onClick={() => { setMenuOpen(false); handleMode('paused'); }} disabled={changingMode}>Pause — send nothing</MenuItem>
-                                        )}
-                                        <div className="my-1 border-t border-white/5" />
-                                        <MenuItem onClick={() => { setMenuOpen(false); setDetailsOpen(o => !o); setCarFixOpen(false); }}>
-                                            Details
-                                        </MenuItem>
-                                        <MenuItem onClick={() => { setMenuOpen(false); setCarFixOpen(true); setDetailsOpen(false); }}>
-                                            <CarIcon className="h-4 w-4 text-amber-300" />
-                                            Wrong car
-                                        </MenuItem>
-                                        <MenuItem onClick={() => { setMenuOpen(false); requestSplit(); }}>
-                                            <UsersIcon className="h-4 w-4 text-amber-300" />
-                                            Different person
-                                        </MenuItem>
-                                        {(phoneOnFile || active.contact?.leadId) && <div className="my-1 border-t border-white/5" />}
-                                        {phoneOnFile && (
-                                            <a href={`tel:${phoneOnFile}`} role="menuitem" onClick={() => setMenuOpen(false)} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[#e9edef] hover:bg-white/5">
-                                                <PhoneIcon className="h-4 w-4 text-[#8696a0]" />
-                                                Call {displayUkPhone(phoneOnFile)}
-                                            </a>
-                                        )}
-                                        {phoneOnFile && !whatsappAlreadySent && (
-                                            <MenuItem onClick={() => {
-                                                setMenuOpen(false);
-                                                setThreadChannel('whatsapp');
-                                                void handleWhatsAppHer(reply.trim() || lastEmailOut?.text || '');
-                                            }}>
-                                                <WhatsAppIcon className="h-4 w-4 text-[#25d366]" />
-                                                Follow up on WhatsApp
-                                            </MenuItem>
-                                        )}
-                                        {active.contact?.leadId && (
-                                            <MenuItem onClick={() => { setMenuOpen(false); openLead(); }}>
-                                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-[#8696a0]" />
-                                                Open CRM lead
-                                            </MenuItem>
-                                        )}
-                                        <div className="my-1 border-t border-white/5" />
-                                        <MenuItem danger onClick={() => { setMenuOpen(false); setPendingDelete({ kind: 'thread', conv: active }); }}>
-                                            <TrashIcon className="h-4 w-4" />
-                                            Delete conversation
-                                        </MenuItem>
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        <ThreadHeader
+                            group={activeGroup}
+                            conv={active}
+                            agentName={agentName}
+                            bounced={bounced}
+                            phone={phoneOnFile}
+                            email={emailOnFile}
+                            leadLabel={linkedLead
+                                ? `Lead: ${[linkedLead.firstName, linkedLead.lastName].filter(Boolean).join(' ') || 'open'}`
+                                : null}
+                            pane={pane}
+                            paneChannels={paneChannels}
+                            channelCounts={channelCounts}
+                            onPane={setThreadChannel}
+                            onBack={closeThread}
+                            menuOpen={menuOpen}
+                            onMenuOpen={setMenuOpen}
+                            changingMode={changingMode}
+                            onMode={handleMode}
+                            detailsOpen={detailsOpen}
+                            onToggleDetails={() => { setDetailsOpen(o => !o); setCarFixOpen(false); }}
+                            carFixOpen={carFixOpen}
+                            onCarFixOpen={open => { setCarFixOpen(open); if (open) setDetailsOpen(false); }}
+                            carFixNote={carFixNote}
+                            onCarFixNote={setCarFixNote}
+                            carFixBusy={carFixBusy}
+                            onCarFix={handleCarFix}
+                            onSplit={() => requestSplit()}
+                            onOpenLead={openLead}
+                            canWhatsAppFollowUp={!!phoneOnFile && !whatsappAlreadySent}
+                            onWhatsAppFollowUp={() => {
+                                setThreadChannel('whatsapp');
+                                void handleWhatsAppHer(reply.trim() || lastEmailOut?.text || '');
+                            }}
+                            onDelete={() => setPendingDelete({ kind: 'thread', conv: active })}
+                        />
 
                         {bounced && (whatsappAlreadySent || bannerCollapsed ? (
                             /* Handled or put away: one quiet line, the chat gets the screen back. */
-                            <div className="flex items-center gap-2 border-b border-white/5 bg-[#141c22] px-4 py-1.5">
+                            <div className="flex items-center gap-2 border-b border-white/[0.06] bg-gray-900/60 px-4 py-2">
                                 {phoneOnFile ? (
-                                    <WhatsAppIcon className="h-3.5 w-3.5 flex-shrink-0 text-[#25d366]" />
+                                    <WhatsAppIcon className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
                                 ) : (
                                     <ExclamationTriangleIcon className="h-3.5 w-3.5 flex-shrink-0 text-red-300" />
                                 )}
-                                <p className="min-w-0 flex-1 truncate text-[12px] text-[#8696a0]">
+                                <p className="min-w-0 flex-1 truncate text-[12.5px] text-gray-400">
                                     {phoneOnFile
                                         ? whatsappAlreadySent
                                             ? 'Email bounces — this thread runs on WhatsApp now.'
@@ -1413,347 +1001,252 @@ const AgentInboxPage = () => {
                                 </p>
                             </div>
                         ) : (
-                            <div className="relative border-b border-white/5 border-l-2 border-l-red-400/80 bg-[#141c22] px-4 py-3">
+                            <div className="relative border-b border-white/[0.06] bg-red-500/[0.06] px-4 py-3">
                                 <button
                                     type="button"
                                     onClick={() => setBannerCollapsed(true)}
                                     aria-label="Put this notice away"
-                                    className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
+                                    className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white"
                                 >
                                     <XMarkIcon className="h-4 w-4" />
                                 </button>
-                                <p className="pr-8 text-[13px] font-semibold text-white">Email bounced — {phoneOnFile ? 'reach them on WhatsApp instead' : 'no other way through'}</p>
-                                <p className="mt-0.5 pr-8 text-[12px] leading-snug text-[#8696a0]">
-                                    {emailOnFile ? `${emailOnFile} is undeliverable` : 'Their address is undeliverable'}
-                                    {active.emailBounce?.reason ? ` (${active.emailBounce.reason})` : ''}.
-                                    {phoneOnFile ? ' Email replies are switched off for this thread.' : ' No mobile number on file.'}
-                                </p>
-                                {phoneOnFile && (
-                                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setThreadChannel('whatsapp');
-                                                void handleWhatsAppHer();
-                                            }}
-                                            disabled={sending}
-                                            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#25d366] px-4 text-[14px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50 sm:w-auto"
-                                        >
-                                            <WhatsAppIcon className="h-4 w-4" />
-                                            Send WhatsApp to {active.contact?.firstName || displayUkPhone(phoneOnFile)}
-                                        </button>
-                                        <a href={`tel:${phoneOnFile}`} className="text-center text-[13px] font-medium text-[#8696a0] hover:text-white sm:px-3">
-                                            or call {displayUkPhone(phoneOnFile)}
-                                        </a>
-                                    </div>
-                                )}
+                                <div className="mx-auto max-w-3xl pr-10">
+                                    <p className="flex items-center gap-2 text-[13.5px] font-semibold text-white">
+                                        <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0 text-red-300" />
+                                        Email bounced — {phoneOnFile ? 'reach them on WhatsApp instead' : 'no other way through'}
+                                    </p>
+                                    <p className="mt-1 text-[12.5px] leading-snug text-gray-300">
+                                        {emailOnFile ? `${emailOnFile} is undeliverable` : 'Their address is undeliverable'}
+                                        {active.emailBounce?.reason ? ` (${active.emailBounce.reason})` : ''}.
+                                        {phoneOnFile ? ' Email replies are switched off for this thread.' : ' No mobile number on file.'}
+                                    </p>
+                                    {phoneOnFile && (
+                                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setThreadChannel('whatsapp');
+                                                    void handleWhatsAppHer();
+                                                }}
+                                                disabled={sending}
+                                                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-[14px] font-semibold text-gray-950 hover:bg-emerald-400 disabled:opacity-50 sm:w-auto"
+                                            >
+                                                <WhatsAppIcon className="h-4 w-4" />
+                                                Send WhatsApp to {active.contact?.firstName || displayUkPhone(phoneOnFile)}
+                                            </button>
+                                            <a href={`tel:${phoneOnFile}`} className="flex h-11 items-center justify-center text-[13px] font-medium text-gray-400 hover:text-white sm:px-3">
+                                                or call {displayUkPhone(phoneOnFile)}
+                                            </a>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ))}
 
-                        {questionHost?.pendingQuestion && (
-                            <div className="border-b border-white/5 border-l-2 border-l-amber-400/80 bg-[#141c22] px-4 py-3">
-                                <div className="flex items-start gap-2.5">
-                                    <SparklesIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-300">{agentName} needs an answer</p>
-                                        <p className="mt-1 text-[14px] leading-snug text-white">{questionHost.pendingQuestion.question}</p>
-                                        {questionHost.pendingQuestion.context && (
-                                            <p className="mt-1 text-[12px] leading-snug text-[#8696a0]">{questionHost.pendingQuestion.context}</p>
-                                        )}
-                                        {!answerMode && (
-                                            <button type="button" onClick={() => { setAnswerMode(true); replyBoxRef.current?.focus(); }} className="mt-2 text-[12px] font-medium text-amber-300 hover:text-amber-200">
-                                                Answer below ↓
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         {active.escalated && active.escalationReason && !questionHost?.pendingQuestion && !bounced && !bannerCollapsed && (
-                            <div className="flex items-start gap-2.5 border-b border-white/5 border-l-2 border-l-red-400/80 bg-[#141c22] px-4 py-3">
-                                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-300" />
-                                <p className="min-w-0 flex-1 text-[13px] leading-snug text-[#e9edef]">{active.escalationReason}</p>
-                                <button
-                                    type="button"
-                                    onClick={() => setBannerCollapsed(true)}
-                                    aria-label="Put this notice away"
-                                    className="-mr-1 -mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[#8696a0] hover:bg-white/5 hover:text-white"
-                                >
-                                    <XMarkIcon className="h-4 w-4" />
-                                </button>
+                            <div className="border-b border-white/[0.06] bg-red-500/[0.06] px-4 py-2.5">
+                                <div className="mx-auto flex max-w-3xl items-start gap-2.5">
+                                    <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-300" />
+                                    <p className="min-w-0 flex-1 text-[13px] leading-snug text-gray-100">{active.escalationReason}</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBannerCollapsed(true)}
+                                        aria-label="Put this notice away"
+                                        className="-mr-2 -mt-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white"
+                                    >
+                                        <XMarkIcon className="h-4 w-4" />
+                                    </button>
+                                </div>
                             </div>
                         )}
 
                         <div
                             ref={threadRef}
-                            className={`min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4 ${emailPane ? 'space-y-4' : ''}`}
-                            style={emailPane ? {
-                                backgroundColor: '#0e1620',
-                            } : {
-                                backgroundColor: '#0b141a',
-                                backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0)',
-                                backgroundSize: '22px 22px',
-                            }}
+                            className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gray-950"
+                            style={emailPane ? undefined : chatTexture}
                         >
-                            {messages.length ? (
-                                messages.map(message => {
-                                    const key = `${conversationRefKey(message.conv)}:${message.id}`;
-                                    return (
-                                        <ThreadMessage
-                                            key={key}
-                                            message={message}
-                                            agentName={agentName}
-                                            deskEmail={inbox?.gmailAddress}
-                                            selected={selectedMsgKey === key}
-                                            onToggleSelect={() => setSelectedMsgKey(k => (k === key ? null : key))}
-                                            onDelete={() => setPendingDelete({ kind: 'message', message, conv: message.conv })}
-                                            onDetach={
-                                                message.from === 'customer' && message.channel === 'email'
-                                                    ? () => requestSplit({ message, conv: message.conv })
-                                                    : undefined
-                                            }
-                                        />
-                                    );
-                                })
-                            ) : (
-                                <div className="px-4 py-16 text-center">
-                                    {emailPane ? (
-                                        <>
-                                            <EnvelopeIcon className="mx-auto h-10 w-10 text-sky-400/30" />
-                                            <p className="mt-3 text-sm font-medium text-[#e9edef]">No emails in this thread</p>
-                                            <p className="mt-1 text-xs text-[#8696a0]">
-                                                {emailOnFile
-                                                    ? `Mail to ${emailOnFile} will show here. WhatsApp stays on the other tab.`
-                                                    : 'No email address on file. Switch to WhatsApp to keep talking.'}
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <WhatsAppIcon className="mx-auto h-10 w-10 text-[#25d366]/30" />
-                                            <p className="mt-3 text-sm font-medium text-[#e9edef]">No WhatsApp yet</p>
-                                            <p className="mt-1 text-xs text-[#8696a0]">
-                                                {phoneOnFile
-                                                    ? `Chat with ${displayUkPhone(phoneOnFile)} shows here. Emails stay on the other tab.`
-                                                    : 'No mobile number on file. Switch to Email to keep talking.'}
-                                            </p>
-                                        </>
-                                    )}
-                                </div>
-                            )}
+                            <div className={`mx-auto w-full max-w-3xl px-3 py-5 sm:px-6 ${emailPane ? 'space-y-4' : 'space-y-2.5'}`}>
+                                {messages.length ? (
+                                    messages.map((message, i) => {
+                                        const key = `${conversationRefKey(message.conv)}:${message.id}`;
+                                        const day = dayLabel(message.createdAt);
+                                        const newDay = i === 0 || dayLabel(messages[i - 1].createdAt) !== day;
+                                        return (
+                                            <React.Fragment key={key}>
+                                                {newDay && (
+                                                    <div className="flex items-center gap-3 pb-1 pt-2" role="separator" aria-label={day}>
+                                                        <span className="h-px flex-1 bg-white/[0.06]" aria-hidden />
+                                                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">{day}</span>
+                                                        <span className="h-px flex-1 bg-white/[0.06]" aria-hidden />
+                                                    </div>
+                                                )}
+                                                <ThreadMessage
+                                                    message={message}
+                                                    agentName={agentName}
+                                                    deskEmail={inbox?.gmailAddress}
+                                                    selected={selectedMsgKey === key}
+                                                    onToggleSelect={() => setSelectedMsgKey(k => (k === key ? null : key))}
+                                                    onDelete={() => setPendingDelete({ kind: 'message', message, conv: message.conv })}
+                                                    onDetach={
+                                                        message.from === 'customer' && message.channel === 'email'
+                                                            ? () => requestSplit({ message, conv: message.conv })
+                                                            : undefined
+                                                    }
+                                                />
+                                            </React.Fragment>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="px-4 py-16 text-center">
+                                        {emailPane ? (
+                                            <>
+                                                <EnvelopeIcon className="mx-auto h-9 w-9 text-sky-400/40" />
+                                                <p className="mt-3 text-sm font-medium text-gray-100">No emails in this thread</p>
+                                                <p className="mt-1 text-[13px] text-gray-400">
+                                                    {emailOnFile
+                                                        ? `Mail to ${emailOnFile} will show here. WhatsApp stays on the other tab.`
+                                                        : 'No email address on file. Switch to WhatsApp to keep talking.'}
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <WhatsAppIcon className="mx-auto h-9 w-9 text-emerald-400/40" />
+                                                <p className="mt-3 text-sm font-medium text-gray-100">No WhatsApp yet</p>
+                                                <p className="mt-1 text-[13px] text-gray-400">
+                                                    {phoneOnFile
+                                                        ? `Chat with ${displayUkPhone(phoneOnFile)} shows here. Emails stay on the other tab.`
+                                                        : 'No mobile number on file. Switch to Email to keep talking.'}
+                                                </p>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div
-                            className="border-t border-white/5 bg-[#202c33] px-3 pt-2"
+                            className="border-t border-white/[0.06] bg-gray-900 px-3 pt-3 sm:px-4"
                             style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
                         >
-                            {!asking && hasDraft && draftHost?.pendingDraft && (
-                                <div className="mb-2 overflow-hidden rounded-xl border border-amber-400/25 bg-amber-400/[0.06]">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDraftOpen(o => !o)}
-                                        aria-expanded={draftOpen}
-                                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
-                                    >
-                                        <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
-                                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-amber-200">
-                                            {draftOpen
-                                                ? (draftHost.pendingDraft.source === 'instruction'
-                                                    ? `${agentName}'s draft, from your prompt`
-                                                    : `${agentName} drafted this`)
-                                                : (draftText || `${agentName} drafted a reply`)}
-                                        </span>
-                                        <span className="flex-shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
-                                            Not sent
-                                        </span>
-                                        <ChevronDownIcon className={`h-3.5 w-3.5 flex-shrink-0 text-amber-300/80 transition-transform ${draftOpen ? 'rotate-180' : ''}`} />
-                                    </button>
-                                    <div className="space-y-2 border-t border-amber-400/15 px-2.5 pb-2.5 pt-2">
-                                        {draftOpen && (
-                                            <>
-                                                {bounced && draftHost.pendingDraft.source === 'agent' && (
-                                                    <p className="text-[12px] leading-snug text-red-300">
-                                                        This may be a reply to the bounce notice, not the customer — read it before sending.
-                                                    </p>
-                                                )}
-                                                <textarea
-                                                    rows={3}
-                                                    value={draftText}
-                                                    onChange={e => setDraftText(e.target.value)}
-                                                    aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
-                                                    className="w-full resize-y rounded-xl border border-amber-400/25 bg-[#2a3942] px-3 py-2 text-sm leading-relaxed text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40"
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        value={promptText}
-                                                        onChange={e => setPromptText(e.target.value)}
-                                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReprompt(); } }}
-                                                        placeholder={`Tell ${agentName} what to change…`}
-                                                        aria-label={`Your prompt to ${agentName} — amend it and run him again`}
-                                                        className="h-10 min-w-0 flex-1 rounded-full bg-black/35 px-3.5 text-[13px] text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/30"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleReprompt}
-                                                        disabled={sending || !!draftBusy}
-                                                        title={promptText.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
-                                                        className="flex h-10 flex-shrink-0 items-center gap-1 rounded-full bg-[#005c4b] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
-                                                    >
-                                                        {sending ? <Spinner className="h-3.5 w-3.5" /> : <SparklesIcon className="h-3.5 w-3.5" />}
-                                                        Redo
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleDiscardDraft}
-                                                        disabled={!!draftBusy}
-                                                        className="flex h-10 flex-shrink-0 items-center justify-center rounded-full px-3 text-[12px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-white disabled:opacity-40"
-                                                    >
-                                                        {draftBusy === 'discard' ? <Spinner className="h-3.5 w-3.5" /> : 'Bin'}
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
-                                        <SendViaBar
-                                            value={sendViaNow}
-                                            onChange={setSendVia}
-                                            emailOk={emailOk}
-                                            phone={phoneOnFile}
-                                            needsOpener={whatsappNeedsOpener}
-                                            disabled={!!draftBusy}
-                                            onAddPhone={handleAddPhone}
-                                        />
+                            <div className="mx-auto w-full max-w-3xl space-y-2">
+                                {questionHost?.pendingQuestion && (
+                                    <QuestionCard
+                                        agentName={agentName}
+                                        question={questionHost.pendingQuestion.question}
+                                        context={questionHost.pendingQuestion.context}
+                                        answer={answer}
+                                        onAnswer={setAnswer}
+                                        onSend={handleAnswer}
+                                        busy={answering}
+                                    />
+                                )}
+
+                                {hasDraft && draftHost?.pendingDraft && (
+                                    <DraftCard
+                                        agentName={agentName}
+                                        source={draftHost.pendingDraft.source}
+                                        text={draftText}
+                                        onText={setDraftText}
+                                        open={draftOpen}
+                                        onOpen={setDraftOpen}
+                                        prompt={promptText}
+                                        onPrompt={setPromptText}
+                                        onRedo={handleReprompt}
+                                        redoBusy={sending}
+                                        busy={draftBusy}
+                                        onApprove={handleApproveDraft}
+                                        onDiscard={handleDiscardDraft}
+                                        bounceWarning={bounced && draftHost.pendingDraft.source === 'agent'}
+                                        via={sendViaNow}
+                                        onVia={setSendVia}
+                                        emailOk={emailOk}
+                                        phone={phoneOnFile}
+                                        needsOpener={whatsappNeedsOpener}
+                                        onAddPhone={handleAddPhone}
+                                    />
+                                )}
+
+                                {phrasingSince && (
+                                    <p className="flex items-center gap-2 px-1 text-[12.5px] text-amber-200">
+                                        <Spinner className="h-3.5 w-3.5 text-amber-300" />
+                                        {agentName} is drafting…
+                                    </p>
+                                )}
+
+                                {sendStatus && (
+                                    <p className="flex items-center gap-2 px-1 text-[12.5px] text-gray-300">
+                                        <Spinner className="h-3.5 w-3.5 text-gray-300" />
+                                        {sendStatus}
+                                    </p>
+                                )}
+
+                                {drafting === 'working' && !hasDraft && (
+                                    <p className="flex items-center gap-2 px-1 text-[12.5px] text-amber-200">
+                                        <Spinner className="h-3.5 w-3.5 text-amber-300" />
+                                        {agentName} is writing a draft — or just type your own reply.
+                                    </p>
+                                )}
+                                {drafting === 'failed' && !hasDraft && (
+                                    <p className="flex items-center gap-2 px-1 text-[12.5px] text-gray-400">
+                                        {agentName} could not draft a reply.
                                         <button
                                             type="button"
-                                            onClick={handleApproveDraft}
-                                            disabled={!draftText.trim() || !!draftBusy}
-                                            className={`flex h-11 w-full items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold disabled:opacity-40 ${
-                                                sendViaNow === 'email'
-                                                    ? 'bg-sky-600 text-white'
-                                                    : sendViaNow === 'both'
-                                                        ? 'bg-[#005c4b] text-white'
-                                                        : 'bg-[#25d366] text-[#111b21]'
-                                            }`}
+                                            onClick={() => { if (active) void requestDraft(active, true); }}
+                                            className="min-h-[44px] font-semibold text-amber-300 hover:underline"
                                         >
-                                            {draftBusy === 'approve' ? <Spinner className="h-4 w-4" /> : sendViaLabel(sendViaNow)}
+                                            Try again
+                                        </button>
+                                    </p>
+                                )}
+
+                                {active?.heldWords?.text && (
+                                    <div className="rounded-xl border border-emerald-400/25 bg-emerald-400/[0.07] px-3 py-2 text-[12px] leading-snug text-gray-100">
+                                        <span className="font-semibold text-emerald-300">Waiting for their reply on WhatsApp, then this goes: </span>
+                                        {active.heldWords.text}
+                                    </div>
+                                )}
+
+                                {offerWhatsAppFollowUp && replyMode === 'human' && (
+                                    <div className="flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.07] py-1.5 pl-3 pr-1.5">
+                                        <WhatsAppIcon className="h-4 w-4 flex-shrink-0 text-emerald-400" />
+                                        <p className="min-w-0 flex-1 text-[12.5px] leading-snug text-gray-100">
+                                            They have a mobile. This reply went by email only.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setThreadChannel('whatsapp');
+                                                void handleWhatsAppHer(reply.trim() || lastEmailOut?.text || '');
+                                            }}
+                                            disabled={sending}
+                                            className="h-11 flex-shrink-0 rounded-lg bg-emerald-500 px-3 text-[12.5px] font-semibold text-gray-950 hover:bg-emerald-400 disabled:opacity-50"
+                                        >
+                                            Send on WhatsApp
                                         </button>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {asking ? (
-                                <div className="mb-2 flex items-center justify-between gap-2">
-                                    <p className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold text-amber-300">
-                                        <SparklesIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                                        <span className="truncate">Answering {agentName}<span className="hidden font-normal text-amber-300/70 sm:inline"> — he phrases it for the customer</span></span>
-                                    </p>
-                                    <button type="button" onClick={() => setAnswerMode(false)} className="flex-shrink-0 text-[11px] font-medium text-[#8696a0] hover:text-white">
-                                        Reply to customer<span className="hidden sm:inline"> instead</span>
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="mb-1.5 flex gap-1 rounded-full bg-black/35 p-0.5">
-                                    <button
-                                        type="button"
-                                        onClick={() => setReplyMode('human')}
-                                        aria-pressed={replyMode === 'human'}
-                                        className={`flex h-8 flex-1 items-center justify-center rounded-full text-[13px] font-semibold transition-colors ${
-                                            replyMode === 'human'
-                                                ? 'bg-[#2a3942] text-white shadow'
-                                                : 'text-[#8696a0] hover:text-white'
-                                        }`}
-                                    >
-                                        Me
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => { if (!attachment) setReplyMode('agent'); }}
-                                        aria-pressed={replyMode === 'agent'}
-                                        disabled={!!attachment}
-                                        className={`flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors disabled:opacity-40 ${
-                                            replyMode === 'agent'
-                                                ? 'bg-[#005c4b] text-white shadow'
-                                                : 'text-[#8696a0] hover:text-white'
-                                        }`}
-                                    >
-                                        <SparklesIcon className="h-3.5 w-3.5" />
-                                        Ask {agentName}
-                                    </button>
-                                </div>
-                            )}
+                                {replyMode === 'human' && pane === 'whatsapp' && whatsappNeedsOpener && sendViaNow !== 'email' && (
+                                    <div className="flex items-center gap-2 rounded-xl bg-black/30 py-1.5 pl-3 pr-1.5 ring-1 ring-inset ring-white/[0.05]">
+                                        <p className="min-w-0 flex-1 text-[11.5px] leading-snug text-gray-400">
+                                            {'They have not written on WhatsApp in 24 hours, so Meta’s rule applies: your words go now inside the approved “update about your car” message. Or send just the opener.'}
+                                        </p>
+                                        {!reply.trim() && (
+                                            <button
+                                                type="button"
+                                                onClick={() => void handleWhatsAppHer()}
+                                                disabled={sending}
+                                                className="h-11 flex-shrink-0 rounded-lg bg-emerald-500 px-3 text-[12.5px] font-semibold text-gray-950 hover:bg-emerald-400 disabled:opacity-50"
+                                            >
+                                                Send opener
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
 
-                            {phrasingSince && (
-                                <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
-                                    <Spinner className="h-3.5 w-3.5" />
-                                    {agentName} is drafting…
-                                </p>
-                            )}
+                                {sendError && <ComposeError error={sendError} onDismiss={() => setSendError(null)} />}
 
-                            {sendStatus && (
-                                <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
-                                    <Spinner className="h-3.5 w-3.5" />
-                                    {sendStatus}
-                                </p>
-                            )}
-
-                            {drafting === 'working' && !hasDraft && !asking && (
-                                <p className="mb-2 flex items-center gap-2 text-xs text-[#25d366]">
-                                    <Spinner className="h-3.5 w-3.5" />
-                                    {agentName} is writing a draft — or just type your own reply.
-                                </p>
-                            )}
-                            {drafting === 'failed' && !hasDraft && !asking && (
-                                <p className="mb-2 flex items-center gap-2 text-xs text-[#8696a0]">
-                                    {agentName} could not draft a reply.
-                                    <button
-                                        type="button"
-                                        onClick={() => { if (active) void requestDraft(active, true); }}
-                                        className="font-semibold text-[#25d366] hover:underline"
-                                    >
-                                        Try again
-                                    </button>
-                                </p>
-                            )}
-
-                            {active?.heldWords?.text && (
-                                <div className="mb-2 rounded-xl border border-[#25d366]/30 bg-[#25d366]/10 px-3 py-2 text-[11px] leading-snug text-[#e9edef]">
-                                    <span className="font-semibold text-[#25d366]">Waiting for their reply on WhatsApp, then this goes: </span>
-                                    {active.heldWords.text}
-                                </div>
-                            )}
-
-                            {customerWaiting && !asking && replyMode === 'human' && (
-                                <button
-                                    type="button"
-                                    onClick={() => { setReplyMode('agent'); if (active) void requestDraft(active, true); }}
-                                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12px] font-medium text-[#8696a0] hover:bg-white/5 hover:text-[#25d366]"
-                                >
-                                    <SparklesIcon className="h-3.5 w-3.5" />
-                                    Ask {agentName} to draft a reply
-                                </button>
-                            )}
-
-                            {offerWhatsAppFollowUp && replyMode === 'human' && (
-                                <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#25d366]/30 bg-[#25d366]/10 px-3 py-2">
-                                    <WhatsAppIcon className="h-4 w-4 flex-shrink-0 text-[#25d366]" />
-                                    <p className="min-w-0 flex-1 text-[12px] leading-snug text-[#e9edef]">
-                                        They have a mobile. This reply went by email only.
-                                    </p>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setThreadChannel('whatsapp');
-                                            void handleWhatsAppHer(reply.trim() || lastEmailOut?.text || '');
-                                        }}
-                                        disabled={sending}
-                                        className="h-9 flex-shrink-0 rounded-full bg-[#25d366] px-3 text-[12px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50"
-                                    >
-                                        Send on WhatsApp
-                                    </button>
-                                </div>
-                            )}
-
-                            {!asking && replyMode === 'human' && showSendVia && !hasDraft && (
-                                <div className="mb-1.5">
+                                {replyMode === 'human' && showSendVia && !hasDraft && (
                                     <SendViaBar
                                         value={sendViaNow}
                                         onChange={setSendVia}
@@ -1763,94 +1256,26 @@ const AgentInboxPage = () => {
                                         disabled={sending}
                                         onAddPhone={handleAddPhone}
                                     />
-                                </div>
-                            )}
+                                )}
 
-                            {!asking && replyMode === 'human' && pane === 'whatsapp' && whatsappNeedsOpener && sendViaNow !== 'email' && (
-                                <div className="mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-3 py-2">
-                                    <p className="min-w-0 flex-1 text-[11px] leading-snug text-[#8696a0]">
-                                        {'They have not written on WhatsApp in 24 hours, so Meta\u2019s rule applies: your words go now inside the approved \u201cupdate about your car\u201d message. Or send just the opener.'}
-                                    </p>
-                                    {!reply.trim() && (
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleWhatsAppHer()}
-                                            disabled={sending}
-                                            className="h-9 flex-shrink-0 rounded-full bg-[#25d366] px-3 text-[12px] font-semibold text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-50"
-                                        >
-                                            Send opener
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-
-                            {attachment && (
-                                <div className="mb-2 flex items-center gap-2 rounded-lg bg-black/30 px-3 py-2 text-xs text-[#e9edef]">
-                                    <PaperClipIcon className="h-4 w-4 text-[#25d366]" />
-                                    <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
-                                    <button type="button" onClick={() => setAttachment(null)} className="text-[#8696a0] hover:text-white" aria-label="Remove attachment">
-                                        <TrashIcon className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            )}
-
-                            {sendError && <ComposeError error={sendError} onDismiss={() => setSendError(null)} />}
-
-                            {asking ? (
-                                <div className="flex items-end gap-2">
-                                    <textarea
-                                        ref={replyBoxRef}
-                                        rows={1}
-                                        value={answer}
-                                        onChange={e => { setAnswer(e.target.value); growBox(e.target); }}
-                                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnswer(); } }}
-                                        placeholder="Answer in your own words…"
-                                        aria-label={`Your answer to ${agentName}`}
-                                        className="min-h-[44px] min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-sm text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-amber-400/40"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleAnswer}
-                                        disabled={!answer.trim() || answering}
-                                        className="flex h-11 flex-shrink-0 items-center justify-center gap-1 rounded-full bg-[#005c4b] px-4 text-sm font-semibold text-white disabled:opacity-40"
-                                    >
-                                        {answering ? <Spinner className="h-4 w-4" /> : 'Send answer'}
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex items-end gap-2">
-                                    {phoneOnFile && pane === 'whatsapp' && (
-                                        <>
-                                            <input
-                                                ref={fileRef}
-                                                type="file"
-                                                accept={WHATSAPP_ACCEPT}
-                                                className="hidden"
-                                                onChange={e => {
-                                                    const file = e.target.files?.[0] || null;
-                                                    e.target.value = '';
-                                                    if (!file) return;
-                                                    const problem = describeWhatsAppPickError(file);
-                                                    if (problem) {
-                                                        setSendError({ message: problem });
-                                                        return;
-                                                    }
-                                                    setAttachment(file);
-                                                    setReplyMode('human');
-                                                    setThreadChannel('whatsapp');
-                                                    setSendVia('whatsapp');
-                                                }}
-                                            />
+                                <div className={`rounded-2xl bg-gray-800/60 ring-1 ring-inset transition-shadow focus-within:ring-2 ${
+                                    agentComposing
+                                        ? 'ring-amber-400/25 focus-within:ring-amber-400/50'
+                                        : 'ring-white/[0.08] focus-within:ring-white/25'
+                                }`}>
+                                    {attachment && (
+                                        <div className="mx-2 mt-2 flex items-center gap-2 rounded-xl bg-black/30 px-3 py-2 text-[12.5px] text-gray-100">
+                                            <PaperClipIcon className="h-4 w-4 flex-shrink-0 text-emerald-400" />
+                                            <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
                                             <button
                                                 type="button"
-                                                onClick={() => fileRef.current?.click()}
-                                                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#2a3942] text-[#e9edef] hover:bg-[#3b4a54]"
-                                                aria-label="Attach a photo, video or file"
-                                                title="Attach a photo, video or file"
+                                                onClick={() => setAttachment(null)}
+                                                className="-my-1 -mr-2 flex h-10 w-10 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white"
+                                                aria-label="Remove attachment"
                                             >
-                                                <PaperClipIcon className="h-5 w-5" />
+                                                <TrashIcon className="h-3.5 w-3.5" />
                                             </button>
-                                        </>
+                                        </div>
                                     )}
                                     <textarea
                                         ref={replyBoxRef}
@@ -1860,66 +1285,136 @@ const AgentInboxPage = () => {
                                         onKeyDown={e => {
                                             if (e.key === 'Enter' && !e.shiftKey) {
                                                 e.preventDefault();
-                                                if (attachment || replyMode === 'human') handleSend();
-                                                else if (reply.trim()) handleInstruct();
-                                                else if (active) void requestDraft(active, true);
+                                                submitComposer();
                                             }
                                         }}
-                                        placeholder={replyMode === 'agent' && !attachment
+                                        placeholder={agentComposing
                                             ? `Tell ${agentName} what to say…`
-                                            : 'Your words, exactly'}
-                                        aria-label={replyMode === 'agent' && !attachment ? `What to tell ${agentName} to say` : 'Your reply to the customer — sent exactly as typed'}
-                                        className="min-h-[44px] min-w-0 flex-1 resize-none rounded-2xl border-0 bg-[#2a3942] px-4 py-2.5 text-[16px] leading-snug text-white placeholder-[#8696a0] focus:outline-none focus:ring-2 focus:ring-[#25d366]/40 sm:text-sm"
+                                            : firstName ? `Write to ${firstName}…` : 'Your words, exactly'}
+                                        aria-label={agentComposing ? `What to tell ${agentName} to say` : 'Your reply to the customer — sent exactly as typed'}
+                                        className="block min-h-[48px] w-full resize-none bg-transparent px-4 pb-1 pt-3 sm:min-h-[64px] text-[16px] leading-relaxed text-gray-50 placeholder-gray-500 focus:outline-none sm:text-[15px]"
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (attachment || replyMode === 'human') handleSend();
-                                            else if (reply.trim()) handleInstruct();
-                                            else if (active) void requestDraft(active, true);
-                                        }}
-                                        disabled={sending || (replyMode === 'human' && sendViaNow === 'email' && !emailOk) || (replyMode === 'human' && sendViaNow !== 'email' && !phoneOnFile) || (replyMode === 'human' && !reply.trim() && !attachment)}
-                                        className={`flex h-11 flex-shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
-                                            attachment || replyMode === 'human'
-                                                ? sendViaNow === 'email'
-                                                    ? 'bg-sky-600 text-white'
-                                                    : sendViaNow === 'both'
-                                                        ? 'bg-[#005c4b] text-white'
-                                                        : 'bg-[#25d366] text-[#111b21]'
-                                                : 'gap-1 bg-[#005c4b] text-white'
-                                        }`}
-                                        aria-label={
-                                            attachment || replyMode === 'human'
-                                                ? sendViaNow === 'both' ? 'Send by email and WhatsApp' : sendViaNow === 'email' ? 'Send by email' : 'Send on WhatsApp'
-                                                : reply.trim() ? `Tell ${agentName}` : `Ask ${agentName} to draft`
-                                        }
-                                    >
-                                        {sending ? <Spinner className="h-4 w-4" /> : attachment || replyMode === 'human' ? (
+                                    <div className="flex items-center gap-1.5 px-2 pb-2">
+                                        {phoneOnFile && pane === 'whatsapp' && (
                                             <>
-                                                {sendViaNow === 'email' ? (
-                                                    <EnvelopeIcon className="h-4 w-4" aria-hidden />
-                                                ) : sendViaNow === 'whatsapp' ? (
-                                                    <WhatsAppIcon className="h-4 w-4" aria-hidden />
-                                                ) : null}
-                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
-                                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                                                </svg>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <SparklesIcon className="h-4 w-4" />
-                                                <span>{reply.trim() ? `Ask ${agentName}` : 'Draft'}</span>
+                                                <input
+                                                    ref={fileRef}
+                                                    type="file"
+                                                    accept={WHATSAPP_ACCEPT}
+                                                    className="hidden"
+                                                    onChange={e => {
+                                                        const file = e.target.files?.[0] || null;
+                                                        e.target.value = '';
+                                                        if (!file) return;
+                                                        const problem = describeWhatsAppPickError(file);
+                                                        if (problem) {
+                                                            setSendError({ message: problem });
+                                                            return;
+                                                        }
+                                                        setAttachment(file);
+                                                        setReplyMode('human');
+                                                        setThreadChannel('whatsapp');
+                                                        setSendVia('whatsapp');
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fileRef.current?.click()}
+                                                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-gray-400 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                                                    aria-label="Attach a photo, video or file"
+                                                    title="Attach a photo, video or file"
+                                                >
+                                                    <PaperClipIcon className="h-5 w-5" />
+                                                </button>
                                             </>
                                         )}
-                                    </button>
+                                        <div className="flex flex-shrink-0 rounded-xl bg-black/30 sm:p-1" role="group" aria-label="Who writes this reply">
+                                            <button
+                                                type="button"
+                                                onClick={() => setReplyMode('human')}
+                                                aria-pressed={replyMode === 'human'}
+                                                className={`flex h-11 items-center rounded-xl px-3 text-[13px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 sm:h-8 sm:rounded-lg ${
+                                                    replyMode === 'human' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                                                }`}
+                                            >
+                                                Me
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { if (!attachment) setReplyMode('agent'); }}
+                                                aria-pressed={replyMode === 'agent'}
+                                                disabled={!!attachment}
+                                                className={`flex h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 disabled:opacity-40 sm:h-8 sm:rounded-lg ${
+                                                    replyMode === 'agent' ? 'bg-amber-400/15 text-amber-200 shadow-sm' : 'text-gray-400 hover:text-white'
+                                                }`}
+                                            >
+                                                <SparklesIcon className="h-3.5 w-3.5" />
+                                                {agentName}
+                                            </button>
+                                        </div>
+                                        <p className="hidden min-w-0 flex-1 truncate px-1 text-right text-[12px] text-gray-400 sm:block">
+                                            {sendDestination}
+                                        </p>
+                                        <span className="flex-1 sm:hidden" />
+                                        <button
+                                            type="button"
+                                            onClick={submitComposer}
+                                            disabled={sending || (replyMode === 'human' && sendViaNow === 'email' && !emailOk) || (replyMode === 'human' && sendViaNow !== 'email' && !phoneOnFile) || (replyMode === 'human' && !reply.trim() && !attachment)}
+                                            className={`flex h-11 flex-shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[14px] font-semibold shadow-lg shadow-black/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-40 disabled:shadow-none ${
+                                                agentComposing ? 'bg-amber-400 text-gray-950 hover:bg-amber-300' : sendButtonClass(sendViaNow)
+                                            }`}
+                                            aria-label={
+                                                !agentComposing
+                                                    ? sendViaNow === 'both' ? 'Send by email and WhatsApp' : sendViaNow === 'email' ? 'Send by email' : 'Send on WhatsApp'
+                                                    : reply.trim() ? `Tell ${agentName}` : `Ask ${agentName} to draft`
+                                            }
+                                        >
+                                            {sending ? <Spinner className="h-4 w-4" /> : !agentComposing ? (
+                                                <>
+                                                    <SendRouteIcon via={sendViaNow} />
+                                                    <span>Send</span>
+                                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+                                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                                    </svg>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <SparklesIcon className="h-4 w-4" />
+                                                    <span>{reply.trim() ? `Ask ${agentName}` : 'Draft'}</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
-                            )}
+
+                                {customerWaiting && replyMode === 'human' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setReplyMode('agent'); if (active) void requestDraft(active, true); }}
+                                        className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-lg text-[12.5px] font-medium text-gray-400 transition-colors hover:bg-amber-400/[0.06] hover:text-amber-200"
+                                    >
+                                        <SparklesIcon className="h-3.5 w-3.5" />
+                                        {firstName ? `${firstName} is waiting — ` : ''}ask {agentName} to draft a reply
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </>
                 ) : (
-                    <div className="flex h-full flex-col items-center justify-center bg-[#0b141a] text-center">
-                        <WhatsAppIcon className="h-16 w-16 text-[#25d366]/30" />
-                        <p className="mt-4 text-sm text-[#8696a0]">Pick a conversation.</p>
+                    <div className="flex h-full flex-col items-center justify-center bg-gray-950 px-8 text-center" style={chatTexture}>
+                        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+                            <InboxIcon className="h-8 w-8 text-gray-500" />
+                        </span>
+                        <p className="mt-4 text-[15px] font-semibold text-gray-100">
+                            {summary.needsYou
+                                ? `${summary.needsYou} conversation${summary.needsYou === 1 ? '' : 's'} need${summary.needsYou === 1 ? 's' : ''} you`
+                                : 'Pick a conversation'}
+                        </p>
+                        <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-gray-400">
+                            {summary.needsYou
+                                ? `They are at the top of the list — ${agentName}'s drafts and questions first.`
+                                : 'Everything is answered. New WhatsApps and emails appear on the left.'}
+                        </p>
                     </div>
                 )}
             </section>

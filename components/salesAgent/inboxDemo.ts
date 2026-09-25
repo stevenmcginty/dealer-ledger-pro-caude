@@ -5,7 +5,9 @@
 
 import type { AgentMessage, Conversation } from '../../services/salesAgentService';
 
-const now = 1_725_000_000_000;
+// Relative to the clock so the list shows live, needs-you and folded-away (Earlier) threads.
+const now = Date.now() - 60_000;
+const DAY = 24 * 3600_000;
 
 const nigeWhatsApp = `Sent from my iPhone regards nige
 
@@ -124,6 +126,12 @@ export const DEMO_CONVERSATIONS: Conversation[] = [
         updatedAt: now - 7_900_000,
         unread: 0,
         emailSubject: 'MX-5 still for sale?',
+        pendingQuestion: {
+            id: 'q-pat',
+            question: 'Pat has a 2015 Golf 1.4 TSI, 68k miles. What can I offer for it as a part exchange?',
+            askedAt: now - 7_800_000,
+            context: 'He asked for a number before he comes to see the MX-5.',
+        },
     },
     {
         id: 'anne-em',
@@ -151,6 +159,72 @@ export const DEMO_CONVERSATIONS: Conversation[] = [
         updatedAt: now - 5_000,
         unread: 0,
         emailSubject: 'Lead submission from CarGurus',
+    },
+    {
+        id: 'old-1',
+        shortId: 30,
+        companyId: 'demo-company',
+        channel: 'email',
+        address: 'graham@example.com',
+        originChannel: 'email',
+        contact: { firstName: 'Graham', lastName: 'Price', email: 'graham@example.com' },
+        mode: 'agent',
+        stage: 'closed',
+        vehicleInterest: { title: 'Audi A3 1.6 TDI Sport' },
+        escalated: false,
+        priceRequests: 0,
+        summary: 'Thanks, I found one closer to home.',
+        lastInboundAt: now - 19 * DAY,
+        lastOutboundAt: now - 19 * DAY + 3_600_000,
+        lastCustomerMessageAt: now - 19 * DAY,
+        createdAt: now - 21 * DAY,
+        updatedAt: now - 19 * DAY + 3_600_000,
+        unread: 0,
+        emailSubject: 'Audi A3 1.6 TDI Sport',
+    },
+    {
+        id: 'old-2',
+        shortId: 31,
+        companyId: 'demo-company',
+        channel: 'email',
+        address: 'leanne@example.com',
+        originChannel: 'email',
+        contact: { firstName: 'Leanne', lastName: 'Walsh', email: 'leanne@example.com' },
+        mode: 'agent',
+        stage: 'closed',
+        vehicleInterest: { title: 'Vauxhall Corsa 1.4 SE' },
+        escalated: false,
+        priceRequests: 0,
+        summary: 'OK thanks for letting me know.',
+        lastInboundAt: now - 33 * DAY,
+        lastOutboundAt: now - 33 * DAY + 3_600_000,
+        lastCustomerMessageAt: now - 33 * DAY,
+        createdAt: now - 35 * DAY,
+        updatedAt: now - 33 * DAY + 3_600_000,
+        unread: 0,
+        emailSubject: 'Vauxhall Corsa 1.4 SE',
+    },
+    {
+        id: 'old-3',
+        shortId: 32,
+        companyId: 'demo-company',
+        channel: 'email',
+        address: 'tom@example.com',
+        originChannel: 'email',
+        contact: { firstName: 'Tom', lastName: 'Reid', email: 'tom@example.com' },
+        mode: 'agent',
+        stage: 'closed',
+        vehicleInterest: { title: 'BMW 320d M Sport' },
+        escalated: false,
+        priceRequests: 0,
+        summary: 'Sold already? No worries.',
+        lastInboundAt: now - 61 * DAY,
+        lastOutboundAt: now - 61 * DAY + 3_600_000,
+        lastCustomerMessageAt: now - 61 * DAY,
+        createdAt: now - 63 * DAY,
+        updatedAt: now - 61 * DAY + 3_600_000,
+        unread: 0,
+        emailSubject: 'BMW 320d M Sport',
     },
 ];
 

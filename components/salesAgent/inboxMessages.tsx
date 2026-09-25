@@ -29,7 +29,7 @@ const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
 const ChannelChip: React.FC<{ channel: Channel }> = ({ channel }) => {
     if (channel === 'whatsapp') {
         return (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-[#25d366]">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-400">
                 <WhatsAppIcon className="h-3 w-3" />
                 WhatsApp
             </span>
@@ -37,7 +37,7 @@ const ChannelChip: React.FC<{ channel: Channel }> = ({ channel }) => {
     }
     if (channel === 'email') {
         return (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-sky-300">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-sky-400">
                 <EnvelopeIcon className="h-3 w-3" />
                 Email
             </span>
@@ -74,7 +74,7 @@ const DeliveryTicks: React.FC<{ message: AgentMessage }> = ({ message }) => {
     return (
         <svg
             viewBox="0 0 18 12"
-            className={`inline h-3 w-[18px] ${state === 'read' ? 'text-[#53bdeb]' : ''}`}
+            className={`inline h-3 w-[18px] ${state === 'read' ? 'text-sky-400' : ''}`}
             fill="none"
             stroke="currentColor"
             strokeWidth="1.7"
@@ -99,16 +99,16 @@ const BounceNote: React.FC<{
     const [open, setOpen] = useState(false);
     return (
         <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-            <div className="max-w-[90%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
+            <div className="max-w-[90%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-gray-400">
                 <span className="font-medium text-red-300/90">Email bounced</span>
                 <span className="mx-1.5 opacity-50">·</span>
                 <span className="opacity-70">{formatAgentTime(at)}</span>
                 <div className="mt-0.5">
-                    <button type="button" onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8696a0] hover:text-white">
+                    <button type="button" onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-white">
                         Bounce details
                         <Chevron open={open} />
                     </button>
-                    {open && <p className="mt-1 whitespace-pre-wrap break-words text-left font-mono text-[10.5px] leading-relaxed text-[#8696a0]">{bounce}</p>}
+                    {open && <p className="mt-1 whitespace-pre-wrap break-words text-left font-mono text-[10.5px] leading-relaxed text-gray-400">{bounce}</p>}
                 </div>
             </div>
             <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
@@ -127,7 +127,7 @@ const QuotedBlock: React.FC<{ quoted: string; from?: string; defaultOpen?: boole
                 type="button"
                 onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
                 aria-expanded={open}
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] font-medium text-[#aebac1] hover:text-white"
+                className="flex min-h-[44px] w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11.5px] font-medium text-gray-300 hover:text-white sm:min-h-[36px]"
             >
                 <Chevron open={open} />
                 <span className="min-w-0 flex-1 truncate">
@@ -135,7 +135,7 @@ const QuotedBlock: React.FC<{ quoted: string; from?: string; defaultOpen?: boole
                 </span>
             </button>
             {open && (
-                <p className={`whitespace-pre-wrap break-words border-t border-white/10 px-2.5 py-2 text-[12px] leading-relaxed text-[#c5d0d6] ${long ? 'max-h-64 overflow-y-auto' : ''}`}>
+                <p className={`whitespace-pre-wrap break-words border-t border-white/10 px-2.5 py-2 text-[12px] leading-relaxed text-gray-300 ${long ? 'max-h-64 overflow-y-auto' : ''}`}>
                     {quoted}
                 </p>
             )}
@@ -229,9 +229,9 @@ const IconBtn: React.FC<{
         onClick={onClick}
         aria-label={label}
         title={label}
-        className={`flex-shrink-0 p-1 transition-opacity ${
-            danger ? 'text-[#8696a0] hover:text-red-400' : 'text-[#8696a0] hover:text-amber-300'
-        } ${selected ? 'opacity-100' : 'pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'}`}
+        className={`h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-opacity sm:h-7 sm:w-7 ${
+            danger ? 'text-gray-400 hover:text-red-400' : 'text-gray-400 hover:text-amber-300'
+        } ${selected ? 'flex opacity-100' : 'hidden pointer-events-none opacity-0 sm:flex sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'}`}
     >
         {children}
     </button>
@@ -270,28 +270,28 @@ export const EmailCard: React.FC<ThreadMessageProps> = ({
                     className={`min-w-0 flex-1 overflow-hidden rounded-xl border shadow-sm ${
                         mine
                             ? fromOwner
-                                ? 'border-emerald-500/20 bg-[#16352c]'
-                                : 'border-sky-500/20 bg-[#152238]'
-                            : 'border-white/10 bg-[#1c2730]'
+                                ? 'border-emerald-400/15 bg-emerald-950/50'
+                                : 'border-sky-400/15 bg-sky-950/40'
+                            : 'border-white/[0.08] bg-gray-900'
                     }`}
                 >
-                    <header className="flex items-start gap-3 border-b border-white/10 px-3 py-2">
+                    <header className="flex items-start gap-3 border-b border-white/[0.06] px-3.5 py-2.5">
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                                 <ChannelChip channel="email" />
                                 <span className="truncate text-[13px] font-semibold text-white">{who}</span>
                             </div>
                             {mine && deskEmail && (
-                                <p className="mt-0.5 truncate text-[11px] text-[#8696a0]">From {deskEmail}</p>
+                                <p className="mt-0.5 truncate text-[11px] text-gray-400">From {deskEmail}</p>
                             )}
                             {showAddress && (
-                                <p className="mt-0.5 truncate text-[11px] text-[#8696a0]">{message.fromAddress}</p>
+                                <p className="mt-0.5 truncate text-[11px] text-gray-400">{message.fromAddress}</p>
                             )}
                             {message.subject && (
-                                <p className="mt-1 truncate text-[12px] font-medium text-[#e9edef]">{message.subject}</p>
+                                <p className="mt-1 truncate text-[12.5px] font-medium text-gray-200">{message.subject}</p>
                             )}
                         </div>
-                        <time className="flex-shrink-0 pt-0.5 text-[11px] text-[#8696a0]">
+                        <time className="flex-shrink-0 pt-0.5 text-[11px] text-gray-400">
                             {formatAgentTime(message.createdAt)}
                             {mine && (
                                 <span className="ml-1 inline-flex align-middle">
@@ -300,12 +300,12 @@ export const EmailCard: React.FC<ThreadMessageProps> = ({
                             )}
                         </time>
                     </header>
-                    <div className="px-3 py-2.5">
+                    <div className="px-3.5 py-3">
                         <MediaBlock message={message} />
                         {emptyNew ? (
-                            <p className="text-[12px] italic text-[#8696a0]">Replied — no new text.</p>
+                            <p className="text-[12px] italic text-gray-400">Replied — no new text.</p>
                         ) : split.body && split.body !== '[photo]' && split.body !== '[video]' && split.body !== '[document]' ? (
-                            <LongBody text={split.body} className="text-[14px] leading-relaxed text-[#e9edef]" />
+                            <LongBody text={split.body} className="text-[14.5px] leading-relaxed text-gray-100" />
                         ) : null}
                         {split.quoted && <QuotedBlock quoted={split.quoted} from={split.quotedFrom} />}
                         {mine && message.delivery === 'failed' && (
@@ -344,21 +344,21 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
     const emailShaped = !forwarded && looksLikeEmailBody(body);
 
     const bubble = !mine
-        ? 'rounded-tl-sm bg-[#202c33] text-[#e9edef]'
+        ? 'rounded-tl-md bg-gray-800 text-gray-100 ring-1 ring-inset ring-white/[0.04]'
         : fromOwner
-            ? 'rounded-tr-sm bg-emerald-800 text-white'
-            : 'rounded-tr-sm bg-[#005c4b] text-[#e9edef]';
+            ? 'rounded-tr-md bg-emerald-800/80 text-white'
+            : 'rounded-tr-md bg-teal-900/90 text-teal-50 ring-1 ring-inset ring-teal-400/10';
 
     return (
         <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`} onClick={onToggleSelect}>
             <div className="max-w-[78%] sm:max-w-[70%]">
                 {mine && (
-                    <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-300' : 'text-[#25d366]'}`}>
+                    <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-300' : 'text-amber-300'}`}>
                         {fromOwner ? 'You' : agentName}
                     </p>
                 )}
                 <div className={`flex items-end gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
-                    <div className={`relative rounded-2xl px-3 py-2 shadow ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
+                    <div className={`relative rounded-2xl px-3.5 py-2 shadow-sm ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
                         <MediaBlock message={message} />
                         {body && body !== '[photo]' && body !== '[video]' && body !== '[document]' && (
                             emailShaped
@@ -366,7 +366,7 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
                                 : <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">{body}</p>
                         )}
                         {quoted && <QuotedBlock quoted={quoted} from={split.quotedFrom} defaultOpen={!body.trim()} />}
-                        <p className={`mt-1 flex items-center gap-1 text-[10px] ${mine ? 'justify-end text-white/50' : 'text-[#8696a0]'}`}>
+                        <p className={`mt-1 flex items-center gap-1 text-[10px] ${mine ? 'justify-end text-white/60' : 'text-gray-400'}`}>
                             {formatAgentTime(message.createdAt)}
                             {mine && <DeliveryTicks message={message} />}
                         </p>
@@ -377,7 +377,7 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
                         )}
                         {message.customerReaction && (
                             <span
-                                className={`absolute -bottom-3 ${mine ? 'left-2' : 'right-2'} rounded-full bg-[#1f2c33] px-1.5 py-0.5 text-[15px] leading-none shadow ring-2 ring-[#0b141a]`}
+                                className={`absolute -bottom-3 ${mine ? 'left-2' : 'right-2'} rounded-full bg-gray-800 px-1.5 py-0.5 text-[15px] leading-none shadow ring-2 ring-gray-950`}
                                 title={`Reacted ${message.customerReaction}`}
                             >
                                 {message.customerReaction}
@@ -413,8 +413,8 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
     if (instruction) {
         return (
             <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
-                    <span className="font-medium text-[#e9edef]/70">You told {agentName}:</span> {instruction}
+                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-gray-400">
+                    <span className="font-medium text-gray-200">You told {agentName}:</span> {instruction}
                 </p>
                 <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
                     <TrashIcon className="h-3.5 w-3.5" />
@@ -426,7 +426,7 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
     if ((message.text || '').trim() === '[unsupported]' && !message.media) {
         return (
             <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-[#8696a0]">
+                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-gray-400">
                     WhatsApp did not pass this one. Often a photo album or a view-once.
                 </p>
                 <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
@@ -441,13 +441,13 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
         return (
             <div className="group flex justify-start" onClick={onToggleSelect}>
                 <div className="flex items-end gap-1">
-                    <div className="rounded-2xl rounded-tl-sm bg-[#202c33] px-2.5 py-1.5 shadow">
+                    <div className="rounded-2xl rounded-tl-md bg-gray-800 px-2.5 py-1.5 shadow-sm">
                         {emoji ? (
                             <p className="text-[22px] leading-none" aria-label={`Reacted ${emoji}`}>{emoji}</p>
                         ) : (
-                            <p className="text-[13px] text-[#e9edef]">Reacted</p>
+                            <p className="text-[13px] text-gray-100">Reacted</p>
                         )}
-                        <p className="mt-1 text-[10px] text-[#8696a0]">{formatAgentTime(message.createdAt)}</p>
+                        <p className="mt-1 text-[10px] text-gray-400">{formatAgentTime(message.createdAt)}</p>
                     </div>
                     <IconBtn label="Delete this reaction" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
                         <TrashIcon className="h-3.5 w-3.5" />

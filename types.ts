@@ -689,6 +689,9 @@ export interface Notification {
     message: string;
     vehicleId?: string;
     date: string;
+    /** For the bell's MOT row: the plate and "Make Model", shown without parsing `message`. */
+    reg?: string;
+    vehicleLabel?: string;
 }
 
 export interface GeminiAction {

@@ -8,13 +8,19 @@ import { requestAgentConversation, requestDraftReview, takeDraftActionFromUrl, t
 import { playInboxChime } from '../utils/inboxNotify';
 
 /**
+ * A customer email. The server titles those "Name · Email" (or plain "Email"
+ * when it has no customer push); they live in the Agent Inbox only, with no toast.
+ */
+const isEmailTitle = (title: string): boolean => /(^|·\s*)Email\s*$/i.test(title.trim());
+
+/**
  * Owner alerts that arrive while the app is open.
  *
  * A browser will not raise a notification for a push it delivered to a visible
  * tab, so without this the alert would land silently in the service worker and
- * Steve would see nothing until he happened to look at the bell. A draft ping
- * opens the notification dropdown on top of whatever page he is on — it does
- * not send him to Settings or the Agent Inbox.
+ * Steve would see nothing until he happened to look at the bell. Each one is a
+ * toast with a button to the thread in the Agent Inbox; nothing moves the page
+ * until he taps. Emails get no toast — they live in the Agent Inbox only.
  *
  * Mounted once, in the app shell. Doing nothing at all is the correct behaviour
  * on a browser with no push support: the WhatsApp alert is unaffected.
@@ -70,21 +76,21 @@ export const useAgentPushMessages = (): void => {
     const show = useRef<(alert: PushAlert) => void>(() => {});
     show.current = alert => {
         playInboxChime();
-        // Drafts stay on the bell. Incoming WhatsApp / email go to the inbox.
-        if (alert.kind === 'draft' || alert.kind === 'question') {
-            requestDraftReview(alert.convId);
-        } else {
-            requestAgentConversation(alert.convId);
-        }
         // Into the shade as well, with Approve / Edit, so it is not lost the
         // moment the app is swiped away.
         void showAlertNotification(alert);
 
-        // A draft or a question already opened the bell with the full wording.
-        // Another toast on top of that is just something to dismiss.
-        if (alert.kind === 'draft' || alert.kind === 'question') return;
+        // Never switch page on arrival: Steve may be half way through a form.
+        // A toast offers the thread; only a tap goes there.
+        if (alert.kind === 'draft' || alert.kind === 'question') {
+            toastRef.current.info(alert.body ? `${alert.title}: ${alert.body}` : alert.title || 'Dave needs you', {
+                label: 'Review',
+                onClick: () => openInInbox(alert.convId),
+            });
+            return;
+        }
 
-        const isWa = /\bwhatsapp\b/i.test(alert.title) || /\bwhatsapp\b/i.test(alert.body) || alert.kind === 'inbound';
+        const isWa = !isEmailTitle(alert.title) && (/\bwhatsapp\b/i.test(alert.title) || /\bwhatsapp\b/i.test(alert.body) || alert.kind === 'inbound');
         const displayTitle = alert.title || 'WhatsApp';
         const displayBody = alert.body || (alert.title ? '' : 'New message');
 
@@ -100,7 +106,7 @@ export const useAgentPushMessages = (): void => {
                 },
                 displayTitle
             );
-        } else {
+        } else if (!isEmailTitle(alert.title)) {
             const message = alert.body ? `${alert.title}: ${alert.body}` : alert.title;
             toast.info(message, {
                 label: 'Open inbox',
@@ -157,13 +163,17 @@ export const useAgentPushMessages = (): void => {
                 const kind = String(event.data?.kind || '');
                 playInboxChime();
                 if (kind === 'draft' || kind === 'question') {
-                    requestDraftReview(convId);
+                    const draftTitle = String(event.data?.title || '') || 'Dave needs you';
+                    const draftBody = String(event.data?.body || '');
+                    toastRef.current.info(draftBody ? `${draftTitle}: ${draftBody}` : draftTitle, {
+                        label: 'Review',
+                        onClick: () => openInInbox(convId),
+                    });
                     return;
                 }
-                requestAgentConversation(convId);
                 const rawTitle = String(event.data?.title || '');
                 const body = String(event.data?.body || '');
-                const isWa = /\bwhatsapp\b/i.test(rawTitle) || /\bwhatsapp\b/i.test(body) || kind === 'inbound';
+                const isWa = !isEmailTitle(rawTitle) && (/\bwhatsapp\b/i.test(rawTitle) || /\bwhatsapp\b/i.test(body) || kind === 'inbound');
                 const title = rawTitle || (isWa ? 'WhatsApp' : 'Inbox');
 
                 if (isWa) {
@@ -178,7 +188,7 @@ export const useAgentPushMessages = (): void => {
                         },
                         title
                     );
-                } else {
+                } else if (!isEmailTitle(rawTitle)) {
                     toastRef.current.info(body ? `${title}: ${body}` : 'New message', {
                         label: 'Open inbox',
                         onClick: () => {
