@@ -17,7 +17,7 @@ import {
     InternalJob, NewInternalJob, InternalJobUpdate,
     PDI, NewPDI, PDIUpdate,
     Lead, NewLead, LeadUpdate, LeadStage, Activity,
-    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate
+    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate, NewYearEndAdjustment
 } from '../types';
 import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
 import { applyColumnMapping } from '../utils/csvMapping';
@@ -571,6 +571,14 @@ export const updateExpenseCategories = async (companyId: string, categories: Exp
 export const deleteExpenseCategory = async (companyId: string, id: string) => db.ref(`${FOLDER_ROOTS(companyId).expenseCategories}/${id}`).remove();
 
 export const updateBusinessDetails = async (companyId: string, data: BusinessDetails) => db.ref(FOLDER_ROOTS(companyId).businessDetails).set(data);
+
+// Year-end adjustments live inside businessDetails (a path every company already
+// writes), not in a new top-level collection the deployed rules may not allow. They
+// are deliberately not in FOLDER_ROOTS, which clearAllCompanyData walks.
+const yearEndAdjustmentsPath = (companyId: string) => `${FOLDER_ROOTS(companyId).businessDetails}/yearEndAdjustments`;
+export const addYearEndAdjustment = async (companyId: string, data: NewYearEndAdjustment): Promise<void> => { await db.ref(yearEndAdjustmentsPath(companyId)).push().set(data); };
+export const updateYearEndAdjustment = async (companyId: string, id: string, data: Partial<NewYearEndAdjustment>): Promise<void> => db.ref(`${yearEndAdjustmentsPath(companyId)}/${id}`).update(data);
+export const deleteYearEndAdjustment = async (companyId: string, id: string): Promise<void> => db.ref(`${yearEndAdjustmentsPath(companyId)}/${id}`).remove();
 
 export const renameCategoryAndUpdateReferences = async (companyId: string, categoryId: string, newName: string, receipts: Receipt[], transactions: StatementTransaction[]): Promise<void> => {
     const roots = FOLDER_ROOTS(companyId);

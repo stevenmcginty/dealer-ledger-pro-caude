@@ -4,9 +4,13 @@ import { useData } from '../../hooks/useData';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon } from '../icons';
 import UkDateInput from '../common/UkDateInput';
+import DatePresetButtons from './DatePresetButtons';
+import { computeProfitAndLoss } from '../../utils/accounting/profitAndLoss';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const AccountantReport = () => {
-    const { salesDocs, vehicles, transactions, miscInvoices, expenseCategories, isServiceBusiness, jobInvoices, isVatRegistered } = useData();
+    const { salesDocs, vehicles, transactions, receipts, miscInvoices, financialAccounts, isServiceBusiness, jobInvoices, isVatRegistered } = useData();
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -15,101 +19,32 @@ const AccountantReport = () => {
     const [endDate, setEndDate] = useState(toYYYYMMDD(lastDayOfMonth));
 
     const reportData = useMemo(() => {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-
-        // Filter data for the selected period
-        const periodSales = salesDocs.filter(doc => {
-            const docDate = new Date(doc.invoiceDate);
-            return doc.documentType === 'Sales Invoice' && docDate >= start && docDate <= end;
-        });
-         const periodJobInvoices = jobInvoices.filter(doc => {
-            const docDate = new Date(doc.invoiceDate);
-            return docDate >= start && docDate <= end;
-        });
-        const periodTransactions = transactions.filter(tx => {
-            const txDate = new Date(tx.date);
-            // Internal transfers (e.g. to savings) are not income/expense — exclude from P&L.
-            return tx.status === 'Reconciled' && tx.reconciliationType !== 'transfer' && txDate >= start && txDate <= end;
-        });
-        const periodMiscInvoices = miscInvoices.filter(inv => {
-            const invDate = new Date(inv.invoiceDate);
-            return invDate >= start && invDate <= end;
+        // All the maths lives in utils/accounting/profitAndLoss.ts (accruals basis, tested).
+        const pnl = computeProfitAndLoss({
+            range: { start: startDate, end: endDate },
+            salesDocs, vehicles, receipts, transactions, miscInvoices, jobInvoices, financialAccounts, isVatRegistered,
         });
 
-        // --- P&L Calculations ---
-        const salesRevenue = isServiceBusiness 
-            ? periodJobInvoices.reduce((sum, doc) => sum + doc.subtotal, 0)
-            : periodSales.reduce((sum, doc) => isVatRegistered ? (doc.price - (doc.vat || 0)) : doc.price, 0);
-        
-        const otherIncome = periodMiscInvoices.reduce((sum, inv) => sum + inv.subtotal, 0);
-        
-        const totalRevenue = salesRevenue + otherIncome;
-
-        const cogs = isServiceBusiness ? 0 : periodSales.reduce((sum, doc) => {
-            const vehicle = vehicles.find(v => v.id === doc.vehicleId);
-            return sum + (vehicle ? vehicle.purchasePrice : 0);
-        }, 0);
-        
-        const grossProfit = totalRevenue - cogs;
-
-        const excludedExpenseCategories = ['SOR Payout', 'SOR', 'Credit Card Payment', 'Vehicle Purchase', 'Car Purchase', 'Sales Deposit', 'Car Sale', 'Miscellaneous Income', 'Sales Income', 'Job Invoice Payment'];
-
-        // Initialize expenses object with all defined categories set to 0
         const expenses: Record<string, number> = {};
-        expenseCategories.forEach(cat => {
-            if (!excludedExpenseCategories.includes(cat.name)) {
-                expenses[cat.name] = 0;
-            }
-        });
-
-        periodTransactions.forEach(tx => {
-            const category = tx.category || 'Uncategorized';
-            if (!excludedExpenseCategories.includes(category)) {
-                if (expenses[category] === undefined) {
-                    expenses[category] = 0;
-                }
-                
-                const netAmount = isVatRegistered ? Math.abs(tx.amount) - (tx.vatAmount || 0) : Math.abs(tx.amount);
-                if (tx.amount < 0) {
-                    expenses[category] += netAmount;
-                } else {
-                    expenses[category] -= netAmount;
-                }
-            }
-        });
-
-        const totalExpenses = Object.values(expenses).reduce((sum, amount) => sum + amount, 0);
-        const netProfit = grossProfit - totalExpenses;
-
-        // --- Stock Movement Calculations ---
-        const openingStockValue = isServiceBusiness ? 0 : vehicles
-            .filter(v => {
-                const purchaseDate = new Date(v.purchaseDate);
-                if (purchaseDate >= start) return false;
-                const saleDoc = salesDocs.find(doc => doc.vehicleId === v.id && doc.documentType === 'Sales Invoice');
-                const wasSoldBeforeStart = saleDoc && new Date(saleDoc.invoiceDate) < start;
-                return !wasSoldBeforeStart;
-            })
-            .reduce((sum, v) => sum + v.purchasePrice, 0);
-
-        const purchasesDuringPeriod = isServiceBusiness ? 0 : vehicles
-            .filter(v => {
-                const purchaseDate = new Date(v.purchaseDate);
-                return purchaseDate >= start && purchaseDate <= end;
-            })
-            .reduce((sum, v) => sum + v.purchasePrice, 0);
-
-        const closingStockValue = openingStockValue + purchasesDuringPeriod - cogs;
+        pnl.expenses.byCategory.forEach(c => { expenses[c.category] = c.net; });
 
         return {
-            totalRevenue, salesRevenue, otherIncome, cogs, grossProfit, expenses,
-            totalExpenses, netProfit, openingStockValue, purchasesDuringPeriod, closingStockValue
+            totalRevenue: pnl.revenue.total,
+            salesRevenue: round2(pnl.revenue.vehicleSales + pnl.revenue.jobInvoices),
+            otherIncome: round2(pnl.revenue.miscInvoices + pnl.revenue.otherIncome),
+            cogs: pnl.costOfSales.total,
+            grossProfit: pnl.grossProfit,
+            expenses,
+            totalExpenses: pnl.expenses.total,
+            netProfit: pnl.netProfit,
+            openingStockValue: pnl.costOfSales.openingStock,
+            purchasesDuringPeriod: pnl.costOfSales.purchases,
+            // The stock card reconciles owned stock only; SOR payouts are in COGS above but never in stock.
+            stockCogs: pnl.costOfSales.ownedCarsSold,
+            closingStockValue: pnl.costOfSales.closingStock,
         };
 
-    }, [startDate, endDate, salesDocs, transactions, vehicles, miscInvoices, expenseCategories, isServiceBusiness, jobInvoices, isVatRegistered]);
+    }, [startDate, endDate, salesDocs, transactions, receipts, vehicles, miscInvoices, financialAccounts, jobInvoices, isVatRegistered]);
 
     const handleDownload = () => {
         const dataForCsv = [
@@ -138,7 +73,7 @@ const AccountantReport = () => {
                 { Section: 'STOCK MOVEMENT SUMMARY', Item: '', Amount: '' },
                 { Section: 'Stock', Item: 'Opening Stock', Amount: reportData.openingStockValue.toFixed(2) },
                 { Section: '', Item: 'Add: Purchases', Amount: reportData.purchasesDuringPeriod.toFixed(2) },
-                { Section: '', Item: 'Less: Cost of Goods Sold', Amount: `(${reportData.cogs.toFixed(2)})` },
+                { Section: '', Item: 'Less: Cost of Goods Sold', Amount: `(${reportData.stockCogs.toFixed(2)})` },
                 { Section: 'Closing Stock', Item: '', Amount: reportData.closingStockValue.toFixed(2) },
             ]);
         }
@@ -164,6 +99,9 @@ const AccountantReport = () => {
                     <div>
                         <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
                         <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
+                    </div>
+                    <div className="self-end">
+                        <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
                     </div>
                 </div>
                 <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
@@ -204,7 +142,7 @@ const AccountantReport = () => {
                         <div className="space-y-4">
                             <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Opening Stock</span><span>{formatCurrency(reportData.openingStockValue)}</span></div>
                             <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Add: Purchases</span><span>{formatCurrency(reportData.purchasesDuringPeriod)}</span></div>
-                            <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Less: COGS</span><span>({formatCurrency(reportData.cogs)})</span></div>
+                            <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Less: COGS</span><span>({formatCurrency(reportData.stockCogs)})</span></div>
                             <div className="flex justify-between items-center pt-2 mt-2 border-t-2 border-gray-600 font-bold"><span className="text-white text-lg">Closing Stock</span><span className="text-brand-400 text-lg">{formatCurrency(reportData.closingStockValue)}</span></div>
                         </div>
                     </div>

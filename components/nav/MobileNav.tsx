@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { View } from '../../types';
-import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, PlusIcon, Bars3Icon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ExclamationTriangleIcon, ViewColumnsIcon, ShieldCheckIcon, InboxIcon } from '../icons';
+import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, PlusIcon, Bars3Icon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ExclamationTriangleIcon, ViewColumnsIcon, ShieldCheckIcon, InboxIcon } from '../icons';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import AppUpdateButton from '../common/AppUpdateButton';
@@ -72,7 +72,6 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
         { label: 'Work Sheets', view: 'workSheets' as View, icon: WrenchScrewdriverIcon },
         { label: 'Work Prep', view: 'workPrep' as View, icon: ClipboardDocumentListIcon },
         { label: 'Internal Jobs', view: 'internalJobs' as View, icon: WrenchScrewdriverIcon },
-        { label: 'Canvas', view: 'canvas' as View, icon: ClipboardIcon },
         { label: 'Ledger', view: 'ledger' as View, icon: CalculatorIcon },
         ...(isVatRegistered ? [{ label: 'VAT Summary', view: 'vat' as View, icon: ChartPieIcon }] : []),
         { label: 'Accountant', view: 'accountant' as View, icon: BanknotesIcon },
@@ -88,7 +87,6 @@ const MobileNav = ({ onLogout }: MobileNavProps) => {
         { label: 'Work Prep', view: 'workPrep' as View, icon: ClipboardDocumentListIcon },
         { label: 'Internal Jobs', view: 'internalJobs' as View, icon: WrenchScrewdriverIcon },
         { label: 'PDI Reports', view: 'pdi' as View, icon: ShieldCheckIcon },
-        { label: 'Canvas', view: 'canvas' as View, icon: ClipboardIcon },
         { label: 'Ledger', view: 'ledger' as View, icon: CalculatorIcon },
         ...(isVatRegistered ? [{ label: 'VAT Summary', view: 'vat' as View, icon: ChartPieIcon }] : []),
         { label: 'Accountant', view: 'accountant' as View, icon: BanknotesIcon },

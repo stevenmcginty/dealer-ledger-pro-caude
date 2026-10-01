@@ -4,6 +4,7 @@ import { DocumentTextIcon, PlusIcon, EditIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import Spinner from '../common/Spinner';
 import { useUI } from '../../hooks/useUI';
+import ReceiptThumb from '../common/ReceiptThumb';
 
 interface ReceiptManagerProps {
   receipts: Receipt[];
@@ -21,12 +22,15 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt }) => {
     
     return (
         <div className="bg-gray-800 rounded-lg shadow-md p-4 space-y-2">
-            <div className="flex justify-between items-start">
-                <div>
-                    <p className="text-lg font-bold text-white truncate">{receipt.vendor}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-sm text-gray-400">{receipt.category}</p>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>{statusText}</span>
+            <div className="flex justify-between items-start gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                    {receipt.receiptUrl && <ReceiptThumb url={receipt.receiptUrl} label={`${receipt.vendor} · ${formatDate(receipt.date)}`} size="lg" />}
+                    <div className="min-w-0">
+                        <p className="text-lg font-bold text-white truncate">{receipt.vendor}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="text-sm text-gray-400">{receipt.category}</p>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusColor}`}>{statusText}</span>
+                        </div>
                     </div>
                 </div>
                 <div className="text-right">

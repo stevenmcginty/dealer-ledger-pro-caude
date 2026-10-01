@@ -3,6 +3,7 @@ import { Receipt, Supplier } from '../../types';
 import { BanknotesIcon, ChevronDownIcon, CheckCircleIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { useUI } from '../../hooks/useUI';
+import ReceiptThumb from '../common/ReceiptThumb';
 
 interface PayableMonth {
     monthKey: string; // "YYYY-MM"
@@ -142,8 +143,9 @@ const PayablesManager = ({ receipts, suppliers, hasActiveFilters }: PayablesMana
                                                             <div className="p-3 border-t border-gray-700/50 animate-in fade-in-0 duration-200">
                                                                 <ul className="space-y-1">
                                                                     {month.receipts.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(r => (
-                                                                        <li key={r.id} className="flex justify-between items-center p-1.5 rounded-md">
-                                                                            <div className="flex-1">
+                                                                        <li key={r.id} className="flex justify-between items-center gap-3 p-1.5 rounded-md">
+                                                                            {r.receiptUrl && <ReceiptThumb url={r.receiptUrl} label={`${r.vendor} · ${formatDate(r.date)}`} size="sm" />}
+                                                                            <div className="flex-1 min-w-0">
                                                                                 <p className="text-sm text-gray-200 truncate">{r.category}</p>
                                                                                 <p className="text-xs text-gray-500">{formatDate(r.date)}</p>
                                                                             </div>

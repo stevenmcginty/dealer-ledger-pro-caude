@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from '../../types';
-import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ClipboardIcon, ViewColumnsIcon, UserGroupIcon, ShieldCheckIcon, InboxIcon } from '../icons';
+import { ClipboardDocumentListIcon, CarIcon, DocumentTextIcon, CreditCardIcon, CalculatorIcon, ChartPieIcon, ArchiveBoxIcon, Cog6ToothIcon, BanknotesIcon, WrenchScrewdriverIcon, BuildingStorefrontIcon, ViewColumnsIcon, UserGroupIcon, ShieldCheckIcon, InboxIcon } from '../icons';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import AppUpdateButton from '../common/AppUpdateButton';
@@ -54,7 +54,6 @@ const DesktopNav = ({ onLogout }: DesktopNavProps) => {
         { label: "Work Prep", view: "workPrep" as View, icon: ClipboardDocumentListIcon },
         { label: "Internal Jobs", view: "internalJobs" as View, icon: WrenchScrewdriverIcon },
         ...(!isServiceBusiness ? [{ label: "PDI Reports", view: "pdi" as View, icon: ShieldCheckIcon }] : []),
-        { label: "Canvas", view: "canvas" as View, icon: ClipboardIcon },
     ];
     
     const crmItems = [

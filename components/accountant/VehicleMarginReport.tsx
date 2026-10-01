@@ -5,6 +5,7 @@ import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon, DocumentTextIcon } from '../icons';
 import { SalesDocument, Vehicle } from '../../types';
 import UkDateInput from '../common/UkDateInput';
+import DatePresetButtons from './DatePresetButtons';
 import { useToast } from '../ui';
 
 interface MarginData {
@@ -15,7 +16,10 @@ interface MarginData {
     vatOnMargin: number;
 }
 
-const VehicleMarginReport = () => {
+/** Optional controlled period (the Accountant hub drives it). Without it the report keeps its own dates. */
+interface ControlledPeriodProps { startDate?: string; endDate?: string; hidePeriodBar?: boolean; }
+
+const VehicleMarginReport = ({ startDate: startProp, endDate: endProp, hidePeriodBar = false }: ControlledPeriodProps = {}) => {
     const { salesDocs, vehicles, isVatRegistered } = useData();
     const toast = useToast();
     
@@ -23,8 +27,10 @@ const VehicleMarginReport = () => {
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-    const [startDate, setStartDate] = useState(toYYYYMMDD(firstDayOfMonth));
-    const [endDate, setEndDate] = useState(toYYYYMMDD(lastDayOfMonth));
+    const [ownStart, setStartDate] = useState(toYYYYMMDD(firstDayOfMonth));
+    const [ownEnd, setEndDate] = useState(toYYYYMMDD(lastDayOfMonth));
+    const startDate = startProp ?? ownStart;
+    const endDate = endProp ?? ownEnd;
 
     const marginData = useMemo<MarginData[]>(() => {
         const periodSales = salesDocs.filter(doc => {
@@ -58,33 +64,6 @@ const VehicleMarginReport = () => {
     const totalMargin = useMemo(() => marginData.reduce((sum, item) => sum + item.margin, 0), [marginData]);
     const totalVatOnMargin = useMemo(() => marginData.reduce((sum, item) => sum + item.vatOnMargin, 0), [marginData]);
     
-    const setPeriod = (period: 'this_month' | 'last_month' | 'this_quarter' | 'this_year') => {
-        const today = new Date();
-        let start, end;
-        
-        switch (period) {
-            case 'this_month':
-                start = new Date(today.getFullYear(), today.getMonth(), 1);
-                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                break;
-            case 'last_month':
-                start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                end = new Date(today.getFullYear(), today.getMonth(), 0);
-                break;
-            case 'this_quarter':
-                const quarter = Math.floor(today.getMonth() / 3);
-                start = new Date(today.getFullYear(), quarter * 3, 1);
-                end = new Date(today.getFullYear(), quarter * 3 + 3, 0);
-                break;
-            case 'this_year':
-                start = new Date(today.getFullYear(), 0, 1);
-                end = new Date(today.getFullYear(), 11, 31);
-                break;
-        }
-        setStartDate(toYYYYMMDD(start));
-        setEndDate(toYYYYMMDD(end));
-    };
-
     const handleDownload = () => {
         const csvData = marginData.map(item => {
             const row: any = {
@@ -132,8 +111,8 @@ const VehicleMarginReport = () => {
 
     return (
         <div className="space-y-6">
-            <div className="p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4 flex-wrap">
+            <div className={hidePeriodBar ? 'flex flex-wrap items-center justify-end gap-3' : 'p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4'}>
+                <div className={`flex items-center gap-4 flex-wrap ${hidePeriodBar ? 'hidden' : ''}`}>
                     <div>
                         <label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label>
                         <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/>
@@ -142,11 +121,8 @@ const VehicleMarginReport = () => {
                         <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
                         <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
                     </div>
-                     <div className="self-end flex flex-wrap items-center gap-2">
-                        <button onClick={() => setPeriod('this_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Month</button>
-                        <button onClick={() => setPeriod('last_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Month</button>
-                        <button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button>
-                        <button onClick={() => setPeriod('this_year')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Year</button>
+                     <div className="self-end">
+                         <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
                      </div>
                 </div>
                 <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">

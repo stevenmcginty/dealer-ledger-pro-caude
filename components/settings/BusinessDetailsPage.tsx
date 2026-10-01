@@ -11,6 +11,9 @@ import FirebaseHealthCheckCard from './FirebaseHealthCheckCard';
 import MotSweepCard from './MotSweepCard';
 import Spinner from '../common/Spinner';
 import { CONFIG } from '../../config';
+import { parseYearEnd, daysInMonth } from '../../utils/accounting/yearEnd';
+
+const YEAR_END_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const AdminProvisioning = () => {
     const [newUserUid, setNewUserUid] = useState('');
@@ -123,11 +126,19 @@ const BusinessDetailsPage = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    // Accounting year end, stored as 'MM-DD'. Unset shows (and saves) the 31 March default.
+    const yearEnd = parseYearEnd(formData.yearEnd);
+    const yearEndValue = (month: number, day: number) => `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const setYearEnd = (month: number, day: number) => {
+        const safeDay = Math.min(day, daysInMonth(2024, month)); // 2024 is a leap year, so 29 Feb is allowed
+        setFormData(prev => ({ ...prev, yearEnd: yearEndValue(month, safeDay) }));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
         setSaveSuccess(false);
-        await updateBusinessDetails(formData);
+        await updateBusinessDetails({ ...formData, yearEnd: formData.yearEnd || yearEndValue(yearEnd.month, yearEnd.day) });
         setIsSaving(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
@@ -188,6 +199,23 @@ const BusinessDetailsPage = () => {
                      <div>
                         <label htmlFor="companyNumber" className="block text-sm font-medium text-gray-300">Company Number</label>
                         <input type="text" name="companyNumber" id="companyNumber" value={formData.companyNumber || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
+                    </div>
+                    <div>
+                        <label htmlFor="yearEndDay" className="block text-sm font-medium text-gray-300">Accounting year end</label>
+                        <div className="mt-1 flex gap-2">
+                            <select id="yearEndDay" aria-label="Year end day" value={yearEnd.day} onChange={e => setYearEnd(yearEnd.month, Number(e.target.value))} className="block w-20 bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white">
+                                {Array.from({ length: daysInMonth(2024, yearEnd.month) }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <select id="yearEndMonth" aria-label="Year end month" value={yearEnd.month} onChange={e => setYearEnd(Number(e.target.value), yearEnd.day)} className="block flex-1 bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white">
+                                {YEAR_END_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                            </select>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">The last day of your company's financial year. Used for the accountant's year reports and the corporation tax estimate.</p>
+                    </div>
+                    <div>
+                        <label htmlFor="associatedCompanies" className="block text-sm font-medium text-gray-300">Associated companies</label>
+                        <input type="number" min={0} step={1} id="associatedCompanies" value={formData.associatedCompanies ?? 0} onChange={e => setFormData(prev => ({ ...prev, associatedCompanies: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
+                        <p className="text-xs text-gray-400 mt-1">Other companies under the same control. Leave at 0 if there are none.</p>
                     </div>
                     <div className={`md:col-span-2 ${formData.isVatRegistered ? '' : 'opacity-50'}`}>
                         <label htmlFor="vatStartDate" className="block text-sm font-medium text-gray-300">VAT Quarter Start Date</label>

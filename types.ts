@@ -387,7 +387,31 @@ export interface BusinessDetails {
     operatingMode: 'dealership' | 'paint_shop' | 'mechanic';
     isVatRegistered: boolean;
     mtdVatExportEnabled?: boolean;
+    /** Accounting year end as 'MM-DD' (e.g. '03-31'). Missing = 31 March. */
+    yearEnd?: string;
+    /** Associated companies, for the corporation tax limits. Missing = 0. */
+    associatedCompanies?: number;
+    /**
+     * Year-end tax adjustments keyed by push id. Stored inside businessDetails so they
+     * live under a path the company already writes; read them via the data context's
+     * `yearEndAdjustments` list.
+     */
+    yearEndAdjustments?: { [id: string]: NewYearEndAdjustment };
 }
+
+export type YearEndAdjustmentKind = 'add_back' | 'capital_allowance' | 'stock_write_down' | 'loss_brought_forward' | 'other_deduction';
+
+/** One accountant's adjustment for the corporation tax estimate of an accounting period. */
+export interface YearEndAdjustment {
+    id: string;
+    /** The period it belongs to: '<start>_<end>', see utils/accounting/yearEnd.ts periodKeyOf. */
+    periodKey: string;
+    kind: YearEndAdjustmentKind;
+    description: string;
+    /** Positive amount in pounds; the kind decides whether it adds or deducts. */
+    amount: number;
+}
+export type NewYearEndAdjustment = Omit<YearEndAdjustment, 'id'>;
 
 export interface ToDoItem {
     id: string;
@@ -928,6 +952,8 @@ export interface DataContextState {
     financeCompanies: FinanceCompany[];
     expenseCategories: ExpenseCategory[];
     businessDetails: BusinessDetails | null;
+    /** businessDetails.yearEndAdjustments as a list (empty when none). */
+    yearEndAdjustments: YearEndAdjustment[];
     theme: string;
     todos: ToDoItem[];
     workSheets: WorkSheet[];
@@ -975,6 +1001,9 @@ export interface DataContextState {
     deleteExpenseCategory: (id: string) => Promise<boolean>;
     updateExpenseCategories: (categories: ExpenseCategory[]) => Promise<void>;
     updateBusinessDetails: (data: BusinessDetails) => Promise<void>;
+    addYearEndAdjustment: (data: NewYearEndAdjustment) => Promise<void>;
+    updateYearEndAdjustment: (id: string, data: Partial<NewYearEndAdjustment>) => Promise<void>;
+    deleteYearEndAdjustment: (id: string) => Promise<void>;
     addToDo: (data: NewToDoItem) => Promise<any>;
     updateToDo: (id: string, data: ToDoItemUpdate) => Promise<void>;
     deleteToDo: (id: string) => Promise<void>;

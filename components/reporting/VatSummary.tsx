@@ -5,6 +5,7 @@ import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
 import { useToast } from '../ui';
 import { exportMtdVatSheet } from '../../utils/mtdVatExport';
+import type { SalesDocument, Vehicle, MiscInvoice, StatementTransaction, JobInvoice } from '../../types';
 
 const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Date; end: Date } => {
     // Fallback to standard calendar quarters if no anchor date is set or is invalid
@@ -49,53 +50,14 @@ const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Dat
     return { start, end };
 };
 
-const VatSummary = () => {
-  // FIX: Replaced `isPaintShop` with `isServiceBusiness` which is available in the data context.
-  const { transactions, salesDocs, vehicles, miscInvoices, businessDetails, isServiceBusiness, jobInvoices } = useData();
-  const toast = useToast();
-  
-  const [startDate, setStartDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).start));
-  const [endDate, setEndDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).end));
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const summaryRef = useRef<HTMLDivElement>(null);
-
-  const handleExportPdf = async () => {
-    if (!summaryRef.current) return;
-    setExportingPdf(true);
-    try {
-      // Kept local (not utils/pdf.ts) because this export interleaves a title
-      // page band between canvas capture and addImage; only the libraries load dynamically.
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import('jspdf'),
-        import('html2canvas'),
-      ]);
-      const canvas = await html2canvas(summaryRef.current, {
-        backgroundColor: '#1f2937',
-        scale: 2,
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      // Add title
-      pdf.setFontSize(16);
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFillColor(31, 41, 55);
-      pdf.rect(0, 0, pdfWidth, pdfHeight + 20, 'F');
-      pdf.text(`VAT Summary: ${formatDate(startDate)} - ${formatDate(endDate)}`, 10, 12);
-      
-      pdf.addImage(imgData, 'PNG', 0, 18, pdfWidth, pdfHeight);
-      pdf.save(`VAT-Summary-${startDate}-to-${endDate}.pdf`);
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      toast.error("Could not export the PDF. Please try again.");
-    } finally {
-      setExportingPdf(false);
-    }
-  };
-
-  const vatData = useMemo(() => {
+/**
+ * The VAT Summary figures for a period. Moved out of the component unchanged so the
+ * Accountant hub's Overview shows the same VAT due as this screen.
+ */
+export function computeVatSummary({ startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices }: {
+  startDate: string; endDate: string; salesDocs: SalesDocument[]; vehicles: Vehicle[]; miscInvoices: MiscInvoice[];
+  transactions: StatementTransaction[]; isServiceBusiness: boolean; jobInvoices: JobInvoice[];
+}) {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(endDate);
@@ -168,7 +130,63 @@ const VatSummary = () => {
         totalInputVat,
         vatDue 
     };
-  }, [startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices]);
+}
+
+/** Optional controlled period (the Accountant hub drives it). Without it the report keeps its own dates. */
+interface ControlledPeriodProps { startDate?: string; endDate?: string; hidePeriodBar?: boolean; }
+
+const VatSummary = ({ startDate: startProp, endDate: endProp, hidePeriodBar = false }: ControlledPeriodProps = {}) => {
+  // FIX: Replaced `isPaintShop` with `isServiceBusiness` which is available in the data context.
+  const { transactions, salesDocs, vehicles, miscInvoices, businessDetails, isServiceBusiness, jobInvoices } = useData();
+  const toast = useToast();
+  
+  const [ownStart, setStartDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).start));
+  const [ownEnd, setEndDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).end));
+    const startDate = startProp ?? ownStart;
+    const endDate = endProp ?? ownEnd;
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const summaryRef = useRef<HTMLDivElement>(null);
+
+  const handleExportPdf = async () => {
+    if (!summaryRef.current) return;
+    setExportingPdf(true);
+    try {
+      // Kept local (not utils/pdf.ts) because this export interleaves a title
+      // page band between canvas capture and addImage; only the libraries load dynamically.
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
+      const canvas = await html2canvas(summaryRef.current, {
+        backgroundColor: '#1f2937',
+        scale: 2,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      // Add title
+      pdf.setFontSize(16);
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFillColor(31, 41, 55);
+      pdf.rect(0, 0, pdfWidth, pdfHeight + 20, 'F');
+      pdf.text(`VAT Summary: ${formatDate(startDate)} - ${formatDate(endDate)}`, 10, 12);
+      
+      pdf.addImage(imgData, 'PNG', 0, 18, pdfWidth, pdfHeight);
+      pdf.save(`VAT-Summary-${startDate}-to-${endDate}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      toast.error("Could not export the PDF. Please try again.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const vatData = useMemo(
+    () => computeVatSummary({ startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices }),
+    [startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices],
+  );
 
   const handleExportMtdSheet = async () => {
     const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -202,12 +220,12 @@ const VatSummary = () => {
 
   return (
     <div className="space-y-6">
-        <div className="p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-wrap">
+        <div className={hidePeriodBar ? 'flex flex-wrap items-center justify-end gap-3' : 'p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4'}>
+            <div className={`flex items-center gap-4 flex-wrap ${hidePeriodBar ? 'hidden' : ''}`}>
                 <div><label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label><UkDateInput id="start-date" name="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/></div>
                 <div><label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label><UkDateInput id="end-date" name="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/></div>
             </div>
-            <div className="flex flex-wrap items-center gap-2"><button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button><button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button><button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-md flex items-center gap-1.5">{exportingPdf ? '⏳ Saving...' : '📄 Save PDF'}</button>{businessDetails?.mtdVatExportEnabled && <button onClick={handleExportMtdSheet} className="px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-md flex items-center gap-1.5">📊 Export MTD Sheet</button>}</div>
+            <div className="flex flex-wrap items-center gap-2">{!hidePeriodBar && <><button onClick={() => setPeriod('this_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">This Quarter</button><button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md">Last Quarter</button></>}<button onClick={handleExportPdf} disabled={exportingPdf} className="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-md flex items-center gap-1.5">{exportingPdf ? '⏳ Saving...' : '📄 Save PDF'}</button>{businessDetails?.mtdVatExportEnabled && <button onClick={handleExportMtdSheet} className="px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-md flex items-center gap-1.5">📊 Export MTD Sheet</button>}</div>
         </div>
 
         <div ref={summaryRef} className="space-y-6">

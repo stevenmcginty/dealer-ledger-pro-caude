@@ -21,14 +21,19 @@ interface LedgerEntry {
     accountType?: 'Bank' | 'Credit Card';
 }
 
-const GeneralLedger = () => {
+/** Optional controlled period (the Accountant hub drives it). Without it the report keeps its own dates. */
+interface ControlledPeriodProps { startDate?: string; endDate?: string; hidePeriodBar?: boolean; }
+
+const GeneralLedger = ({ startDate: startProp, endDate: endProp, hidePeriodBar = false }: ControlledPeriodProps = {}) => {
     const { transactions, salesDocs, vehicles } = useData();
     const toast = useToast();
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
-    const [startDate, setStartDate] = useState(firstDayOfMonth.toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+    const [ownStart, setStartDate] = useState(firstDayOfMonth.toISOString().split('T')[0]);
+    const [ownEnd, setEndDate] = useState(today.toISOString().split('T')[0]);
+    const startDate = startProp ?? ownStart;
+    const endDate = endProp ?? ownEnd;
     const [accountFilter, setAccountFilter] = useState<'all' | 'Bank' | 'Credit Card'>('all');
 
     const ledgerEntries = useMemo(() => {
@@ -172,8 +177,8 @@ const GeneralLedger = () => {
 
     return (
         <div className="space-y-6">
-            <div className="p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4 flex-wrap">
+            <div className={hidePeriodBar ? 'flex flex-wrap items-center justify-end gap-3' : 'p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4'}>
+                <div className={`flex items-center gap-4 flex-wrap ${hidePeriodBar ? 'hidden' : ''}`}>
                     <div>
                         <label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label>
                         <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/>

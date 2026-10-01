@@ -11,6 +11,7 @@ import { useUI } from '../../hooks/useUI';
 import InlineCategoryCombobox, { CategoryComboboxHandle } from './InlineCategoryCombobox';
 import AddTransactionRow from './AddTransactionRow';
 import { useReconcileQueueKeyboard } from '../../hooks/useReconcileQueueKeyboard';
+import ReceiptThumb from '../common/ReceiptThumb';
 
 type AiSuggestion = { category: string } | { match: { vehicle?: Vehicle, receipts?: Receipt[] } };
 
@@ -89,6 +90,29 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
         mq.addEventListener('change', update);
         return () => mq.removeEventListener('change', update);
     }, []);
+
+    // Receipts with an attached file, keyed by the bank line they reconcile (display only).
+    const receiptFilesByTx = useMemo(() => {
+        const map = new Map<string, Receipt[]>();
+        receipts.forEach(r => {
+            if (!r.reconciledByTxId || !r.receiptUrl) return;
+            const list = map.get(r.reconciledByTxId);
+            if (list) list.push(r); else map.set(r.reconciledByTxId, [r]);
+        });
+        return map;
+    }, [receipts]);
+
+    const renderReceiptThumbs = (txId: string, size: 'sm' | 'md') => {
+        const files = receiptFilesByTx.get(txId);
+        if (!files) return null;
+        const [first] = files;
+        return (
+            <span className="inline-flex shrink-0 items-center gap-1">
+                <ReceiptThumb url={first.receiptUrl!} label={`${first.vendor} · ${formatDate(first.date)}`} size={size} />
+                {files.length > 1 && <span className="text-[10px] font-semibold text-gray-400" title={`${files.length} receipts attached`}>+{files.length - 1}</span>}
+            </span>
+        );
+    };
 
     // Auto-calculate matches (Vehicles/Receipts/Income)
     const heuristicSuggestions = useMemo(() =>
@@ -632,7 +656,12 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
                                                 </td>
                                             )}
                                             <td className="whitespace-nowrap py-4 pl-4 pr-3 text-xs text-white sm:pl-6">{formatDate(tx.date, { day: '2-digit', month: 'short', year: '2-digit' })}</td>
-                                            <td className="px-3 py-4 text-sm text-gray-300 max-w-xs truncate" title={tx.description}>{tx.description}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-300 max-w-xs">
+                                                <div className="flex min-w-0 items-center gap-2.5">
+                                                    {renderReceiptThumbs(tx.id, 'sm')}
+                                                    <span className="truncate" title={tx.description}>{tx.description}</span>
+                                                </div>
+                                            </td>
                                             <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-400">{tx.method || '-'}</td>
                                             <td className={`whitespace-nowrap px-3 py-4 text-sm text-right font-bold ${tx.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(tx.amount)}</td>
 
@@ -716,9 +745,12 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
                                 )}
                                 <div className={`p-4 space-y-2 ${isSelectionMode ? 'pl-10' : ''}`}>
                                     <div className="flex justify-between items-start">
-                                        <div className="flex-1 pr-2">
-                                            <p className="text-xs text-gray-400">{formatDate(tx.date)}</p>
-                                            <p className="text-sm text-white break-words mt-0.5">{tx.description}</p>
+                                        <div className="flex-1 min-w-0 pr-2 flex items-start gap-3">
+                                            {renderReceiptThumbs(tx.id, 'md')}
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs text-gray-400">{formatDate(tx.date)}</p>
+                                                <p className="text-sm text-white break-words mt-0.5">{tx.description}</p>
+                                            </div>
                                         </div>
                                         <div className="text-right">
                                             <p className={`text-lg font-bold whitespace-nowrap ${isIncome ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(tx.amount)}</p>

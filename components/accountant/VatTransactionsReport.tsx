@@ -5,6 +5,7 @@ import { useData } from '../../hooks/useData';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon, BanknotesIcon, CreditCardIcon, CalculatorIcon, ExclamationTriangleIcon } from '../icons';
 import UkDateInput from '../common/UkDateInput';
+import DatePresetButtons from './DatePresetButtons';
 import { StatementTransaction } from '../../types';
 import Select from '../common/Select';
 import { useToast } from '../ui';
@@ -142,6 +143,9 @@ const VatTransactionsReport = () => {
                                 <option key={acc.id} value={acc.id}>{acc.name}</option>
                             ))}
                         </Select>
+                    </div>
+                    <div className="self-end">
+                        <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
                     </div>
                 </div>
                 <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
