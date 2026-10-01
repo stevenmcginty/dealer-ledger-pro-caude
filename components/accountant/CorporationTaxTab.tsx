@@ -5,6 +5,7 @@ import type { YearEndAdjustment, YearEndAdjustmentKind } from '../../types';
 import { computeProfitAndLoss } from '../../utils/accounting/profitAndLoss';
 import { estimateCorporationTax } from '../../utils/accounting/corporationTax';
 import { DateRange, financialYearContaining, formatDayShort, parseYearEnd, periodKeyOf } from '../../utils/accounting/yearEnd';
+import { readDirectorSalaries, unpaidSalaryByYear, unpaidSalaryDeadline } from '../../utils/accounting/directorSalary';
 import { HubCard, CsvButton, money, downloadCsv, fix2 } from './hubShared';
 import { PencilIcon, TrashIcon, PlusIcon } from '../icons';
 
@@ -64,12 +65,13 @@ const CorporationTaxTab = ({ period }: { period: DateRange }) => {
     const fy = financialYearContaining(period.end, yearEnd);
     const ctPeriod: DateRange = basis === 'fy' ? { start: fy.start, end: fy.end } : period;
     const key = periodKeyOf(ctPeriod);
+    const directorSalaries = useMemo(() => readDirectorSalaries(businessDetails?.directorSalaries), [businessDetails?.directorSalaries]);
 
     const pnl = useMemo(() => computeProfitAndLoss({
         range: ctPeriod,
         salesDocs: data.salesDocs, vehicles: data.vehicles, receipts: data.receipts, transactions: data.transactions,
-        miscInvoices: data.miscInvoices, jobInvoices: data.jobInvoices, financialAccounts: data.financialAccounts, isVatRegistered: data.isVatRegistered,
-    }), [ctPeriod.start, ctPeriod.end, data.salesDocs, data.vehicles, data.receipts, data.transactions, data.miscInvoices, data.jobInvoices, data.financialAccounts, data.isVatRegistered]);
+        miscInvoices: data.miscInvoices, jobInvoices: data.jobInvoices, financialAccounts: data.financialAccounts, isVatRegistered: data.isVatRegistered, directorSalaries,
+    }), [ctPeriod.start, ctPeriod.end, data.salesDocs, data.vehicles, data.receipts, data.transactions, data.miscInvoices, data.jobInvoices, data.financialAccounts, data.isVatRegistered, directorSalaries]);
 
     const adjustments = useMemo(() => yearEndAdjustments.filter(a => a.periodKey === key), [yearEndAdjustments, key]);
     const est = useMemo(() => estimateCorporationTax({ period: ctPeriod, accountingProfit: pnl.netProfit, adjustments, associatedCompanies: associated }),
@@ -77,6 +79,11 @@ const CorporationTaxTab = ({ period }: { period: DateRange }) => {
 
     const ye = parseYearEnd(yearEnd);
     const periodText = `${formatDayShort(ctPeriod.start)} to ${formatDayShort(ctPeriod.end)}`;
+    const unpaidSalary = useMemo(() => directorSalaries.length
+        ? unpaidSalaryByYear({ range: ctPeriod, salaries: directorSalaries, transactions: data.transactions, yearStart: fy.start })
+        : [], [ctPeriod.start, ctPeriod.end, directorSalaries, data.transactions, fy.start]);
+    const salaryAsOf = pnl.directorSalary?.asOf ?? ctPeriod.end;
+    const salaryDeadline = unpaidSalaryDeadline(fy.end);
 
     const save = async (d: Draft, id?: string) => {
         const payload = { periodKey: key, kind: d.kind, description: d.description.trim(), amount: Math.abs(Number(d.amount)) };
@@ -103,6 +110,21 @@ const CorporationTaxTab = ({ period }: { period: DateRange }) => {
                     <button type="button" className={chip(basis === 'period')} aria-pressed={basis === 'period'} onClick={() => setBasis('period')}>Selected period</button>
                 </div>
             </div>
+
+            {unpaidSalary.length > 0 && (
+                <div className="rounded-xl border border-amber-600/40 bg-amber-900/15 px-4 py-3 text-sm text-amber-100/90">
+                    {unpaidSalary.map(l => (
+                        <div key={l.name}>
+                            <p><span className="font-semibold text-amber-200">Unpaid director's salary:</span> the business owes {l.name} {money(l.total)} at {formatDayShort(salaryAsOf)}.</p>
+                            <ul className="mt-1 list-disc pl-5">
+                                <li>Unpaid salary for this financial year ({fy.label.toLowerCase()}): <span className="font-semibold text-amber-200">{money(l.thisYear)}</span>{l.thisYear > 0 && <> — must be paid by <span className="font-semibold text-amber-200">{formatDayShort(salaryDeadline)}</span> to be deductible in this year</>}.</li>
+                                {l.earlierYears > 0 && <li>Earlier years' unpaid salary: {money(l.earlierYears)} (owed on the director's loan account; their 9-month deadlines belong to those years).</li>}
+                            </ul>
+                        </div>
+                    ))}
+                    <p className="mt-1">Salary still unpaid 9 months after the year end is not deductible for corporation tax in that year; any part still unpaid then is deducted in the year it is paid. It must match the payroll (accountant).</p>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
                 <div className="space-y-5 xl:col-span-3">

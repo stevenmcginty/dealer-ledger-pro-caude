@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BusinessDetails } from '../../types';
+import { BusinessDetails, DirectorSalary } from '../../types';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import { db, auth } from '../../services/firebase';
@@ -12,6 +12,7 @@ import MotSweepCard from './MotSweepCard';
 import Spinner from '../common/Spinner';
 import { CONFIG } from '../../config';
 import { parseYearEnd, daysInMonth } from '../../utils/accounting/yearEnd';
+import { readDirectorSalaries } from '../../utils/accounting/directorSalary';
 
 const YEAR_END_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -134,11 +135,20 @@ const BusinessDetailsPage = () => {
         setFormData(prev => ({ ...prev, yearEnd: yearEndValue(month, safeDay) }));
     };
 
+    // Director's salary from the payroll. Rows missing a name, amount or start date are not saved.
+    const salaries: DirectorSalary[] = Array.isArray(formData.directorSalaries) ? formData.directorSalaries : readDirectorSalaries(formData.directorSalaries);
+    const setSalary = (i: number, patch: Partial<DirectorSalary>) =>
+        setFormData(prev => ({ ...prev, directorSalaries: salaries.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+    const addSalary = () => setFormData(prev => ({ ...prev, directorSalaries: [...salaries, { name: '', monthlyGross: 0, from: '' }] }));
+    const removeSalary = (i: number) => setFormData(prev => ({ ...prev, directorSalaries: salaries.filter((_, j) => j !== i) }));
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
         setSaveSuccess(false);
-        await updateBusinessDetails({ ...formData, yearEnd: formData.yearEnd || yearEndValue(yearEnd.month, yearEnd.day) });
+        const { directorSalaries: _draft, ...rest } = formData;
+        const cleanSalaries = readDirectorSalaries(salaries);
+        await updateBusinessDetails({ ...rest, ...(cleanSalaries.length ? { directorSalaries: cleanSalaries } : {}), yearEnd: formData.yearEnd || yearEndValue(yearEnd.month, yearEnd.day) });
         setIsSaving(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
@@ -216,6 +226,35 @@ const BusinessDetailsPage = () => {
                         <label htmlFor="associatedCompanies" className="block text-sm font-medium text-gray-300">Associated companies</label>
                         <input type="number" min={0} step={1} id="associatedCompanies" value={formData.associatedCompanies ?? 0} onChange={e => setFormData(prev => ({ ...prev, associatedCompanies: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
                         <p className="text-xs text-gray-400 mt-1">Other companies under the same control. Leave at 0 if there are none.</p>
+                    </div>
+                    <div className="md:col-span-2">
+                        <p className="block text-sm font-medium text-gray-300">Director's salary (from payroll)</p>
+                        <p className="text-xs text-gray-400 mt-1">The gross monthly salary the accountant runs through the payroll. The accountant's P&L then counts it as wages each month, and shows what the business still owes the director if it was not all paid. Leave empty if there is no director's salary.</p>
+                        <div className="mt-2 space-y-3">
+                            {salaries.map((s, i) => (
+                                <div key={i} className="grid grid-cols-1 gap-2 rounded-md bg-gray-700/40 p-3 sm:grid-cols-[minmax(0,1fr)_8rem] lg:grid-cols-[minmax(0,1fr)_8rem_auto_auto_auto] lg:items-end">
+                                    <div>
+                                        <label htmlFor={`salaryName${i}`} className="block text-xs text-gray-400">Director's name</label>
+                                        <input id={`salaryName${i}`} type="text" value={s.name} onChange={e => setSalary(i, { name: e.target.value })} placeholder="As on the bank lines" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
+                                    </div>
+                                    <div>
+                                        <label htmlFor={`salaryGross${i}`} className="block text-xs text-gray-400">Gross / month (£)</label>
+                                        <input id={`salaryGross${i}`} type="number" min={0} step="0.01" value={s.monthlyGross || ''} onChange={e => setSalary(i, { monthlyGross: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white text-right tabular-nums" />
+                                    </div>
+                                    <div>
+                                        <label htmlFor={`salaryFrom${i}`} className="block text-xs text-gray-400">From</label>
+                                        <UkDateInput id={`salaryFrom${i}`} value={s.from || ''} onChange={e => setSalary(i, { from: e.target.value })} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <label htmlFor={`salaryTo${i}`} className="block text-xs text-gray-400">To (optional)</label>
+                                        <UkDateInput id={`salaryTo${i}`} value={s.to || ''} onChange={e => setSalary(i, { to: e.target.value })} className="mt-1" />
+                                    </div>
+                                    <button type="button" onClick={() => removeSalary(i)} className="justify-self-start rounded-md px-3 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white">Remove</button>
+                                </div>
+                            ))}
+                            <button type="button" onClick={addSalary} className="rounded-md bg-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600 hover:text-white">+ Add director's salary</button>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Salary paid from the bank is a wages line with the director's surname in the description. Save Changes to keep it.</p>
                     </div>
                     <div className={`md:col-span-2 ${formData.isVatRegistered ? '' : 'opacity-50'}`}>
                         <label htmlFor="vatStartDate" className="block text-sm font-medium text-gray-300">VAT Quarter Start Date</label>

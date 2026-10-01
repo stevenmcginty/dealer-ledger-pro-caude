@@ -51,7 +51,16 @@ export interface AutoMatchReceipt {
     date: string;
     status: string;
     paymentType: string;
+    reconciledByTxId?: string;
 }
+
+// A receipt a person may still pick by hand (Match / Advanced, Ask AI): not linked to a bank line
+// yet, and either Unpaid, or Paid by Direct payment. Old statement uploads marked receipts Paid
+// without storing the link, so "Paid" alone does not mean a bank line carries it. Automatic
+// matching stays Unpaid-only: an old Paid receipt was already paid by some older line, so
+// pairing it without a human could book the cost twice. Paid On Account receipts stay out.
+export const isMatchableReceipt = (r: { status: string; paymentType: string; reconciledByTxId?: string }): boolean =>
+    !r.reconciledByTxId && (r.status === 'Unpaid' || (r.status === 'Paid' && r.paymentType === 'Direct'));
 
 const dayGap = (d1: string, d2: string): number =>
     Math.ceil(Math.abs(new Date(d2).getTime() - new Date(d1).getTime()) / (1000 * 60 * 60 * 24));
@@ -97,4 +106,72 @@ export const pickAutoMatches = (txs: AutoMatchTx[], receipts: AutoMatchReceipt[]
         usedReceipts.add(c.receiptId);
     }
     return matches;
+};
+
+// Receipt saved after its bank line was already reconciled by hand: the receipt may be linked
+// to that line, but only one-to-one (same rules as scripts/link-receipts.mjs). Rules: receipt
+// amount > 0; money-out line, status Reconciled, not a Transfer, not a car purchase
+// (linkedVehicleId), penny-exact amount, line date from 5 days before to 35 days after the
+// receipt date, no receipt linked to it yet. Exactly one such line, AND no other unlinked
+// receipt (not On Account) with the same amount fits that line's window: the line may already
+// have its real receipt, or the new one is a duplicate. Else null.
+export const LINK_DAYS_BEFORE = 5;
+export const LINK_DAYS_AFTER = 35;
+
+export interface LinkableTx extends AutoMatchTx {
+    id: string;
+    category?: string;
+    linkedVehicleId?: string;
+}
+
+export interface LinkableReceipt {
+    id: string;
+    amount: number;
+    date: string;
+    paymentType?: string;
+    reconciledByTxId?: string;
+}
+
+const dayNumber = (s: string): number | null => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+    return m ? Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000) : null;
+};
+
+const fitsWindow = (lineDay: number, receiptDay: number): boolean =>
+    lineDay >= receiptDay - LINK_DAYS_BEFORE && lineDay <= receiptDay + LINK_DAYS_AFTER;
+
+export const findReconciledLineForReceipt = <T extends LinkableTx>(
+    receipt: { id: string; amount: number; date: string },
+    txs: T[],
+    receipts: LinkableReceipt[],
+): T | null => {
+    const amount = Number(receipt.amount);
+    const receiptDay = dayNumber(receipt.date);
+    if (!(amount > 0) || receiptDay == null) return null; // credit notes never auto-link
+    const receiptPence = Math.round(amount * 100);
+    const others = receipts.filter(r => r.id !== receipt.id);
+    const linked = new Set(others.filter(r => r.reconciledByTxId).map(r => r.reconciledByTxId));
+    const hits = txs.filter(tx => {
+        if (tx.status !== 'Reconciled' || !(tx.amount < 0) || tx.category === 'Transfer' || tx.linkedVehicleId || linked.has(tx.id)) return false;
+        if (Math.round(Math.abs(tx.amount) * 100) !== receiptPence) return false;
+        const d = dayNumber(tx.date);
+        return d != null && fitsWindow(d, receiptDay);
+    });
+    if (hits.length !== 1) return null;
+    const lineDay = dayNumber(hits[0].date)!;
+    const rival = others.some(r => {
+        if (r.reconciledByTxId || r.paymentType === 'On Account') return false;
+        if (Math.round(Number(r.amount) * 100) !== receiptPence) return false;
+        const d = dayNumber(r.date);
+        return d != null && fitsWindow(lineDay, d);
+    });
+    return rival ? null : hits[0];
+};
+
+// VAT rate to store with a VAT amount copied from receipts: 0 when there is no VAT, 20 when the
+// VAT is exactly gross/6 (to the penny). Anything else returns undefined: keep the line's rate.
+export const vatRateForVat = (gross: number, vat: number): 0 | 20 | undefined => {
+    const vatPence = Math.round(Math.abs(Number(vat) || 0) * 100);
+    if (vatPence === 0) return 0;
+    return Math.round((Math.abs(Number(gross) || 0) * 100) / 6) === vatPence ? 20 : undefined;
 };

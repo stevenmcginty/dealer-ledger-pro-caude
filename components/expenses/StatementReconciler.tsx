@@ -12,6 +12,8 @@ import InlineCategoryCombobox, { CategoryComboboxHandle } from './InlineCategory
 import AddTransactionRow from './AddTransactionRow';
 import { useReconcileQueueKeyboard } from '../../hooks/useReconcileQueueKeyboard';
 import ReceiptThumb from '../common/ReceiptThumb';
+import { isMatchableReceipt } from '../../utils/statementAutoMatch';
+import { findTransferPartners, rankAutoSuggestion } from '../../utils/accountTransfers';
 
 type AiSuggestion = { category: string } | { match: { vehicle?: Vehicle, receipts?: Receipt[] } };
 
@@ -66,7 +68,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
         expenseCategories, updateTransaction, vehicles, reconcileTransactionFromSuggestion,
         transactions: allTransactions, salesDocs, miscInvoices, jobInvoices,
         reconcileSalePayment, reconcileMiscInvoicePayment, reconcileJobInvoicePayment,
-        addExpenseCategory
+        addExpenseCategory, financialAccounts
     } = useData();
     const { modal } = useUI();
 
@@ -119,6 +121,9 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
         dataService.getReconciliationSuggestions(transactions, receipts, vehicles, salesDocs, miscInvoices, jobInvoices),
         [transactions, receipts, vehicles, salesDocs, miscInvoices, jobInvoices]
     );
+
+    // Same amount out of one own bank and into another within 3 days (see utils/accountTransfers).
+    const transferPartners = useMemo(() => findTransferPartners(allTransactions, financialAccounts), [allTransactions, financialAccounts]);
 
     // Calculate VAT stats per category from history to determine if a category typically attracts VAT
     const categoryVatStats = useMemo(() => {
@@ -197,25 +202,16 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
     }, [expenseCategories]);
 
     const getAutoSuggestion = (tx: StatementTransaction) => {
-        // 1. High Confidence Data Match (Vehicle/Receipt/Income)
-        const match = heuristicSuggestions.get(tx.id);
-        if (match) {
-            return { type: 'match', data: match };
-        }
-
-        // 2. Historical Match (Dynamic Learning)
-        const cleanDesc = tx.description.trim().toLowerCase();
-        if (historyMap.has(cleanDesc)) {
-            return { type: 'category', category: historyMap.get(cleanDesc)! };
-        }
-
-        // 3. Keyword Heuristic
-        const keywordCat = getKeywordSuggestion(tx.description, expenseCategories);
-        if (keywordCat) {
-            return { type: 'category', category: keywordCat };
-        }
-
-        return null;
+        // 1. High Confidence Data Match (Vehicle/Receipt/Income) always wins.
+        // 2. Money moved between own banks: the same amount leaves one and arrives in another.
+        // 3. Historical Match (Dynamic Learning). 4. Keyword Heuristic.
+        const pair = transferPartners.get(tx.id);
+        return rankAutoSuggestion({
+            match: heuristicSuggestions.get(tx.id),
+            transferAccountName: pair ? (financialAccounts.find(a => a.id === pair.partnerAccountId)?.name || 'other account') : null,
+            historyCategory: historyMap.get(tx.description.trim().toLowerCase()),
+            keywordCategory: getKeywordSuggestion(tx.description, expenseCategories),
+        });
     };
 
     const getEffectiveVatRate = (tx: StatementTransaction, suggestedCategory?: string): number => {
@@ -251,7 +247,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
 
         try {
             const categoryNames = expenseCategories.map(c => c.name);
-            const unreconciledReceipts = receipts.filter(r => r.status === 'Unpaid');
+            const unreconciledReceipts = receipts.filter(isMatchableReceipt);
             const result = await ai.getSmartReconciliationSuggestion(tx, unreconciledReceipts, categoryNames, vehicles, allTransactions);
 
             if (result.match) {
@@ -373,6 +369,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
         }
         const auto = getAutoSuggestion(tx);
         if (!auto) return null;
+        if (auto.type === 'transfer') return () => commitTransfer(tx);
         if (auto.type === 'category') {
             const cat = (auto as any).category as string;
             return () => handleAcceptCategorySuggestion(tx.id, cat, tx.amount, getEffectiveVatRate(tx, cat));
@@ -512,6 +509,14 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
 
         // Render based on what we found
         if (activeSuggestion) {
+            if (activeSuggestion.type === 'transfer') {
+                return (
+                    <button onClick={() => commitTransfer(tx)} title="Book both sides as a transfer between your own accounts (no VAT, not in the P&L)" className="w-full inline-flex items-center justify-center gap-x-2 text-xs font-semibold text-center px-3 py-2 rounded-md bg-sky-600 text-white hover:bg-sky-500 shadow-sm transition-all border border-sky-500 hover:border-sky-400">
+                        Transfer ↔ {(activeSuggestion as any).accountName}
+                    </button>
+                );
+            }
+
             if (activeSuggestion.type === 'match') {
                 const matchData = activeSuggestion.data as dataService.HeuristicSuggestion;
                 let text = 'Match Found';

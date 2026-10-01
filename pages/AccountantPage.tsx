@@ -13,6 +13,7 @@ import { useUI } from '../hooks/useUI';
 import { computeProfitAndLoss } from '../utils/accounting/profitAndLoss';
 import { estimateCorporationTax } from '../utils/accounting/corporationTax';
 import { periodKeyOf } from '../utils/accounting/yearEnd';
+import { readDirectorSalaries } from '../utils/accounting/directorSalary';
 import { getPresetRange } from '../utils/datePresets';
 
 // The accountant's one-stop hub: one period drives every tab.
@@ -54,11 +55,13 @@ const AccountantPage = () => {
     ], [isServiceBusiness, isVatRegistered]);
     const activeTab: HubTab = tabs.some(t => t.id === tab) ? tab : 'overview';
 
+    const directorSalaries = useMemo(() => readDirectorSalaries(businessDetails?.directorSalaries), [businessDetails?.directorSalaries]);
+
     const pnl = useMemo(() => computeProfitAndLoss({
         range: period,
         salesDocs: data.salesDocs, vehicles: data.vehicles, receipts: data.receipts, transactions: data.transactions,
-        miscInvoices: data.miscInvoices, jobInvoices: data.jobInvoices, financialAccounts: data.financialAccounts, isVatRegistered,
-    }), [period, data.salesDocs, data.vehicles, data.receipts, data.transactions, data.miscInvoices, data.jobInvoices, data.financialAccounts, isVatRegistered]);
+        miscInvoices: data.miscInvoices, jobInvoices: data.jobInvoices, financialAccounts: data.financialAccounts, isVatRegistered, directorSalaries,
+    }), [period, data.salesDocs, data.vehicles, data.receipts, data.transactions, data.miscInvoices, data.jobInvoices, data.financialAccounts, isVatRegistered, directorSalaries]);
 
     const vatDue = useMemo(() => isVatRegistered ? computeVatSummary({
         startDate: period.start, endDate: period.end, salesDocs: data.salesDocs, vehicles: data.vehicles, miscInvoices: data.miscInvoices,
@@ -102,6 +105,23 @@ const AccountantPage = () => {
         for (const w of pnl.warnings) {
             if (['unreconciled_bank_lines', 'zero_cost', 'sale_without_vehicle'].includes(w.code)) continue;
             items.push({ id: w.code, count: w.refIds.length, tone: 'warn', label: w.message, detail: 'Check the vehicle records in Stock.', actionLabel: 'Open Stock', onAction: () => setView('stock') });
+        }
+        for (const l of pnl.directorSalary?.lines ?? []) {
+            items.push(l.status === 'owed' ? {
+                id: `salary-${l.name}`, count: 1, tone: 'warn',
+                label: `Unpaid director's salary: the business owes ${l.name} ${money(l.balance)}`,
+                detail: "Record it as a credit on the director's loan account. It must match the payroll (accountant). Salary still unpaid 9 months after the year end is not deductible for corporation tax in that year.",
+                actionLabel: 'Corporation Tax', onAction: () => openTab('ct'),
+            } : l.status === 'overdrawn' ? {
+                id: `salary-${l.name}`, count: 1, tone: 'warn',
+                label: `${l.name} has taken ${money(-l.balance)} more than salary`,
+                detail: "Overdrawn director's loan account — check with the accountant.",
+                actionLabel: 'See the P&L', onAction: () => openTab('pnl'),
+            } : {
+                id: `salary-${l.name}`, count: 0, tone: 'ok',
+                label: `${l.name}'s salary is paid up to date`,
+                detail: `Salary due to ${l.name} matches what was paid from the bank.`,
+            });
         }
         const out = pnl.notInPnl;
         items.push({

@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { useData } from '../../hooks/useData';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
+import { accountIdOfTx } from '../../utils/accountTransfers';
 import { ArrowDownTrayIcon, BanknotesIcon, CreditCardIcon, CalculatorIcon, ExclamationTriangleIcon } from '../icons';
 import UkDateInput from '../common/UkDateInput';
 import DatePresetButtons from './DatePresetButtons';
@@ -49,13 +50,13 @@ const VatTransactionsReport = () => {
                 return false;
             }
             if (selectedAccount) {
-                 return tx.accountId === selectedAccount.id || (!tx.accountId && tx.type === selectedAccount.type);
+                 return accountIdOfTx(tx, financialAccounts) === selectedAccount.id;
             }
             return true;
         });
         
         const rows = filteredTransactions.map(tx => {
-            const account = financialAccounts.find(acc => acc.id === tx.accountId) || financialAccounts.find(acc => acc.type === tx.type);
+            const account = financialAccounts.find(acc => acc.id === accountIdOfTx(tx, financialAccounts));
             const total = tx.amount;
             const vat = tx.vatAmount || 0;
             const net = total < 0 ? total + vat : total - vat;

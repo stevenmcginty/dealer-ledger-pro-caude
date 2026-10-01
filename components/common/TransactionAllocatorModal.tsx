@@ -8,6 +8,7 @@ import * as ai from '../../utils/ai';
 import { compressImage } from '../../utils/helpers';
 import { XMarkIcon, ExclamationTriangleIcon, ArrowUpTrayIcon, CheckCircleIcon } from '../icons';
 import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../utils/helpers';
+import { isMatchableReceipt } from '../../utils/statementAutoMatch';
 import Spinner from '../common/Spinner';
 import { useToast } from '../ui';
 
@@ -56,7 +57,9 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
         const txDate = new Date(transaction.date);
         const thirtyDays = 30 * 24 * 60 * 60 * 1000;
 
-        const allUnreconciledReceipts = allReceipts.filter(r => r.status === 'Unpaid');
+        // Unpaid receipts, plus Paid Direct ones no bank line carries yet. This also works on a
+        // line that is already reconciled (Edit opens this dialog), so no Undo is needed first.
+        const allUnreconciledReceipts = allReceipts.filter(isMatchableReceipt);
         const allUnreconciledVehicles = vehicles.filter(v => v.status !== 'Sold' && !v.purchaseTransactionId);
 
         const items = selectedType === 'receipt' 
@@ -168,7 +171,7 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
                 </div>
                 <div className="flex justify-between items-center text-xs text-gray-400 mt-2 pl-8">
                     <span>{formatDate(item.date)}</span>
-                    <span>{type === 'receipt' ? item.category : 'Vehicle Purchase'}</span>
+                    <span>{type === 'receipt' ? (item.status === 'Paid' ? `${item.category} · Paid, no bank line yet` : item.category) : 'Vehicle Purchase'}</span>
                 </div>
             </button>
         )

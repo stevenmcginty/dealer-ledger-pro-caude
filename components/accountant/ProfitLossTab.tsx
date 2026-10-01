@@ -43,6 +43,7 @@ const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServi
             ...expenses.byCategory.map(c => r('Overheads', c.category, c.net)),
             r('Overheads', 'Total overheads', expenses.total),
             r('Net profit', '', pnl.netProfit),
+            ...(pnl.directorSalary?.lines ?? []).map(l => r('Note', `Director's salary ${l.name}: due ${fix2(l.due)} (accrued in Wages), paid ${fix2(l.paid)}, ${l.balance >= 0 ? `owed ${fix2(l.balance)}` : `overdrawn ${fix2(-l.balance)}`} at ${pnl.directorSalary!.asOf}`, '')),
             r('', '', ''),
             r('NOT IN P&L', 'Group', 'Money in / Money out'),
             ...notInPnl.byGroup.map(g => r('Not in P&L', g.label, `${fix2(g.moneyIn)} / ${fix2(g.moneyOut)}`)),
@@ -83,7 +84,16 @@ const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServi
 
                     <SectionLabel>Overheads</SectionLabel>
                     {expenses.byCategory.length === 0 && <p className="py-1.5 pl-4 text-sm text-gray-500">No overheads booked in this period.</p>}
-                    {expenses.byCategory.map(c => <Row key={c.category} indent label={c.category} value={c.net} />)}
+                    {expenses.byCategory.map(c => (
+                        <React.Fragment key={c.category}>
+                            <Row indent label={c.category} value={c.net} />
+                            {c.category.toLowerCase() === 'wages' && pnl.directorSalary?.lines.map(l => (
+                                <p key={l.name} className={`-mt-1 pb-1.5 pl-8 text-xs ${l.status === 'settled' ? 'text-gray-400' : 'text-amber-300/90'}`}>
+                                    {l.name}: salary due {money(l.due)} (accrued), paid {money(l.paid)}, {l.balance >= 0 ? `owed ${money(l.balance)}` : `overdrawn ${money(-l.balance)}`} at {formatDayShort(pnl.directorSalary!.asOf)}
+                                </p>
+                            ))}
+                        </React.Fragment>
+                    ))}
                     <Row strong rule label="Total overheads" value={expenses.total} cost />
 
                     <div className={`mt-4 flex items-baseline justify-between gap-4 rounded-lg px-3 py-3 ring-1 ring-inset ${pnl.netProfit >= 0 ? 'bg-emerald-900/30 ring-emerald-700/50' : 'bg-red-900/30 ring-red-700/50'}`}>

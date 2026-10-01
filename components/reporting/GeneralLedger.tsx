@@ -6,6 +6,8 @@ import { formatCurrency, formatDate } from '../../utils/helpers';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
 import { useToast } from '../ui';
+import { readDirectorSalaries, salaryMonthEnds, salaryPaymentOwner } from '../../utils/accounting/directorSalary';
+import { dayOf } from '../../utils/accounting/yearEnd';
 
 interface LedgerEntry {
     date: string;
@@ -17,7 +19,7 @@ interface LedgerEntry {
     vat: number;
     balance?: number;
     sourceId: string;
-    sourceType: 'vehicle' | 'sale' | 'transaction';
+    sourceType: 'vehicle' | 'sale' | 'transaction' | 'accrual';
     accountType?: 'Bank' | 'Credit Card';
 }
 
@@ -25,7 +27,8 @@ interface LedgerEntry {
 interface ControlledPeriodProps { startDate?: string; endDate?: string; hidePeriodBar?: boolean; }
 
 const GeneralLedger = ({ startDate: startProp, endDate: endProp, hidePeriodBar = false }: ControlledPeriodProps = {}) => {
-    const { transactions, salesDocs, vehicles } = useData();
+    const { transactions, salesDocs, vehicles, businessDetails } = useData();
+    const directorSalaries = useMemo(() => readDirectorSalaries(businessDetails?.directorSalaries), [businessDetails?.directorSalaries]);
     const toast = useToast();
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -114,10 +117,12 @@ const GeneralLedger = ({ startDate: startProp, endDate: endProp, hidePeriodBar =
             if (tx.status === 'Reconciled' && tx.reconciliationType !== 'transfer') {
                 const vatAmount = tx.vatAmount || 0;
                 const netAmount = Math.abs(tx.amount) - vatAmount;
+                // A director's salary payment settles the accrued salary (below), so it goes to the loan account, not wages.
+                const salaryOwner = directorSalaries.length ? salaryPaymentOwner(tx, directorSalaries) : null;
                 entries.push({
                     date: tx.date,
                     details: tx.description,
-                    account: tx.category,
+                    account: salaryOwner ? `Director's loan account (salary paid to ${salaryOwner.name})` : tx.category,
                     ref: `TX#${tx.id.substring(0, 6)}`,
                     debit: tx.amount < 0 ? netAmount : 0,
                     credit: tx.amount > 0 ? netAmount : 0,
@@ -131,14 +136,14 @@ const GeneralLedger = ({ startDate: startProp, endDate: endProp, hidePeriodBar =
 
         return entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    }, [vehicles, salesDocs, transactions]);
+    }, [vehicles, salesDocs, transactions, directorSalaries]);
 
     const filteredEntries = useMemo(() => {
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        return ledgerEntries.filter(e => {
+        const rows = ledgerEntries.filter(e => {
             const entryDate = new Date(e.date);
             const dateMatch = entryDate >= start && entryDate <= end;
             if (!dateMatch) return false;
@@ -149,7 +154,36 @@ const GeneralLedger = ({ startDate: startProp, endDate: endProp, hidePeriodBar =
             
             return e.accountType === accountFilter;
         });
-    }, [ledgerEntries, startDate, endDate, accountFilter]);
+        // 4. Accrued director's salary (from the payroll setting): for each payroll month-end in the
+        // period, up to today, debit Wages and credit the director's loan account.
+        if (accountFilter === 'all' && directorSalaries.length) {
+            const today = dayOf(new Date());
+            const accrualRange = { start: startDate, end: endDate < today ? endDate : today };
+            const accruals: LedgerEntry[] = directorSalaries.flatMap(s => salaryMonthEnds(s, accrualRange).flatMap(day => [{
+                date: day,
+                details: `Accrued director's salary: ${s.name}`,
+                account: 'Wages',
+                ref: 'PAYROLL',
+                debit: s.monthlyGross,
+                credit: 0,
+                vat: 0,
+                sourceId: `salary-${s.name}-${day}`,
+                sourceType: 'accrual' as const,
+            }, {
+                date: day,
+                details: `Accrued director's salary: ${s.name}`,
+                account: `Director's loan account: ${s.name}`,
+                ref: 'PAYROLL',
+                debit: 0,
+                credit: s.monthlyGross,
+                vat: 0,
+                sourceId: `salary-dla-${s.name}-${day}`,
+                sourceType: 'accrual' as const,
+            }]));
+            if (accruals.length) return [...rows, ...accruals].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        }
+        return rows;
+    }, [ledgerEntries, startDate, endDate, accountFilter, directorSalaries]);
 
     const handleDownload = () => {
         const csvData = filteredEntries.map(e => ({

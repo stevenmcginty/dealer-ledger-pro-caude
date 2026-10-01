@@ -397,6 +397,22 @@ export interface BusinessDetails {
      * `yearEndAdjustments` list.
      */
     yearEndAdjustments?: { [id: string]: NewYearEndAdjustment };
+    /**
+     * Director's salary from the payroll (run by the accountant). Missing or empty =
+     * wages are just the bank lines. See utils/accounting/directorSalary.ts.
+     */
+    directorSalaries?: DirectorSalary[];
+}
+
+/** One director's salary as set up in the payroll. */
+export interface DirectorSalary {
+    name: string;
+    /** Gross pay per month, in pounds. */
+    monthlyGross: number;
+    /** 'YYYY-MM-DD': salary is due for every month-end on or after this day. */
+    from: string;
+    /** 'YYYY-MM-DD', optional: no salary for month-ends after this day. */
+    to?: string;
 }
 
 export type YearEndAdjustmentKind = 'add_back' | 'capital_allowance' | 'stock_write_down' | 'loss_brought_forward' | 'other_deduction';
@@ -694,6 +710,10 @@ export interface FinancialAccount {
     name: string;
     type: 'Bank' | 'Credit Card';
     columnMapping?: StatementColumnMapping; // saved bank-statement format for this account
+    // A closed account is hidden from the Expenses tabs and the Upload Statement menu; its
+    // lines still count in every report. closedAt = ms timestamp (null clears it on reopen).
+    closed?: boolean;
+    closedAt?: number | null;
 }
 export type NewFinancialAccount = Omit<FinancialAccount, 'id'>;
 
@@ -1075,7 +1095,8 @@ export interface DataContextState {
     markReceiptsAsPaid: (ids: string[]) => Promise<void>;
     deleteReceiptFileOnly: (id: string) => Promise<void>;
     convertQuoteToInvoice: (quoteId: string) => Promise<void>;
-    tryAutoReconciliation: (receipt: Receipt) => Promise<void>;
+    // 'reconciled' = matched an open bank line; 'linked' = attached to a line already reconciled by hand.
+    tryAutoReconciliation: (receipt: Receipt) => Promise<{ kind: 'reconciled' | 'linked'; transaction: StatementTransaction } | null>;
     clearAllCompanyData: () => Promise<void>;
     resequenceStockNumbers: () => Promise<void>;
     deleteDataAndFilesByCategories: (categories: string[]) => Promise<void>;

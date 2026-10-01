@@ -6,6 +6,8 @@ import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import { SalesDocument, Vehicle, NewVehicle, VehicleUpdate, NewReceipt, ReceiptUpdate, NewSalesDocument, SalesDocumentUpdate, StatementTransaction, StatementTransactionUpdate, NewWorkSheet, NewMiscInvoice, Receipt, MiscInvoiceUpdate, WorkSheet, JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate, InternalJob, NewInternalJob, InternalJobUpdate, PDI, NewPDI, PDIUpdate } from '../../types';
 import * as dataService from '../../services/dataService';
+import { useToast } from '../ui';
+import { formatCurrency, formatDate } from '../../utils/helpers';
 
 // Import Modal/Editor Components
 import Modal from './Modal';
@@ -87,6 +89,7 @@ const DeleteJobInvoiceConfirmModal = ({ invoice }: { invoice: JobInvoice }) => {
 const ModalManager = () => {
     const { modal, closeModal, openModal } = useUI();
     const data = useData();
+    const toast = useToast();
     const { companyId, userId } = data;
 
     // Must sit above the early return: hooks cannot be conditional, and closing a
@@ -110,7 +113,11 @@ const ModalManager = () => {
         } else {
             const newId = await data.addReceipt(formData as NewReceipt);
             const addedReceipt = { ...formData, id: newId, status: 'Unpaid' } as Receipt;
-            await data.tryAutoReconciliation(addedReceipt);
+            const result = await data.tryAutoReconciliation(addedReceipt);
+            if (result?.kind === 'linked') {
+                const tx = result.transaction;
+                toast.info(`Receipt attached to the reconciled bank line ${formatDate(tx.date)} · ${tx.description} · ${formatCurrency(tx.amount)}. Its category and VAT were not changed.`);
+            }
         }
         closeModal();
     };

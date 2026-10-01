@@ -8,6 +8,7 @@ import { ArrowUpTrayIcon, TrashIcon, DocumentTextIcon, PlusIcon, XMarkIcon } fro
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import { toYYYYMMDD } from '../../utils/helpers';
+import { accountIdOfTx, accountsForTabs, accountsForUpload } from '../../utils/accountTransfers';
 import UkDateInput from '../common/UkDateInput';
 
 interface ExpensesHubProps {
@@ -34,6 +35,7 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
     const [startDate, setStartDate] = useState(toYYYYMMDD(firstDayOfMonth));
     const [endDate, setEndDate] = useState(toYYYYMMDD(today));
     const [searchTerm, setSearchTerm] = useState('');
+    const [showClosed, setShowClosed] = useState(false);
 
     useEffect(() => {
         if(financialAccounts.length > 0) {
@@ -224,17 +226,19 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
         });
     }, [allReceipts, startDate, endDate, searchTerm, hasActiveFilters]);
 
+    const closedCount = financialAccounts.filter(acc => acc.closed).length;
+    const uploadAccounts = accountsForUpload(financialAccounts);
     const tabs = [
         { id: 'receipts', name: 'All Receipts' },
         { id: 'payables', name: 'Payables' },
-        ...financialAccounts.map(acc => ({ id: acc.id, name: acc.name })),
+        ...accountsForTabs(financialAccounts, showClosed, activeTab).map(acc => ({ id: acc.id, name: acc.closed ? `${acc.name} (closed)` : acc.name })),
     ];
     
     const activeAccount = financialAccounts.find(acc => acc.id === activeTab);
 
     const transactionsForActiveTab = filteredTransactions.filter(t => {
         if (!activeAccount) return false;
-        return t.accountId === activeAccount.id || (!t.accountId && t.type === activeAccount.type);
+        return accountIdOfTx(t, financialAccounts) === activeAccount.id;
     });
 
     const directPaymentReceipts = useMemo(() => filteredReceipts.filter(r => r.paymentType !== 'On Account'), [filteredReceipts]);
@@ -286,13 +290,13 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
                             <div className="absolute right-0 mt-2 w-full origin-top-right rounded-md bg-gray-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
                                 <div className="py-1">
                                     <div className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase">Upload to:</div>
-                                    {financialAccounts.map(acc => (
+                                    {uploadAccounts.map(acc => (
                                         <label key={acc.id} className="w-full text-left flex items-center px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 cursor-pointer">
                                             <input type="file" accept=".csv,text/csv,application/vnd.ms-excel,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => { handleFileChange(e, acc); setUploadMenuOpen(false); }} className="hidden" />
                                             {acc.name}
                                         </label>
                                     ))}
-                                    {financialAccounts.length === 0 && (
+                                    {uploadAccounts.length === 0 && (
                                         <p className="px-4 py-2 text-sm text-gray-400">No accounts configured. Please add one in Settings.</p>
                                     )}
                                 </div>
@@ -342,6 +346,13 @@ const ExpensesHub = ({ allReceipts, transactions, suppliers, onUpload }: Expense
                     </nav>
                  </div>
             </div>
+            {closedCount > 0 && (
+                <div className="-mt-4 flex justify-end">
+                    <button type="button" onClick={() => setShowClosed(s => !s)} className="text-xs text-gray-400 hover:text-gray-200">
+                        {showClosed ? 'Hide closed accounts' : `Show closed accounts (${closedCount})`}
+                    </button>
+                </div>
+            )}
 
             <div className="mt-2">
                 {activeTab === 'receipts' && <ReceiptManager receipts={directPaymentReceipts} hasActiveFilters={hasActiveFilters} />}

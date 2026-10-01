@@ -15,6 +15,7 @@
 import type { Receipt, StatementTransaction, FinancialAccount } from '../../types';
 import { classifyReceipt, classifyTransaction, displayCategory, NotInPnlGroup } from './categories';
 import { DateRange, inRange, toDay } from './yearEnd';
+import { accountIdOfTx } from '../accountTransfers';
 
 export type ExpenseRowSource = 'receipt' | 'bank' | 'card';
 
@@ -68,8 +69,10 @@ export function buildExpenseRows(input: ExpenseRowsInput): ExpenseRow[] {
     const { range, receipts, transactions, financialAccounts = [], isVatRegistered } = input;
     const accountName = new Map(financialAccounts.map(a => [a.id, a.name]));
     const txById = new Map(transactions.map(t => [t.id, t]));
-    const txLabel = (tx: StatementTransaction) =>
-        (tx.accountId && accountName.get(tx.accountId)) || (tx.type === 'Credit Card' ? 'Credit card' : 'Bank');
+    const txLabel = (tx: StatementTransaction) => {
+        const accountId = accountIdOfTx(tx, financialAccounts);
+        return (accountId && accountName.get(accountId)) || (tx.type === 'Credit Card' ? 'Credit card' : 'Bank');
+    };
 
     // Bank lines that a receipt (from any date) points at: the receipt carries the cost.
     const linkedTxIds = new Set<string>();

@@ -106,6 +106,58 @@ export const applyColumnMapping = (row: Record<string, string>, mapping: Stateme
     };
 };
 
+// Built-in header aliases for well-known bank exports (e.g. Lloyds: Transaction Date, Transaction
+// Type, Transaction Description, Debit Amount, Credit Amount), used by dataService.processStatement
+// when an account has no saved mapping. Returns null when the row has no date, description or amount.
+export const readRowByHeaderAliases = (
+    row: Record<string, string>,
+    headers: string[],
+    accountType: 'Bank' | 'Credit Card',
+): { date: string; description: string; amount: number; method?: string } | null => {
+    const getField = (possibleKeys: string[]): string | undefined => {
+        for (const key of possibleKeys) {
+            if (headers.includes(key) && row[key]) {
+                return row[key];
+            }
+        }
+        return undefined;
+    };
+
+    const dateStr = getField(['Date', 'Transaction Date', 'Clearance Date']);
+    const date = dateStr ? robustDateParser(dateStr) : null;
+
+    const description = getField(['Details', 'Transaction Description', 'Description', 'Merchant Name']);
+
+    if (!date || !description) return null;
+
+    const debitStr = getField(['Out', 'Debit Amount', 'Debit']);
+    const creditStr = getField(['In', 'Credit Amount', 'Credit']);
+    const amountStr = getField(['Amount']);
+
+    let amount: number;
+    if (debitStr !== undefined || creditStr !== undefined) {
+        const debit = parseFloat(debitStr || '0');
+        const credit = parseFloat(creditStr || '0');
+        amount = credit - debit;
+    } else if (amountStr !== undefined) {
+        const parsedAmount = parseFloat(amountStr);
+        if (accountType === 'Credit Card') {
+            const lowerDesc = description.toLowerCase();
+            if (lowerDesc.includes('payment received') || lowerDesc.includes('payment thank you')) {
+                amount = parsedAmount;
+            } else {
+                amount = -parsedAmount;
+            }
+        } else {
+            amount = parsedAmount;
+        }
+    } else {
+        return null;
+    }
+
+    return { date, description, amount, method: getField(['Transaction Type']) };
+};
+
 // True when a mapping has the minimum required columns to be usable.
 export const isMappingComplete = (m?: StatementColumnMapping): boolean => {
     if (!m) return false;

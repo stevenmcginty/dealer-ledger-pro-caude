@@ -1,5 +1,23 @@
 # Handoff
 
+## 1 Oct 2026 (night) — invoice sweep, receipt links, Lloyds/Allica split, director's salary (LIVE, NOT committed)
+
+Steve's asks: get every supplier invoice (Logic rent, Google, Prime Video, then all missing ones) into the app; show every receipt on its reconciled bank line; split the two banks; book the Lloyds Q3 statement; never count money in twice; show the salary the company owes him.
+
+### Done (hosting deployed several times; last ~20:00; 286 tests pass; nothing committed — shared tree)
+- **Receipt links:** cause = old upload auto-match set receipts Paid with no `reconciledByTxId`. `scripts/link-receipts.mjs` (dry run / `--apply` / `--receipts`) linked 181+ receipts in Steve's ledger and 258 in Chris's (+35 by hand-checked pairing). Steve's ledger: 56 → ~300 linked. App now auto-links a new receipt to a reconciled line only when one-to-one (`utils/statementAutoMatch.ts` `findReconciledLineForReceipt`); automatic paths offer Unpaid receipts only; Match / Advanced also lists Paid-unlinked ones. `vatRate` now written with the VAT on match.
+- **Invoices:** ~95 receipts added (Logic rent, Google One/Cloud/Klarna, Prime Video, Motors, CarGurus, Anthropic, OpenAI, Grok, Z.ai, Supabase, Shiply, Total Car Check, Bodicraft). Files + logs: `C:\Users\steve\Desktop\radlett-vat\invoice-sweep\`. Not found: Innov8 £136.79, Group Tyre £63.48, HKS £26.04, YouTube Premium £19.99, Curtis & Co (standing order, no invoices). May 2026 Logic invoice £4,075.96 vs paid £4,049.57 (unlinked).
+- **Two banks:** "Bank Account" renamed **Lloyds** (428 lines to 31 Mar 2026), Allica lines (501, from 2 Apr 2026) moved to **Allica** (`scripts/split-bank-accounts.mjs`, backup `radlett-vat\bank-split\`). Upload dedupe now per account; "Transfer ↔ <bank>" suggestion ranked below real matches; no auto-booking of partners. Credit Card marked **closed** (hidden, still counted; Settings → Reopen).
+- **Lloyds Q3** uploaded and booked (60/60). All 9 Lloyds→Allica moves are Transfer on both sides (checked in RTDB). Fixes: M6 Toll ×2 → 20%, easyJet £85.99 → Transport, McDonald's Berwick → 20%, OpenAI → 20%, Allica £5,000 Easy Way → Transfer (sale counted on Lloyds card line). Q3 input VAT now £4,071.45 (was £3,899.80); VAT due ≈ £6,456.38 by my count — re-check in the VAT Summary before filing.
+- **Director's salary:** Business Details → Director's salary (`businessDetails/directorSalaries`, set to Steven McGinty £1,000/month from 2025-04-01 per payslips/P60s). Accountant hub accrues it, shows owed (£11,040 today; FY25-26 £10,040) and the 9-month deadline. `utils/accounting/directorSalary.ts`.
+- Company = **Easywaytosellmycar Ltd T/A Radlett Cars**. Skill `radlett-vat-quarter` updated (invoices-first order, invoice-sweep.md, many payee rulings, no-double-count rule, salary check step).
+
+### Next / open
+- **App bug:** Undo on a bank line matched to a sales document does NOT remove the payment it added to that document. Seen on Simon Ellis invoice #67291 (£5,000 payment still points at the Allica line, now Transfer) and MY12 RCZ deposit slip #24661 (£6,245 still on it; invoice #91255 also has it). Balances show £0 owed either way; no VAT effect. Needs a code fix + those two payment records cleaned.
+- 7 Aug £100 Lloyds card payment now matched to Boxster invoice #14129 (£0 owed).
+- Lloyds Apr–Jun 2026 never uploaded (Q2 filed). Possible personal Amazon items booked as Repairs/Office in older quarters (list in `invoice-sweep\wave2-amazon-log.md`).
+- Commit when Steve says so.
+
 ## 1 Oct 2026 (evening) — Accountant hub overhaul, new date picker, receipt thumbnails (LIVE, NOT committed)
 
 Steve's ask: the accountant could not see the date pickers. He wanted a Last Quarter button. The Accountant hub should be a one-stop shop fed by the Expenses work (P&L, margin, VAT, every expense with VAT, ledger, corporation tax). He also wanted receipt thumbnails, and the Canvas (Gemini) tab removed.
@@ -18,6 +36,12 @@ Steve's ask: the accountant could not see the date pickers. He wanted a Last Qua
 
 ### Real Q3 2026 P&L (read-only check)
 Revenue £182,187.34, cost of sales £116,887.40, gross profit £65,299.94, overheads £44,370.13, net profit £20,929.81.
+
+### Car Dealer 5 invoices (1 Oct, evening)
+- 2026 invoices come from the dealer panel (dealers.cardealer5.co.uk/admin.php, vault `v_83802749753b`), not email. PDFs are in `C:\Users\steve\Desktop\radlett-vat\cardealer5-invoices\`. 8 bank lines (Jan–Mar, May–Sep 2026, £132 / £22 VAT) now have a linked receipt. VAT is unchanged.
+- April 2026 invoice 99668 is marked Paid, but there is no April CD5 bank line in the ledger. Check the April Allica statement.
+- App bug: Undo resets the bank line's `vatRate` to 0, and a re-match does not restore it (`vatAmount` is kept).
+- Company = EASYWAYTOSELLMYCAR LTD (08348026) T/A Radlett Cars. Year end 31 March is confirmed on Companies House.
 
 ### Next / to check
 - Steve: a £4,943 'Refund' is counted as other income (it may be a BCA car refund). £11,526 of sale-or-return payouts went out in Q3, but no SOR car sale is in Q3.

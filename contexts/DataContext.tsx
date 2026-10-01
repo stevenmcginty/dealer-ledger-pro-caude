@@ -10,8 +10,7 @@ import {
 } from '../types';
 import * as dataService from '../services/dataService';
 import { User, onAuthStateChanged } from '../services/firebase';
-import { readCachedCompanyId } from '../utils/companyCache';
-import * as syncManager from '../services/syncManager';
+import { readCachedCompanyId } from '../utils/companyCache';import * as syncManager from '../services/syncManager';
 import * as google from '../services/google';
 
 export const DataContext = createContext<DataContextState | undefined>(undefined);
@@ -378,7 +377,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         markReceiptsAsPaid: (ids) => dataService.markReceiptsAsPaid(companyId!, ids),
         deleteReceiptFileOnly: (id) => dataService.deleteReceiptFileOnly(companyId!, id),
         convertQuoteToInvoice: (quoteId) => dataService.convertQuoteToInvoice(companyId!, quoteId),
-        tryAutoReconciliation: (receipt) => dataService.tryAutoReconciliation(companyId!, receipt, transactions),
+        tryAutoReconciliation: (receipt) => dataService.tryAutoReconciliation(companyId!, receipt, transactions, receipts),
         clearAllCompanyData: () => dataService.clearAllCompanyData(companyId!),
         resequenceStockNumbers: () => dataService.resequenceStockNumbers(companyId!, vehicles),
         deleteDataAndFilesByCategories: (categories) => dataService.deleteDataAndFilesByCategories(companyId!, user.uid, categories),

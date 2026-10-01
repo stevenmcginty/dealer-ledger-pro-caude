@@ -19,9 +19,10 @@ import {
     Lead, NewLead, LeadUpdate, LeadStage, Activity,
     EmailTemplate, NewEmailTemplate, EmailTemplateUpdate, NewYearEndAdjustment
 } from '../types';
-import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
-import { applyColumnMapping } from '../utils/csvMapping';
-import { pickAutoMatches } from '../utils/statementAutoMatch';
+import { isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
+import { applyColumnMapping, readRowByHeaderAliases } from '../utils/csvMapping';
+import { isOnAccountForDedupe } from '../utils/accountTransfers';
+import { pickAutoMatches, findReconciledLineForReceipt, vatRateForVat } from '../utils/statementAutoMatch';
 import type { User } from './firebase';
 import Papa from 'papaparse';
 
@@ -1017,16 +1018,22 @@ export const reconcileTransactionFromSuggestion = async (companyId: string, tran
         const receiptsSnap = await db.ref(roots.receipts).get();
         const allReceipts = receiptsSnap.val();
         let totalVat = 0;
+        let totalGross = 0;
 
         match.receiptIds.forEach(receiptId => {
             updates[`${roots.receipts}/${receiptId}/status`] = 'Paid';
             updates[`${roots.receipts}/${receiptId}/reconciledByTxId`] = transactionId;
             if (allReceipts && allReceipts[receiptId]) {
                 totalVat += allReceipts[receiptId].vat || 0;
+                totalGross += Number(allReceipts[receiptId].amount) || 0;
             }
         });
 
         updates[`${txRef}/vatAmount`] = totalVat;
+        // Keep the rate in step with the VAT just written (Undo sets it to 0): 20 when the VAT is
+        // gross/6, 0 when there is none; any other split keeps the line's current rate.
+        const vatRate = vatRateForVat(totalGross, totalVat);
+        if (vatRate !== undefined) updates[`${txRef}/vatRate`] = vatRate;
         // If it's a combo (vehicle + receipt), category is already 'Vehicle Purchase' which is correct.
         // If it's just receipts, set category from the first one.
         if (!match.vehicleId && allReceipts && allReceipts[match.receiptIds[0]]) {
@@ -1111,13 +1118,26 @@ export const reconcileJobInvoicePayment = async (companyId: string, transactionI
     return db.ref().update(updates);
 };
 
-export const tryAutoReconciliation = async (companyId: string, receipt: Receipt, transactions: StatementTransaction[]) => { 
-    if (receipt.paymentType !== 'Direct') return; 
-    const unreconciledTxs = transactions.filter(tx => tx.status === 'Unreconciled'); 
-    const receiptAmountPence = Math.round(receipt.amount * 100); 
+export type AutoReconcileResult = { kind: 'reconciled' | 'linked'; transaction: StatementTransaction } | null;
+
+export const tryAutoReconciliation = async (companyId: string, receipt: Receipt, transactions: StatementTransaction[], receipts: Receipt[] = []): Promise<AutoReconcileResult> => {
+    if (receipt.paymentType !== 'Direct') return null;
+    const unreconciledTxs = transactions.filter(tx => tx.status === 'Unreconciled');
+    const receiptAmountPence = Math.round(receipt.amount * 100);
     // Increased window to 21 days to catch invoices received well before payment
-    const matchedTx = unreconciledTxs.find(tx => Math.round(Math.abs(tx.amount) * 100) === receiptAmountPence && isWithinDays(tx.date, receipt.date, 21)); 
-    if (matchedTx) { await reconcileTransactionWithReceipt(companyId, matchedTx, receipt); } 
+    const matchedTx = unreconciledTxs.find(tx => Math.round(Math.abs(tx.amount) * 100) === receiptAmountPence && isWithinDays(tx.date, receipt.date, 21));
+    if (matchedTx) { await reconcileTransactionWithReceipt(companyId, matchedTx, receipt); return { kind: 'reconciled', transaction: matchedTx }; }
+
+    // No open line: its bank line may already be reconciled by hand. Link the receipt to it when
+    // it is the only candidate (see findReconciledLineForReceipt). The line's category and VAT stay as they are.
+    const reconciledTx = findReconciledLineForReceipt(receipt, transactions, receipts);
+    if (!reconciledTx) return null;
+    const roots = FOLDER_ROOTS(companyId);
+    await db.ref().update({
+        [`${roots.receipts}/${receipt.id}/status`]: 'Paid',
+        [`${roots.receipts}/${receipt.id}/reconciledByTxId`]: reconciledTx.id,
+    });
+    return { kind: 'linked', transaction: reconciledTx };
 };
 export const reconcileTransactionWithReceipt = async (companyId: string, transaction: StatementTransaction, receipt: Receipt) => { 
     return reconcileTransactionFromSuggestion(companyId, transaction.id, { receiptIds: [receipt.id] });
@@ -1179,6 +1199,7 @@ export const getReconciliationSuggestions = (
     jobInvoices: JobInvoice[] = []
 ): Map<string, HeuristicSuggestion> => {
     const unreconciledTxs = transactions.filter(t => t.status === 'Unreconciled');
+    // Unpaid only: one-click suggestions must not offer old Paid receipts (see isMatchableReceipt).
     const unpaidReceipts = receipts.filter(r => r.status === 'Unpaid');
     const unreconciledVehicles = vehicles.filter(v => v.status !== 'Sold' && !v.purchaseTransactionId);
 
@@ -1363,15 +1384,6 @@ export const processStatement = async (companyId: string, file: File, account: F
         });
 
     onProgress({ step: 'parsing', message: 'Parsing complete.', total: rows.length });
-    
-    const getField = (row: { [key: string]: string }, possibleKeys: string[]): string | undefined => {
-        for (const key of possibleKeys) {
-            if (headers.includes(key) && row[key]) {
-                return row[key];
-            }
-        }
-        return undefined;
-    };
 
     // If this account has a saved column mapping (taught via the Mapping Wizard), use it.
     // Otherwise fall back to the built-in header-alias heuristic for well-known bank formats.
@@ -1394,39 +1406,10 @@ export const processStatement = async (companyId: string, file: File, account: F
             amount = mapped.amount;
             if (amount === 0) continue;
         } else {
-            // --- Legacy header-alias heuristic path ---
-            const dateStr = getField(row, ['Date', 'Transaction Date', 'Clearance Date']);
-            date = dateStr ? robustDateParser(dateStr) : null;
-
-            description = getField(row, ['Details', 'Transaction Description', 'Description', 'Merchant Name']);
-
-            if (!date || !description) continue;
-
-            const debitStr = getField(row, ['Out', 'Debit Amount', 'Debit']);
-            const creditStr = getField(row, ['In', 'Credit Amount', 'Credit']);
-            const amountStr = getField(row, ['Amount']);
-
-            if (debitStr !== undefined || creditStr !== undefined) {
-                const debit = parseFloat(debitStr || '0');
-                const credit = parseFloat(creditStr || '0');
-                amount = credit - debit;
-            } else if (amountStr !== undefined) {
-                const parsedAmount = parseFloat(amountStr);
-                if (account.type === 'Credit Card') {
-                    const lowerDesc = description.toLowerCase();
-                    if (lowerDesc.includes('payment received') || lowerDesc.includes('payment thank you')) {
-                        amount = parsedAmount;
-                    } else {
-                        amount = -parsedAmount;
-                    }
-                } else {
-                    amount = parsedAmount;
-                }
-            } else {
-                continue;
-            }
-
-            method = getField(row, ['Transaction Type']);
+            // --- Legacy header-alias heuristic path (utils/csvMapping) ---
+            const read = readRowByHeaderAliases(row, headers, account.type);
+            if (!read) continue;
+            ({ date, description, amount, method } = read);
         }
 
         const newTx: NewStatementTransaction = {
@@ -1463,7 +1446,10 @@ export const processStatement = async (companyId: string, file: File, account: F
     }
 
     onProgress({ step: 'deduplicating', message: 'Checking for duplicates...', total: newTransactions.length });
-    const uniqueNewTxs = newTransactions.filter(newTx => !existingTxs.some(exTx => exTx.date === newTx.date && exTx.description === newTx.description && exTx.amount === newTx.amount));
+    // Duplicates are checked against this account's own lines only: two banks can carry the
+    // same date/description/amount (e.g. both sides of a transfer).
+    const accountTxs = existingTxs.filter(exTx => isOnAccountForDedupe(exTx, account));
+    const uniqueNewTxs = newTransactions.filter(newTx => !accountTxs.some(exTx => exTx.date === newTx.date && exTx.description === newTx.description && exTx.amount === newTx.amount));
     onProgress({ step: 'deduplicating', message: 'Deduplication complete.', total: newTransactions.length, newCount: uniqueNewTxs.length, duplicateCount: newTransactions.length - uniqueNewTxs.length });
     onProgress({ step: 'reconciling', message: 'Auto-reconciling...', total: uniqueNewTxs.length });
     let reconciledCount = 0;

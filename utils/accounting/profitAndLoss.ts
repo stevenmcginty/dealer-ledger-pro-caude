@@ -18,12 +18,15 @@
 //   - SOR sales stay grossed up: the full sale is revenue, the owner's payout is a cost.
 // Expenses: see expenseRows.ts. Lines that are not trading (transfers, VAT to HMRC,
 // drawings, loans, stock purchases, sale money…) are listed under notInPnl instead.
+// Director's salary (when set up, see directorSalary.ts): Wages = the salary due for the
+// period; the bank lines that paid it are not counted again (they settle what is owed).
 
 import type {
-    SalesDocument, Vehicle, Receipt, StatementTransaction, MiscInvoice, JobInvoice, FinancialAccount,
+    SalesDocument, Vehicle, Receipt, StatementTransaction, MiscInvoice, JobInvoice, FinancialAccount, DirectorSalary,
 } from '../../types';
 import { buildExpenseRows, ExpenseRow } from './expenseRows';
 import { NotInPnlGroup } from './categories';
+import { computeDirectorSalary, DirectorSalarySummary, salaryPaymentOwner } from './directorSalary';
 import { DateRange, inRange, toDay } from './yearEnd';
 
 export interface ProfitAndLossInput {
@@ -36,6 +39,10 @@ export interface ProfitAndLossInput {
     jobInvoices: JobInvoice[];
     financialAccounts?: FinancialAccount[];
     isVatRegistered: boolean;
+    /** Director's salary from the payroll. Missing or empty = wages are the bank lines only. */
+    directorSalaries?: DirectorSalary[];
+    /** 'YYYY-MM-DD' for the director's salary: month-ends after it are not due yet. Default: today. */
+    today?: string;
 }
 
 export interface SaleLine {
@@ -136,6 +143,8 @@ export interface ProfitAndLoss {
     /** Every receipt / bank line in the period, the same rows the "Expenses & VAT" list shows. */
     rows: ExpenseRow[];
     warnings: PnlWarning[];
+    /** Set only when a director's salary is set up: due, paid and still owed. */
+    directorSalary?: DirectorSalarySummary;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -186,7 +195,7 @@ const finishCategories = (map: Map<string, CategoryTotal>): CategoryTotal[] =>
         .sort((a, b) => b.net - a.net || a.category.localeCompare(b.category));
 
 export function computeProfitAndLoss(input: ProfitAndLossInput): ProfitAndLoss {
-    const { range, salesDocs, vehicles, receipts, transactions, miscInvoices, jobInvoices, financialAccounts, isVatRegistered } = input;
+    const { range, salesDocs, vehicles, receipts, transactions, miscInvoices, jobInvoices, financialAccounts, isVatRegistered, directorSalaries } = input;
     const warnings: PnlWarning[] = [];
     const vehicleById = new Map(vehicles.map(v => [v.id, v]));
 
@@ -236,8 +245,13 @@ export function computeProfitAndLoss(input: ProfitAndLossInput): ProfitAndLoss {
     const expenseMap = new Map<string, CategoryTotal>();
     const incomeMap = new Map<string, CategoryTotal>();
     const groups = new Map<NotInPnlGroup, NotInPnlTotal>();
+    const directorSalary = directorSalaries?.length ? computeDirectorSalary({ range, salaries: directorSalaries, transactions, today: input.today }) : undefined;
+    // Every bank line (any date) that paid a director's salary, so a receipt linked to one is caught too.
+    const salaryPaymentIds = new Set(directorSalaries?.length ? transactions.filter(t => salaryPaymentOwner(t, directorSalaries)).map(t => t.id) : []);
     for (const row of rows) {
         if (row.inPnl) {
+            // A salary payment (or the receipt linked to it) settles salary already counted as due (below), so it is not counted twice.
+            if (row.transactionId && salaryPaymentIds.has(row.transactionId)) continue;
             addToCategory(row.direction === 'income' ? incomeMap : expenseMap, row);
             continue;
         }
@@ -250,6 +264,12 @@ export function computeProfitAndLoss(input: ProfitAndLossInput): ProfitAndLoss {
         if (isIn) c.moneyIn += row.gross; else c.moneyOut += row.gross;
         c.count += 1;
         groups.set(row.notInPnlGroup!, g);
+    }
+    if (directorSalary && directorSalary.due !== 0) {
+        const w = expenseMap.get('wages') ?? { category: 'Wages', net: 0, vat: 0, gross: 0, count: 0 };
+        w.net += directorSalary.due; w.gross += directorSalary.due;
+        w.count += directorSalary.lines.reduce((n, l) => n + l.monthsDue, 0);
+        expenseMap.set('wages', w);
     }
     const otherIncomeByCategory = finishCategories(incomeMap);
     const otherIncome = round2(otherIncomeByCategory.reduce((s, c) => s + c.net, 0));
@@ -343,5 +363,6 @@ export function computeProfitAndLoss(input: ProfitAndLossInput): ProfitAndLoss {
         },
         rows,
         warnings,
+        ...(directorSalary ? { directorSalary } : {}),
     };
 }

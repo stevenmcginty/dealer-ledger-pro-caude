@@ -40,6 +40,14 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
         }
     }
 
+    // Closing only hides the account from Expenses tabs and the upload menu; its lines stay in every report.
+    const handleToggleClosed = async () => {
+        if (!account.closed && !window.confirm(`Mark "${account.name}" as closed? It will be hidden from the Expenses tabs and the upload menu. Its transactions are kept and still count in every report.`)) return;
+        setIsSaving(true);
+        await updateFinancialAccount(account.id, account.closed ? { closed: false, closedAt: null } : { closed: true, closedAt: Date.now() });
+        setIsSaving(false);
+    };
+
     const Icon = account.type === 'Bank' ? BanknotesIcon : CreditCardIcon;
 
     return (
@@ -61,6 +69,7 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
                         <p className="font-semibold text-white">{account.name}</p>
                         <div className="flex items-center gap-2 text-xs">
                             <span className="text-gray-500">{account.type}</span>
+                            {account.closed && <><span className="text-gray-600">·</span><span className="font-semibold text-gray-300">Closed</span></>}
                             <span className="text-gray-600">·</span>
                             {hasMapping ? (
                                 <span className="inline-flex items-center gap-1 text-green-400"><CheckCircleIcon className="h-3.5 w-3.5" /> Statement format set</span>
@@ -91,6 +100,9 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
                             <ViewColumnsIcon className="h-5 w-5"/>
                         </button>
                         <button onClick={() => setIsEditing(true)} className="p-2 text-gray-400 hover:text-white"><EditIcon className="h-5 w-5"/></button>
+                        <button onClick={handleToggleClosed} disabled={isSaving} className="px-2 py-1 text-xs font-medium text-gray-300 hover:text-white rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50">
+                            {account.closed ? 'Reopen' : 'Mark as closed'}
+                        </button>
                         <button onClick={handleDelete} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
                     </>
                 )}
