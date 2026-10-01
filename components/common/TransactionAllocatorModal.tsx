@@ -156,7 +156,7 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
 
     const ItemDisplay: React.FC<ItemDisplayProps> = ({ item, type, isSelected, onToggle }) => {
         return (
-             <div onClick={() => onToggle(item.id)} className={`p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-brand-900/70 border-brand-500 shadow-inner' : 'bg-gray-700 border-gray-600 hover:border-gray-500'}`}>
+             <button type="button" aria-pressed={isSelected} onClick={() => onToggle(item.id)} className={`block w-full text-left p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-brand-900/70 border-brand-500 shadow-inner' : 'bg-gray-700 border-gray-600 hover:border-gray-500'}`}>
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-brand-500 border-brand-500' : 'border-gray-500 bg-gray-800'}`}>
@@ -170,7 +170,7 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
                     <span>{formatDate(item.date)}</span>
                     <span>{type === 'receipt' ? item.category : 'Vehicle Purchase'}</span>
                 </div>
-            </div>
+            </button>
         )
     };
 

@@ -21,6 +21,7 @@ import {
 } from '../types';
 import { robustDateParser, isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
 import { applyColumnMapping } from '../utils/csvMapping';
+import { pickAutoMatches } from '../utils/statementAutoMatch';
 import type { User } from './firebase';
 import Papa from 'papaparse';
 
@@ -537,12 +538,13 @@ export const deleteSalesDocument = async (companyId: string, id: string) => db.r
 
 export const addFinanceCompany = async (companyId: string, data: NewFinanceCompany) => db.ref(FOLDER_ROOTS(companyId).financeCompanies).push().set(data);
 
-export const addTransactions = async (companyId: string, data: NewStatementTransaction[]): Promise<string[]> => {
+export const addTransactions = async (companyId: string, data: NewStatementTransaction[], keys?: string[]): Promise<string[]> => {
     const roots = FOLDER_ROOTS(companyId);
     const updates: {[key: string]: any} = {};
     const newKeys: string[] = [];
-    data.forEach(tx => {
-        const k = db.ref(roots.transactions).push().key;
+    data.forEach((tx, i) => {
+        // Callers may pass pre-generated keys (statement upload links receipts to them before saving).
+        const k = keys?.[i] || db.ref(roots.transactions).push().key;
         if (k) {
             updates[`${roots.transactions}/${k}`] = {...tx, createdAt: firebase.database.ServerValue.TIMESTAMP};
             newKeys.push(k);
@@ -961,17 +963,17 @@ export const undoReconciliation = async (companyId: string, transaction: Stateme
     updates[`${roots.transactions}/${transaction.id}/vatAmount`] = 0;
     // Clear any 'transfer' flag so an un-reconciled line is treated normally again.
     updates[`${roots.transactions}/${transaction.id}/reconciliationType`] = null;
-    updates[`${roots.transactions}/${transaction.id}/linkedVehicleId}`] = null;
+    updates[`${roots.transactions}/${transaction.id}/linkedVehicleId`] = null;
 
     if (transaction.linkedVehicleId) {
-        updates[`${roots.vehicles}/${transaction.linkedVehicleId}/purchaseTransactionId}`] = null;
+        updates[`${roots.vehicles}/${transaction.linkedVehicleId}/purchaseTransactionId`] = null;
     }
     
     // If it was linked to a miscellaneous income invoice, unlink it
     if (transaction.category === 'Miscellaneous Income') {
         const linkedInvoice = allMiscInvoices.find(inv => inv.linkedTransactionId === transaction.id);
         if (linkedInvoice) {
-            updates[`${roots.miscInvoices}/${linkedInvoice.id}/linkedTransactionId}`] = null;
+            updates[`${roots.miscInvoices}/${linkedInvoice.id}/linkedTransactionId`] = null;
         }
     }
     
@@ -979,7 +981,7 @@ export const undoReconciliation = async (companyId: string, transaction: Stateme
     const linkedReceipts = allReceipts.filter(r => r.reconciledByTxId === transaction.id);
     linkedReceipts.forEach(receipt => {
         updates[`${roots.receipts}/${receipt.id}/status`] = 'Unpaid';
-        updates[`${roots.receipts}/${receipt.id}/reconciledByTxId}`] = null;
+        updates[`${roots.receipts}/${receipt.id}/reconciledByTxId`] = null;
     });
 
 
@@ -998,8 +1000,8 @@ export const reconcileTransactionFromSuggestion = async (companyId: string, tran
     if (match.vehicleId) {
         const vehicleRef = `${roots.vehicles}/${match.vehicleId}`;
         updates[`${txRef}/category`] = 'Vehicle Purchase';
-        updates[`${txRef}/linkedVehicleId}`] = match.vehicleId;
-        updates[`${vehicleRef}/purchaseTransactionId}`] = transactionId;
+        updates[`${txRef}/linkedVehicleId`] = match.vehicleId;
+        updates[`${vehicleRef}/purchaseTransactionId`] = transactionId;
     }
 
     // Case 2: Match includes one or more receipts
@@ -1010,7 +1012,7 @@ export const reconcileTransactionFromSuggestion = async (companyId: string, tran
 
         match.receiptIds.forEach(receiptId => {
             updates[`${roots.receipts}/${receiptId}/status`] = 'Paid';
-            updates[`${roots.receipts}/${receiptId}/reconciledByTxId}`] = transactionId;
+            updates[`${roots.receipts}/${receiptId}/reconciledByTxId`] = transactionId;
             if (allReceipts && allReceipts[receiptId]) {
                 totalVat += allReceipts[receiptId].vat || 0;
             }
@@ -1069,7 +1071,7 @@ export const reconcileMiscInvoicePayment = async (companyId: string, transaction
     updates[`${txRef}/reconciliationType`] = null; // real income, not a transfer
     updates[`${txRef}/vatAmount`] = inv.vat || 0;
     updates[`${txRef}/vatRate`] = inv.isVatInvoice && inv.subtotal > 0 ? (inv.vat / inv.subtotal) * 100 : 0;
-    updates[`${invRef}/linkedTransactionId}`] = transactionId;
+    updates[`${invRef}/linkedTransactionId`] = transactionId;
 
     return db.ref().update(updates);
 };
@@ -1129,7 +1131,7 @@ export const reconcilePaymentWithAdjustment = async (companyId: string, transact
     
     receiptIds.forEach(id => {
         updates[`${roots.receipts}/${id}/status`] = 'Paid';
-        updates[`${roots.receipts}/${id}/reconciledByTxId}`] = transactionId;
+        updates[`${roots.receipts}/${id}/reconciledByTxId`] = transactionId;
     });
 
     await db.ref().update(updates);
@@ -1457,27 +1459,27 @@ export const processStatement = async (companyId: string, file: File, account: F
     onProgress({ step: 'deduplicating', message: 'Deduplication complete.', total: newTransactions.length, newCount: uniqueNewTxs.length, duplicateCount: newTransactions.length - uniqueNewTxs.length });
     onProgress({ step: 'reconciling', message: 'Auto-reconciling...', total: uniqueNewTxs.length });
     let reconciledCount = 0;
-    const unpaidReceipts = receipts.filter(r => r.status === 'Unpaid' && r.paymentType === 'Direct');
-    for (const tx of uniqueNewTxs) {
-        if (tx.status === 'Unreconciled' && tx.amount < 0) {
-            // Increased window to 21 days for auto-reconcile on upload
-            const receipt = unpaidReceipts.find(r => isWithinDays(tx.date, r.date, 21) && Math.abs(Math.abs(tx.amount) - r.amount) <= 0.05 );
-            if (receipt) { 
-                tx.status = 'Reconciled'; 
-                tx.category = receipt.category; 
-                tx.vatRate = receipt.vat > 0 ? 20 : 0; 
-                tx.vatAmount = receipt.vat; 
-                await updateReceipt(companyId, receipt.id, { status: 'Paid' }); 
-                reconciledCount++; 
-            }
-        }
+    // Keys are generated up front so a matched receipt can store the id of the line that paid it.
+    const newTxKeys = uniqueNewTxs.map(() => db.ref(FOLDER_ROOTS(companyId).transactions).push().key as string);
+    // Exact amount, or within 5p of the same supplier; each receipt once (see utils/statementAutoMatch).
+    const autoMatches = pickAutoMatches(uniqueNewTxs, receipts);
+    for (const [txIndex, receiptId] of autoMatches) {
+        const tx = uniqueNewTxs[txIndex];
+        const receipt = receipts.find(r => r.id === receiptId);
+        if (!receipt) continue;
+        tx.status = 'Reconciled';
+        tx.category = receipt.category;
+        tx.vatRate = receipt.vat > 0 ? 20 : 0;
+        tx.vatAmount = receipt.vat;
+        await updateReceipt(companyId, receipt.id, { status: 'Paid', reconciledByTxId: newTxKeys[txIndex] });
+        reconciledCount++;
     }
     onProgress({ step: 'reconciling', message: 'Auto-reconciling complete.', total: uniqueNewTxs.length, reconciledCount });
     onProgress({ step: 'categorizing', message: 'AI categorization...', total: uniqueNewTxs.length });
     
     if (uniqueNewTxs.length > 0) {
         onProgress({ step: 'saving', message: 'Saving to ledger...', newCount: uniqueNewTxs.length });
-        const newTxIds = await addTransactions(companyId, uniqueNewTxs);
+        const newTxIds = await addTransactions(companyId, uniqueNewTxs, newTxKeys);
 
         // Create a batch record for this upload
         const newBatchKey = db.ref(FOLDER_ROOTS(companyId).uploadBatches).push().key;

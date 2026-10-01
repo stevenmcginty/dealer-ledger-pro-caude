@@ -178,7 +178,7 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
                             const isSelected = selectedReceivable?.id === item.id;
                             const isSuggested = Math.abs(transactionAmount - item.amountDue) < 0.05;
                             return (
-                                <div key={`${item.type}-${item.id}`} onClick={() => setSelectedReceivable(item)} className={`p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-brand-900/70 border-brand-600' : 'bg-gray-700 border-gray-600 hover:border-gray-500'} ${isSuggested && !isSelected ? 'border-yellow-500' : ''}`}>
+                                <button type="button" key={`${item.type}-${item.id}`} aria-pressed={isSelected} onClick={() => setSelectedReceivable(item)} className={`block w-full text-left p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-brand-900/70 border-brand-600' : 'bg-gray-700 border-gray-600 hover:border-gray-500'} ${isSuggested && !isSelected ? 'border-yellow-500' : ''}`}>
                                     <div className="flex justify-between items-center">
                                         <p className="font-semibold text-white">{item.customerName}</p>
                                         <p className="font-bold text-white">{formatCurrency(item.amountDue)}</p>
@@ -187,7 +187,7 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
                                         <span>{item.details}</span>
                                         <span>{formatDate(item.date)}</span>
                                     </div>
-                                </div>
+                                </button>
                             );
                         }) : (
                             <p className="text-center text-gray-400 py-6">No outstanding invoices found.</p>
