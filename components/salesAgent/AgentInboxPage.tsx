@@ -49,8 +49,10 @@ import {
 import { onDatabaseResume } from '../../services/firebase';
 import {
     onAgentConversationRequest,
+    onInboxFilterRequest,
     takeConversationFromUrl,
     takeRequestedConversation,
+    takeRequestedInboxFilter,
 } from '../../utils/agentInboxLink';
 import {
     CustomerGroup,
@@ -300,11 +302,15 @@ const AgentInboxPage = () => {
         });
     }, [allGroups, showOther, filter, query]);
 
-    // Needs you → Recent → Earlier. `now` moves with the data, which is often enough for a 14-day fold.
+    // WhatsApp → Needs you → Recent → Earlier. `now` moves with the data, which is often enough for a 14-day fold.
+    // The Email tab has no WhatsApp section: it would always be empty.
     const listNow = useMemo(() => Date.now(), [groups]);
-    const sections = useMemo(() => sectionGroups(groups, listNow), [groups, listNow]);
+    const sections = useMemo(
+        () => sectionGroups(groups, listNow, { whatsappFirst: filter !== 'email' }),
+        [groups, listNow, filter]
+    );
     const orderedGroups = useMemo(
-        () => [...sections.needsYou, ...sections.recent, ...sections.earlier],
+        () => [...sections.whatsapp, ...sections.needsYou, ...sections.recent, ...sections.earlier],
         [sections]
     );
     // The header summary ignores the search box: typing a name must not make "3 need you" vanish.
@@ -321,11 +327,14 @@ const AgentInboxPage = () => {
     useEffect(() => {
         if (linkHandled.current) return;
         linkHandled.current = true;
+        const requestedFilter = takeRequestedInboxFilter();
+        if (requestedFilter) setFilter(requestedFilter);
         const convId = takeRequestedConversation() || takeConversationFromUrl();
         if (convId) setActiveConvId(convId);
     }, []);
 
     useEffect(() => onAgentConversationRequest(setActiveConvId), []);
+    useEffect(() => onInboxFilterRequest(setFilter), []);
 
     // Resolved against every group (not the visible list) so a notification
     // link still opens a thread the shared-ledger toggle is hiding.

@@ -402,6 +402,7 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
         const cutoff = Date.now() - WHATSAPP_RECENT_MS;
         return whatsappAlerts
             .filter(alert => (alert.sentAt || 0) > seenAt || (alert.sentAt || 0) >= cutoff)
+            .sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0))
             .slice(0, WHATSAPP_MAX);
     }, [whatsappAlerts, seenAt]);
 
@@ -460,7 +461,9 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
             >
                 <BellIcon className="h-6 w-6" />
                 {count > 0 && (
-                    <span className="absolute top-0 right-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-gray-900">
+                    <span className={`absolute top-0 right-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white ring-2 ring-gray-900 ${
+                        unseenWhatsApp.length > 0 ? 'bg-[#25d366]' : 'bg-red-500'
+                    }`}>
                         {count > 9 ? '9+' : count}
                     </span>
                 )}
@@ -482,8 +485,29 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
                     </div>
 
                     <div className="overflow-y-auto pb-2">
-                        {motRows.length > 0 && (
+                        {shownWhatsApp.length > 0 && (
                             <section>
+                                <SectionHeader
+                                    title="WhatsApp"
+                                    aside={unseenWhatsApp.length > 0 ? (
+                                        <span className="text-[11px] font-medium text-[#25d366]">{unseenWhatsApp.length} new</span>
+                                    ) : undefined}
+                                />
+                                {shownWhatsApp.map(alert => (
+                                    <WhatsAppRow
+                                        key={alert.id}
+                                        alert={alert}
+                                        conv={conversations.find(c => c.id === alert.convId)}
+                                        companyId={companyId || ''}
+                                        isUnseen={(alert.sentAt || 0) > seenAt}
+                                        onOpen={handleOpenConversation}
+                                    />
+                                ))}
+                            </section>
+                        )}
+
+                        {motRows.length > 0 && (
+                            <section className={shownWhatsApp.length > 0 ? 'mt-1 border-t border-gray-700/70' : ''}>
                                 <SectionHeader title="MOT" />
                                 {nearMots.map(row => (
                                     <MotRowItem key={row.key} row={row} onOpen={handleOpenMot} />
@@ -508,7 +532,7 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
                         )}
 
                         {actionCount > 0 && (
-                            <section className={motRows.length > 0 ? 'mt-1 border-t border-gray-700/70' : ''}>
+                            <section className={shownWhatsApp.length > 0 || motRows.length > 0 ? 'mt-1 border-t border-gray-700/70' : ''}>
                                 <SectionHeader title={`${agentName} needs you`} />
                                 <button
                                     type="button"
@@ -524,27 +548,6 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
                                     </span>
                                     <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-gray-500" />
                                 </button>
-                            </section>
-                        )}
-
-                        {shownWhatsApp.length > 0 && (
-                            <section className={motRows.length > 0 || actionCount > 0 ? 'mt-1 border-t border-gray-700/70' : ''}>
-                                <SectionHeader
-                                    title="WhatsApp"
-                                    aside={unseenWhatsApp.length > 0 ? (
-                                        <span className="text-[11px] font-medium text-[#25d366]">{unseenWhatsApp.length} new</span>
-                                    ) : undefined}
-                                />
-                                {shownWhatsApp.map(alert => (
-                                    <WhatsAppRow
-                                        key={alert.id}
-                                        alert={alert}
-                                        conv={conversations.find(c => c.id === alert.convId)}
-                                        companyId={companyId || ''}
-                                        isUnseen={(alert.sentAt || 0) > seenAt}
-                                        onOpen={handleOpenConversation}
-                                    />
-                                ))}
                             </section>
                         )}
 

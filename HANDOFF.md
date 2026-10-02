@@ -1,5 +1,27 @@
 # Handoff
 
+## 2 Oct 2026 — eBay invoices now requested by email (no code change)
+
+- New rule (Steve): for every eBay purchase, email the seller from easywaytosellmycar@gmail.com for a VAT invoice (the seller's email comes from the item page's "Seller contact information"). Claude uploads and links every invoice; Steve never does. The skill's run is now about once a month: reconcile, then sweep every invoice. Skill updated: `~/.claude/skills/radlett-vat-quarter/SKILL.md` + `ebay-invoice-chase.md`.
+- Sent 2 Oct: 5 emails (4 sellers who asked for our email, plus new Q4 order 09-15240-20481). Logged in `radlett-vat\2026-Q3\ebay-chase.md` and `2026-Q4\ebay-chase.md`.
+- Mambatek invoices (2) are uploaded and linked. They show 0% VAT, but the bank lines still claim 20% (£9.37). **Waiting on Steve.**
+- Jaguar XF DS66 ZCT: already in stock (#5023, £6,874, invoice PH/6042 attached, bank line linked). Nothing changed. BCA invoice MM/1178613 (BD67 SFX F-Pace, £9,335.80) is not on Steve's bank lines and is probably Chris's. Not booked.
+
+## 2 Oct 2026 — WhatsApp made prominent (LIVE, NOT committed)
+
+Steve's ask: WhatsApp is only readable in DLP (email he sees in Gmail first), so a WhatsApp must be obvious when it pops up, and WhatsApps, newest first, must sit at the top.
+
+### Done (hosting deployed 2 Oct ~09:01; 291 tests pass; client only, no functions change)
+- Pop-up: `components/ui/Toast.tsx` WhatsApp variant is now a big green card at the TOP (top-right desktop, full-width phone), name + 3 lines + Reply / Later, stays until dismissed, max 3, same conversation replaces its own card. Distinct 3-note `playWhatsAppChime()` and a flashing tab title while the window is unfocused (`utils/inboxNotify.ts`).
+- OS notification (`public/sw.js` cache v10, `services/pushService.ts`): customer WhatsApp shows as `💬 WhatsApp · <name>` with `requireInteraction` (stays on the Windows desktop until clicked).
+- Header: new green `components/nav/WhatsAppButton.tsx` (unread WhatsApp count, pulses) before the inbox button; opens the inbox on the WhatsApp filter + newest unread thread (`requestInboxFilter` in `utils/agentInboxLink.ts`). Both header buttons share `hooks/useAgentInboxConversations.ts`.
+- Bell: WhatsApp section first, newest first; badge goes green when unseen WhatsApp.
+- Agent Inbox list: new top "WhatsApp" section (any WhatsApp activity in 14 days, newest first) above Needs you / Recent / Earlier (`utils/agentInboxSections.ts`); off on the Email filter. Desktop inbox now opens the top WhatsApp thread first.
+
+### Not seen live yet
+- Chime, title flash and OS notification need a real WhatsApp. The lit green header button was checked in code only (demo data has no unread WhatsApp).
+- On a phone the company name in the header is cut shorter by the extra button.
+
 ## 1 Oct 2026 (night) — invoice sweep, receipt links, Lloyds/Allica split, director's salary (LIVE, NOT committed)
 
 Steve's asks: get every supplier invoice (Logic rent, Google, Prime Video, then all missing ones) into the app; show every receipt on its reconciled bank line; split the two banks; book the Lloyds Q3 statement; never count money in twice; show the salary the company owes him.

@@ -1,6 +1,6 @@
 /**
  * The left pane of the Agent Inbox: who is talking to the desk, in the order
- * Steve has to deal with them. Needs you → Recent → Earlier (folded away).
+ * Steve has to deal with them. WhatsApp → Needs you → Recent → Earlier (folded away).
  */
 
 import React, { useEffect, useState } from 'react';
@@ -120,10 +120,11 @@ const ThreadRow: React.FC<{
     );
 };
 
-const SectionLabel: React.FC<{ tone: 'amber' | 'gray'; count: number; children: React.ReactNode }> = ({ tone, count, children }) => (
+const SectionLabel: React.FC<{ tone: 'green' | 'amber' | 'gray'; count: number; children: React.ReactNode }> = ({ tone, count, children }) => (
     <div className={`sticky top-0 z-10 flex items-center gap-2 border-b border-white/[0.04] bg-gray-900/95 px-4 pb-2 pt-4 text-[11px] font-semibold uppercase tracking-[0.12em] backdrop-blur ${
-        tone === 'amber' ? 'text-amber-300' : 'text-gray-400'
+        tone === 'green' ? 'text-[#25d366]' : tone === 'amber' ? 'text-amber-300' : 'text-gray-400'
     }`}>
+        {tone === 'green' && <span aria-hidden><WhatsAppIcon className="h-3.5 w-3.5" /></span>}
         {tone === 'amber' && (
             <span className="relative flex h-1.5 w-1.5" aria-hidden>
                 <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60 motion-safe:animate-ping" />
@@ -188,7 +189,7 @@ const ThreadList: React.FC<ThreadListProps> = ({
 
     const showEarlier = earlierOpen || searching;
     const needCount = needsYouTotal;
-    const total = sections.needsYou.length + sections.recent.length + sections.earlier.length;
+    const total = sections.whatsapp.length + sections.needsYou.length + sections.recent.length + sections.earlier.length;
 
     const tabs: Array<{ id: InboxFilter; label: string }> = [
         { id: 'all', label: 'All' },
@@ -347,6 +348,13 @@ const ThreadList: React.FC<ThreadListProps> = ({
                     </div>
                 ) : (
                     <>
+                        {sections.whatsapp.length > 0 && (
+                            <section aria-label="WhatsApp">
+                                <SectionLabel tone="green" count={sections.whatsapp.length}>WhatsApp</SectionLabel>
+                                <div className="bg-[#25d366]/[0.03]">{rows(sections.whatsapp)}</div>
+                            </section>
+                        )}
+
                         {sections.needsYou.length > 0 && (
                             <section aria-label="Needs you">
                                 <SectionLabel tone="amber" count={sections.needsYou.length}>Needs you</SectionLabel>
@@ -361,7 +369,7 @@ const ThreadList: React.FC<ThreadListProps> = ({
                             </section>
                         )}
 
-                        {sections.needsYou.length === 0 && sections.recent.length === 0 && !showEarlier && (
+                        {sections.whatsapp.length === 0 && sections.needsYou.length === 0 && sections.recent.length === 0 && !showEarlier && (
                             <p className="px-6 pb-2 pt-8 text-center text-[13px] text-gray-500">
                                 All quiet for the last two weeks.
                             </p>

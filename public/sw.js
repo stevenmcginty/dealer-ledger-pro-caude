@@ -2,7 +2,7 @@
 // hashed /assets/ files. Everything else — Firebase RTDB long-polling, Google
 // APIs, Cloud Functions — must go straight to the network. Wrapping those in
 // respondWith() is what made a PWA refresh hang until site data was cleared.
-const CACHE_NAME = 'dealer-ledger-pro-cache-v9';
+const CACHE_NAME = 'dealer-ledger-pro-cache-v10';
 
 // --- Cloud Messaging ------------------------------------------------------
 // Owner alerts from the sales agent arrive here as web push. There is no second
@@ -76,15 +76,21 @@ self.addEventListener('push', event => {
     : isQuestion
       ? [{ action: 'review', title: '💬 Answer' }]
       : [{ action: 'reply', title: '💬 Reply' }, { action: 'review', title: 'Open' }];
+  // A customer WhatsApp ("Name · WhatsApp", not Dave's own echo) can only be
+  // read in the app, so it leads with WhatsApp and stays on screen until tapped.
+  const rawTitle = String(n.title || '');
+  const isCustomerWa = /·\s*WhatsApp\s*$/i.test(rawTitle) && !/^\s*Dave\b/i.test(rawTitle);
+  const waName = rawTitle.replace(/\s*·\s*WhatsApp\s*$/i, '').trim();
+  const shadeTitle = isCustomerWa ? (waName ? `💬 WhatsApp · ${waName}` : '💬 WhatsApp') : (rawTitle || 'Dave');
 
   event.waitUntil((async () => {
-    await self.registration.showNotification(n.title || 'Dave', {
+    await self.registration.showNotification(shadeTitle, {
       body: n.body || '',
       icon: n.icon || '/icons/whatsapp-alert.png',
       badge: n.badge || '/icons/badge-96.png',
       tag: n.tag || convId || kind || 'dave',
       renotify: true,
-      requireInteraction: isDraft || isQuestion,
+      requireInteraction: isDraft || isQuestion || isCustomerWa,
       vibrate: [100, 50, 100, 50, 150],
       data: { convId, kind, url: d.url || '' },
       actions,

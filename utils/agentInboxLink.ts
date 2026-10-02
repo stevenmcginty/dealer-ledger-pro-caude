@@ -14,6 +14,8 @@
  * shortcuts.
  */
 
+import type { InboxFilter } from './agentInboxGroups';
+
 const INBOX_EVENT = 'dlp:open-agent-conversation';
 const REVIEW_EVENT = 'dlp:dave-review';
 const APPROVE_EVENT = 'dlp:dave-approve';
@@ -117,4 +119,38 @@ export function onDraftApproveRequest(handler: (convId: string) => void): () => 
     };
     window.addEventListener(APPROVE_EVENT, listener);
     return () => window.removeEventListener(APPROVE_EVENT, listener);
+}
+
+// --- List filter ---
+// The WhatsApp header button opens the Agent Inbox on the WhatsApp tab. Same
+// shape as the conversation request: a one-shot slot for a page that is not
+// mounted yet, and an event for one that is.
+
+const FILTER_EVENT = 'dlp:agent-inbox-filter';
+const INBOX_FILTERS: ReadonlyArray<InboxFilter> = ['all', 'whatsapp', 'email'];
+
+let pendingFilter: InboxFilter | '' = '';
+
+/** Ask for a list filter. Pair with `setView('agentInbox')`. */
+export function requestInboxFilter(filter: InboxFilter): void {
+    if (!INBOX_FILTERS.includes(filter)) return;
+    pendingFilter = filter;
+    window.dispatchEvent(new CustomEvent(FILTER_EVENT, { detail: filter }));
+}
+
+/** Whatever filter was asked for while the Agent Inbox was not on screen. One shot. */
+export function takeRequestedInboxFilter(): InboxFilter | '' {
+    const filter = pendingFilter;
+    pendingFilter = '';
+    return filter;
+}
+
+/** Filter requests that arrive while the Agent Inbox is already mounted. */
+export function onInboxFilterRequest(handler: (filter: InboxFilter) => void): () => void {
+    const listener = (event: Event) => {
+        const filter = String((event as CustomEvent).detail || '') as InboxFilter;
+        if (INBOX_FILTERS.includes(filter)) handler(filter);
+    };
+    window.addEventListener(FILTER_EVENT, listener);
+    return () => window.removeEventListener(FILTER_EVENT, listener);
 }

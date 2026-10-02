@@ -28,9 +28,10 @@ const conv = (over: Partial<Conversation>): Conversation => ({
     ...over,
 });
 
-const sectionIds = (list: Conversation[]) => {
-    const s = sectionGroups(groupConversations(list, 'co-a'), NOW);
+const sectionIds = (list: Conversation[], opts?: { whatsappFirst?: boolean }) => {
+    const s = sectionGroups(groupConversations(list, 'co-a'), NOW, opts);
     return {
+        whatsapp: s.whatsapp.map(g => g.latest.id),
         needsYou: s.needsYou.map(g => g.latest.id),
         recent: s.recent.map(g => g.latest.id),
         earlier: s.earlier.map(g => g.latest.id),
@@ -90,6 +91,62 @@ describe('sectionGroups', () => {
             conv({ id: 'c', updatedAt: NOW - 3 * DAY }),
         ]);
         expect(ids.recent).toEqual(['a', 'b', 'c']);
+        expect(ids.whatsapp).toEqual([]);
+    });
+});
+
+describe('sectionGroups — WhatsApp first', () => {
+    it('lifts a recent WhatsApp customer above Needs you, keeping the needs-you reason', () => {
+        const list = [
+            conv({ id: 'wa', channel: 'whatsapp', address: '+447700900001', updatedAt: NOW - DAY, lastCustomerMessageAt: NOW - DAY, lastOutboundAt: 0 }),
+            conv({ id: 'mail', updatedAt: NOW - DAY, lastCustomerMessageAt: NOW - DAY, lastOutboundAt: 0 }),
+        ];
+        const ids = sectionIds(list);
+        expect(ids.whatsapp).toEqual(['wa']);
+        expect(ids.needsYou).toEqual(['mail']);
+        const s = sectionGroups(groupConversations(list, 'co-a'), NOW);
+        expect(needsReasonOf(s.whatsapp[0], NOW)).toBe('waiting');
+    });
+
+    it('orders the WhatsApp section by WhatsApp activity, newest first', () => {
+        const ids = sectionIds([
+            // Recently touched, but the last WhatsApp word was three days ago.
+            conv({ id: 'older', channel: 'whatsapp', address: '+447700900001', updatedAt: NOW - 3 * DAY, lastCustomerMessageAt: NOW - 3 * DAY, lastOutboundAt: NOW - 3 * DAY }),
+            conv({ id: 'mid', channel: 'whatsapp', address: '+447700900002', updatedAt: NOW - 2 * DAY, lastCustomerMessageAt: NOW - 2 * DAY, lastOutboundAt: NOW - 2 * DAY }),
+            conv({ id: 'newest', channel: 'whatsapp', address: '+447700900003', updatedAt: NOW - 5 * DAY, lastCustomerMessageAt: NOW - 60_000, lastOutboundAt: NOW - 5 * DAY }),
+        ]);
+        expect(ids.whatsapp).toEqual(['newest', 'mid', 'older']);
+    });
+
+    it('folds a WhatsApp customer quiet for 15 days into Earlier', () => {
+        const ids = sectionIds([
+            conv({ id: 'stale-wa', channel: 'whatsapp', address: '+447700900001', updatedAt: NOW - 15 * DAY }),
+        ]);
+        expect(ids.whatsapp).toEqual([]);
+        expect(ids.earlier).toEqual(['stale-wa']);
+    });
+
+    it('gives the old sections when whatsappFirst is off', () => {
+        const list = [
+            conv({ id: 'wa-waiting', channel: 'whatsapp', address: '+447700900001', updatedAt: NOW - DAY, lastCustomerMessageAt: NOW - DAY, lastOutboundAt: 0 }),
+            conv({ id: 'wa-quiet', channel: 'whatsapp', address: '+447700900002', updatedAt: NOW - 2 * DAY }),
+        ];
+        const ids = sectionIds(list, { whatsappFirst: false });
+        expect(ids.whatsapp).toEqual([]);
+        expect(ids.needsYou).toEqual(['wa-waiting']);
+        expect(ids.recent).toEqual(['wa-quiet']);
+    });
+
+    it('leaves email-only customers where they were', () => {
+        const list = [
+            conv({ id: 'e-wait', updatedAt: NOW - DAY, lastCustomerMessageAt: NOW - DAY, lastOutboundAt: 0 }),
+            conv({ id: 'e-recent', updatedAt: NOW - 2 * DAY }),
+            conv({ id: 'e-old', updatedAt: NOW - 20 * DAY }),
+        ];
+        const on = sectionIds(list);
+        const off = sectionIds(list, { whatsappFirst: false });
+        expect(on).toEqual(off);
+        expect(on).toEqual({ whatsapp: [], needsYou: ['e-wait'], recent: ['e-recent'], earlier: ['e-old'] });
     });
 });
 

@@ -1,14 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { InboxIcon } from '../icons';
-import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import {
-    Conversation,
-    SharedInboxMeta,
-    subscribeToAgentConversations,
-    subscribeToAgentConversationsAcross,
-    subscribeToSharedInbox,
-} from '../../services/salesAgentService';
+import { useAgentInboxConversations } from '../../hooks/useAgentInboxConversations';
 import { inboxWaitingCount } from '../../utils/agentInboxGroups';
 import { playInboxChime, setInboxBadge } from '../../utils/inboxNotify';
 
@@ -21,44 +14,10 @@ import { playInboxChime, setInboxBadge } from '../../utils/inboxNotify';
  * inbox; the bell stays the place to approve a draft without leaving the page.
  */
 const AgentInboxButton: React.FC = () => {
-    const { companyId } = useData();
     const { view, setView } = useUI();
-    const [own, setOwn] = useState<Conversation[]>([]);
-    const [shared, setShared] = useState<Conversation[]>([]);
-    const [inbox, setInbox] = useState<SharedInboxMeta | null>(null);
+    const conversations = useAgentInboxConversations();
     const prevCount = useRef<number | null>(null);
     const mountedAt = useRef(Date.now());
-
-    useEffect(() => {
-        if (!companyId) return;
-        return subscribeToAgentConversations(companyId, setOwn);
-    }, [companyId]);
-
-    useEffect(() => {
-        if (!companyId) return;
-        return subscribeToSharedInbox(companyId, setInbox);
-    }, [companyId]);
-
-    useEffect(() => {
-        if (!inbox?.memberCompanyIds?.length) {
-            setShared([]);
-            return;
-        }
-        return subscribeToAgentConversationsAcross(inbox.memberCompanyIds, setShared);
-    }, [inbox]);
-
-    const conversations = useMemo(() => {
-        if (!shared.length) return own;
-        const seen = new Set<string>();
-        const list: Conversation[] = [];
-        [...shared, ...own].forEach(conv => {
-            const key = `${conv.companyId || ''}:${conv.id}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            list.push(conv);
-        });
-        return list;
-    }, [own, shared]);
 
     const { pending, unread } = useMemo(() => inboxWaitingCount(conversations), [conversations]);
     const count = pending + unread;

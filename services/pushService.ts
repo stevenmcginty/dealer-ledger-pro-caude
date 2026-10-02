@@ -267,13 +267,20 @@ export const showAlertNotification = async (alert: PushAlert): Promise<void> => 
             : isQuestion
                 ? [{ action: 'review', title: '💬 Answer' }]
                 : [{ action: 'review', title: '💬 Reply' }, { action: 'open', title: 'Open' }];
-        await registration.showNotification(alert.title || 'Dave', {
+        // A customer WhatsApp ("Name · WhatsApp", not Dave's own echo) can only
+        // be read in the app: lead with WhatsApp and stay on screen until tapped.
+        // Same rule as the worker's push handler in public/sw.js.
+        const rawTitle = alert.title || '';
+        const isCustomerWa = /·\s*WhatsApp\s*$/i.test(rawTitle) && !/^\s*Dave\b/i.test(rawTitle);
+        const waName = rawTitle.replace(/\s*·\s*WhatsApp\s*$/i, '').trim();
+        const shadeTitle = isCustomerWa ? (waName ? `💬 WhatsApp · ${waName}` : '💬 WhatsApp') : (rawTitle || 'Dave');
+        await registration.showNotification(shadeTitle, {
             body: alert.body,
             icon: '/icons/whatsapp-alert.png',
             badge: '/icons/badge-96.png',
             tag: alert.convId || alert.kind || 'dave',
             renotify: true,
-            requireInteraction: isDraft || isQuestion,
+            requireInteraction: isDraft || isQuestion || isCustomerWa,
             vibrate: [100, 50, 100, 50, 150],
             data: { convId: alert.convId, kind: alert.kind, url: alert.url },
             actions,

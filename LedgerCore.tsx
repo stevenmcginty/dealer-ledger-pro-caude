@@ -14,6 +14,7 @@ import DesktopNav from './components/nav/DesktopNav';
 import MobileNav from './components/nav/MobileNav';
 import NotificationBell from './components/nav/NotificationBell';
 import AgentInboxButton from './components/nav/AgentInboxButton';
+import WhatsAppButton from './components/nav/WhatsAppButton';
 import Spinner from './components/common/Spinner';
 import UpdateBanner from './components/common/UpdateBanner';
 import AppUpdateButton from './components/common/AppUpdateButton';
@@ -347,6 +348,7 @@ const LedgerCore = () => {
                   </div>
                 )}
                 <AppUpdateButton />
+                <WhatsAppButton />
                 <AgentInboxButton />
                 <NotificationBell notifications={notifications} />
              </div>
@@ -418,6 +420,7 @@ const LedgerCore = () => {
                 </div>
                 
                 <AppUpdateButton />
+                <WhatsAppButton />
                 <AgentInboxButton />
                 <NotificationBell notifications={notifications} />
             </div>
