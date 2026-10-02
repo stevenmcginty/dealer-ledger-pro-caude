@@ -85,6 +85,7 @@ import {
     toE164, stripUndefined } from './types';
 import { TURN_LIMIT_HANDOFF, agentTurnLimitReached, needsApproval } from './approval';
 import { gatherEmailContext } from './channels/gmailContext';
+import { fetchMotHistory } from '../vehicle/motHistory';
 
 // BRAIN_SECRETS lives in conversations.ts: the channel adapters read it at module-load
 // time and this file is inside an import cycle with them. Re-exported for callers that
@@ -145,6 +146,20 @@ const contactFromLead = (msg: InboundMessage, lead?: ParsedLead): Contact => {
  * that finds nothing leaves whatever the platform called the car as the title rather
  * than inventing one.
  */
+/** "Blue Skoda Octavia (SV66OAS)" from the MOT record, for a car bought at auction and not yet in stock. */
+const dvlaTitle = async (reg: string): Promise<string> => {
+    try {
+        const v = await fetchMotHistory(reg);
+        const words = [tidyWord(v?.primaryColour), tidyWord(v?.make), tidyWord(v?.model)].filter(Boolean).join(' ');
+        return words ? `${words} (${reg})` : reg;
+    } catch (error) {
+        console.error(`MOT lookup failed for ${reg}`, error);
+        return reg;
+    }
+};
+
+const tidyWord = (s?: string): string => (s || '').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+
 const attachVehicle = async (companyId: string, conversation: Conversation, lead: ParsedLead): Promise<void> => {
     if (conversation.vehicleInterest?.stockId) return;
 
@@ -437,7 +452,8 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         address: msg.address,
         contact,
         lead,
-        text: lead ? messageOrDefault(lead, lead.vehicle?.title) : msg.text,
+        // A BCA mail is matched on its reg alone; its wording would fuzzy-match any car.
+        text: lead?.kind === 'supplier' ? undefined : lead ? messageOrDefault(lead, lead.vehicle?.title) : msg.text,
         skipExisting: options.forceNewConversation === true,
     });
 
@@ -447,7 +463,7 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
 
     const { conversation, isNew } = await findOrCreateConversation(companyId, msg.channel, msg.address, contact, {
         source: lead ? crmLeadSource(lead.source) : undefined,
-        vehicleOfInterest: lead?.vehicle?.title || home.stockItem?.title,
+        vehicleOfInterest: lead?.vehicle?.title || (lead?.kind === 'supplier' ? undefined : home.stockItem?.title),
         emailThreadId: options.forceNewConversation ? undefined : msg.emailThreadId,
         emailSubject: msg.subject,
         forceNew: options.forceNewConversation === true,
@@ -571,7 +587,35 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
         await releaseHeldWords(companyId, conversation, settings);
     }
 
-    if (home.stockItem && !conversation.vehicleInterest?.stockId) {
+    if (lead?.kind === 'supplier') {
+        // A BCA mail is about the car in its title, never the car an older purchase
+        // left on this thread (a Peugeot showed as a Lexus, 25 Sep). No reg, no car.
+        const reg = lead.vehicle?.reg || '';
+        const item = reg && (home.stockItem?.reg || '').replace(/\s/g, '').toUpperCase() === reg
+            ? home.stockItem
+            : undefined;
+        const vehicleInterest: Conversation['vehicleInterest'] | null = item
+            ? {
+                stockId: item.id,
+                title: item.title,
+                ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+                ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
+            }
+            : reg ? { title: lead.vehicle?.title ? `${lead.vehicle.title} (${reg})` : await dvlaTitle(reg) } : null;
+        await updateConversation(companyId, conversation.id, { vehicleInterest });
+        conversation.vehicleInterest = vehicleInterest || undefined;
+
+        // A note for Steve, not a customer: no Dave, no draft, no reply.
+        const line = `${msg.subject || 'BCA email'}${vehicleInterest?.title && vehicleInterest.title !== reg ? ` — ${vehicleInterest.title}` : ''}`;
+        await sendOwnerAlert(
+            companyId,
+            isNew ? 'new_conversation' : 'inbound',
+            conversation,
+            `#${conversation.shortId} BCA: ${line}`,
+            { title: 'BCA · Email', body: line }
+        );
+        return;
+    } else if (home.stockItem && !conversation.vehicleInterest?.stockId) {
         const item = home.stockItem;
         const vehicleInterest: Conversation['vehicleInterest'] = {
             stockId: item.id,

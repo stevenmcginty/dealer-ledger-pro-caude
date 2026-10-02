@@ -51,7 +51,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.messageOrDefault = exports.crmLeadSource = exports.isCazooReservationPhish = exports.parseLeadEmail = exports.isDeliveryFailure = exports.decipherCarGurusTranscript = exports.htmlToText = exports.isGenericMarketing = exports.isSalesDeskRelevant = exports.looksLikeSpam = exports.findReg = exports.isNoReplyAddress = exports.parseFromHeader = void 0;
+exports.messageOrDefault = exports.crmLeadSource = exports.isCazooReservationPhish = exports.parseLeadEmail = exports.bcaInvoiceVehicle = exports.isDeliveryFailure = exports.decipherCarGurusTranscript = exports.htmlToText = exports.isGenericMarketing = exports.isSalesDeskRelevant = exports.looksLikeSpam = exports.findReg = exports.isNoReplyAddress = exports.parseFromHeader = void 0;
 const cheerio = __importStar(require("cheerio"));
 const types_1 = require("../types");
 // --- Address handling -------------------------------------------------------
@@ -95,7 +95,6 @@ const PLATFORM_DOMAINS = [
 /** Senders that never produce a lead, whatever the body says. */
 const IGNORE_SENDERS = [
     /@jigsawfinance\./i,
-    /@(?:www\.)?bca\.com$/i,
     /partsinmotion/i,
     /facebookmail\.com$/i,
     /dealerforecourt/i,
@@ -111,6 +110,36 @@ const IGNORE_SUBJECTS = [
     /^lead intelligence:/i,
     /^re:\s*lead intelligence:/i,
 ];
+/**
+ * BCA, the auction house. Its invoice copies come from an address that is not always
+ * on bca.com, and the body names bcabuyersupport@bca.com, so they were taken for a
+ * customer, given a Dave draft and left pinned to a Lexus from an older purchase —
+ * on a Peugeot Steve had just bought (25 Sep).
+ */
+const BCA_SENDER_RE = /@(?:[\w-]+\.)*bca(?:-group)?\.(?:com|co\.uk)$/i;
+const BCA_BODY_RE = /BCA Buy Online Invoice|Thank you for choosing to buy from BCA/i;
+/**
+ * A BCA mail about a car Steve bought: an invoice, or anything with a reg in the
+ * title ("Fw: SV66 OAS - Collection"). The title is where the car is — the invoice
+ * body never names it. Newsletters and saved-search alerts stay ignored.
+ */
+const parseBcaPurchase = (raw) => {
+    const subject = clean(raw.subject);
+    const reg = (0, exports.findReg)(subject);
+    if (!reg && !/invoice|purchase|collection/i.test(subject))
+        return null;
+    return {
+        source: 'Other',
+        kind: 'supplier',
+        name: 'BCA',
+        firstName: 'BCA',
+        vehicle: reg ? { reg } : undefined,
+        message: `[BCA: ${subject || 'email'}]`,
+        replyTargets: [],
+        replyTo: { channel: 'email', address: '' },
+        contactable: false,
+    };
+};
 // --- Small shared helpers ---------------------------------------------------
 const clean = (s) => (s || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').trim();
 const firstNameOf = (name) => {
@@ -692,6 +721,22 @@ const parseDirectEmail = (raw, source) => {
         vehicleHint: clean(`${subject} ${text}`).slice(0, 400),
     });
 };
+/**
+ * The car off a BCA invoice PDF. The email names no car; the invoice's item line
+ * does: "BW3S1J/U089BW BJ64 JBU PEUGEOT RCZ 1.6 TH R C13  AS SEEN BLACK".
+ */
+const bcaInvoiceVehicle = (pdfText) => {
+    for (const line of (pdfText || '').split('\n')) {
+        const m = line.toUpperCase().match(/\b([A-Z]{2}[0-9]{2}\s?[A-Z]{3})\s+([A-Z][A-Z-]+\b.*)$/);
+        if (!m)
+            continue;
+        const words = m[2].split(/\s{2,}|\s+AS SEEN\b|\s+ODOMETER/)[0].trim();
+        const title = words.replace(/^[A-Z-]+/, make => make.charAt(0) + make.slice(1).toLowerCase());
+        return { reg: m[1].replace(/\s/g, ''), title: title || undefined };
+    }
+    return undefined;
+};
+exports.bcaInvoiceVehicle = bcaInvoiceVehicle;
 // --- Entry point ------------------------------------------------------------
 /**
  * Normalise one inbound email.
@@ -716,6 +761,9 @@ const parseLeadEmail = (input) => {
     }
     if (IGNORE_SUBJECTS.some(re => re.test(subject))) {
         return ignored('Other', 'ignored_subject');
+    }
+    if (BCA_SENDER_RE.test(from) || BCA_BODY_RE.test(text)) {
+        return parseBcaPurchase(raw) || ignored('Other', `ignored_sender:${from}`);
     }
     if ((0, exports.isDeliveryFailure)(raw))
         return parseDeliveryFailure(raw);

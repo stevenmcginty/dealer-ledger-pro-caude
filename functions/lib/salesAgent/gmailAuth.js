@@ -45,11 +45,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.registerGmailRouting = exports.startGmailWatch = exports.gmailClientFor = exports.oauthRedirectUri = exports.gmailPushTopic = exports.GMAIL_PUSH_TOPIC_NAME = exports.GMAIL_SCOPES = exports.GMAIL_SECRETS = void 0;
+exports.salesAgentGmailRenewWatch = exports.salesAgentGmailOAuthCallback = exports.salesAgentGmailAuthUrl = exports.registerGmailRouting = exports.startGmailWatch = exports.markGmailDisconnected = exports.isInvalidGrant = exports.gmailClientFor = exports.oauthRedirectUri = exports.gmailPushTopic = exports.GMAIL_PUSH_TOPIC_NAME = exports.GMAIL_SCOPES = exports.GMAIL_SECRETS = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const googleapis_1 = require("googleapis");
 const conversations_1 = require("./conversations");
 const inboxRouting_1 = require("./inboxRouting");
+const push_1 = require("./push");
 exports.GMAIL_SECRETS = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'];
 exports.GMAIL_SCOPES = [
     'https://www.googleapis.com/auth/gmail.modify',
@@ -97,6 +98,48 @@ const gmailClientFor = async (companyId) => {
     return googleapis_1.google.gmail({ version: 'v1', auth });
 };
 exports.gmailClientFor = gmailClientFor;
+/**
+ * Google answering `invalid_grant` means the refresh token is dead: revoked by hand,
+ * killed by a password change, or, the one that actually happened on 2 Sep 2026,
+ * expired after seven days because the OAuth consent screen was still in "Testing".
+ * Nothing on our side can bring it back; only a fresh sign-in can.
+ */
+const isInvalidGrant = (error) => {
+    const e = error;
+    return e?.message === 'invalid_grant' || e?.response?.data?.error === 'invalid_grant';
+};
+exports.isInvalidGrant = isInvalidGrant;
+/**
+ * The token has died. Say so where it will be seen: the settings badge flips to
+ * "Not connected" and every desk phone gets one push. Before this, the only
+ * evidence was `invalid_grant` in the function logs, and the mailbox went quiet for
+ * three days before anyone noticed.
+ */
+const markGmailDisconnected = async (companyId, error) => {
+    const priv = await (0, conversations_1.readPrivate)(companyId);
+    if (priv.gmail?.disconnectedAt)
+        return; // already flagged and pushed
+    const now = Date.now();
+    await (0, conversations_1.db)().ref((0, conversations_1.privatePath)(companyId, 'gmail/disconnectedAt')).set(now);
+    await (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, 'settings/connections/gmail')).set(false);
+    console.error(`Gmail disconnected for company ${companyId}: ${error?.message || error}`);
+    try {
+        const settings = await (0, conversations_1.readSettings)(companyId);
+        await (0, push_1.sendPushToCompanyAndInbox)(companyId, settings, {
+            id: `gmail-disconnected-${now}`,
+            kind: 'error',
+            convId: '',
+            shortId: 0,
+            text: `Gmail has disconnected (${priv.gmail?.email || 'the desk inbox'}). Emails are not reaching the inbox. Open Settings > Sales agent and press Reconnect.`,
+            push: { title: 'Gmail disconnected', body: 'Emails are not reaching the inbox. Open Settings and press Reconnect.' },
+            sentAt: now,
+        });
+    }
+    catch (pushError) {
+        console.warn('Could not push the Gmail-disconnected alert', pushError);
+    }
+};
+exports.markGmailDisconnected = markGmailDisconnected;
 /**
  * Start or refresh the inbox watch, and record where the history now starts.
  *
@@ -173,12 +216,33 @@ exports.salesAgentGmailOAuthCallback = functions
         const gmail = googleapis_1.google.gmail({ version: 'v1', auth });
         const profile = await gmail.users.getProfile({ userId: 'me' });
         const email = (profile.data.emailAddress || '').toLowerCase();
+        const before = await (0, conversations_1.readPrivate)(companyId);
         await (0, conversations_1.db)().ref((0, conversations_1.privatePath)(companyId, 'gmail')).update({
             refreshToken: tokens.refresh_token,
             email,
+            disconnectedAt: null,
+            connectedAt: Date.now(),
         });
+        await (0, conversations_1.db)().ref((0, conversations_1.agentPath)(companyId, 'settings/connections/gmail')).set(true);
         await (0, exports.registerGmailRouting)(email, companyId);
         await (0, inboxRouting_1.bindInboxChannelsFromPrivate)(companyId);
+        // A reconnect after the token died: the old history floor still marks the
+        // last mail we saw. Walk forward from it before the new watch moves the
+        // floor to now, or everything that arrived while we were locked out is
+        // silently lost. Gmail keeps roughly a week of history; older than that
+        // and the walk 404s, which is caught and simply skipped.
+        const oldFloor = before.gmail?.historyId;
+        if (oldFloor && before.gmail?.email?.toLowerCase() === email) {
+            try {
+                const { catchUpGmail } = await Promise.resolve().then(() => __importStar(require('./channels/gmail')));
+                const gmailClient = googleapis_1.google.gmail({ version: 'v1', auth });
+                const count = await catchUpGmail(companyId, email, oldFloor, gmailClient);
+                console.log(`Gmail reconnect for ${email}: caught up ${count} message(s) from history ${oldFloor}`);
+            }
+            catch (catchUpError) {
+                console.warn(`Gmail reconnect for ${email}: could not catch up from history ${oldFloor}`, catchUpError);
+            }
+        }
         await (0, exports.startGmailWatch)(companyId);
         res.redirect(appReturnUrl('connected'));
     }
@@ -205,6 +269,10 @@ exports.salesAgentGmailRenewWatch = functions
             console.log(`Gmail watch renewed for company ${companyId}`);
         }
         catch (error) {
+            if ((0, exports.isInvalidGrant)(error)) {
+                await (0, exports.markGmailDisconnected)(companyId, error);
+                continue;
+            }
             console.error(`Gmail watch renewal failed for company ${companyId}`, error);
         }
     }

@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { crmLeadSource, isDeliveryFailure, isGenericMarketing, isNoReplyAddress, isSalesDeskRelevant, looksLikeSpam, messageOrDefault, parseFromHeader, parseLeadEmail } from './leadParsers';
+import { bcaInvoiceVehicle, crmLeadSource, isDeliveryFailure, isGenericMarketing, isNoReplyAddress, isSalesDeskRelevant, looksLikeSpam, messageOrDefault, parseFromHeader, parseLeadEmail } from './leadParsers';
 
 const SELF = 'radlettcars@gmail.com';
 
@@ -436,11 +436,37 @@ describe('things that must never become a lead', () => {
         assert.equal(lead.kind, 'enquiry');
     });
 
+    it('reads the car off a BCA purchase title and never makes it a customer', () => {
+        const collection = email({
+            from: 'Bristol Stock Controllers <BristolStockControllers@bca.com>',
+            subject: 'Fw: SV66 OAS - Collection',
+            text: 'Please advise when you would like to collect your vehicle.',
+        });
+        assert.equal(collection.kind, 'supplier');
+        assert.equal(collection.vehicle?.reg, 'SV66OAS');
+        assert.equal(collection.contactable, false);
+
+        const invoice = email({
+            from: 'British Car Auctions <donotreply@bca-group.com>',
+            subject: 'Copy of Invoice BW/1215852',
+            text: 'BCA Buy Online Invoice Email 2 Text\nDear Customer,\nPlease email bcabuyersupport@bca.com',
+        });
+        assert.equal(invoice.kind, 'supplier');
+        assert.equal(invoice.vehicle, undefined);
+        assert.equal(invoice.replyTargets.length, 0);
+
+        assert.deepEqual(
+            bcaInvoiceVehicle('WD7 7HU\nBW3S1J/U089BW BJ64 JBU PEUGEOT RCZ 1.6 TH R C13  AS SEEN BLACK\nODOMETER:52916'),
+            { reg: 'BJ64JBU', title: 'Peugeot RCZ 1.6 TH R C13' }
+        );
+    });
+
     it('drops the newsletters, the finance payouts and its own sent mail', () => {
         assert.equal(email({ from: 'marketing@cargurus.com', subject: 'News' }).kind, 'ignore');
         assert.equal(email({ from: 'sales@cardealer5.co.uk', subject: 'Newsletter' }).kind, 'ignore');
         assert.equal(email({ from: 'payouts@jigsawfinance.com', subject: 'Payout' }).kind, 'ignore');
         assert.equal(email({ from: 'noreply@facebookmail.com', subject: 'Hi' }).kind, 'ignore');
+        assert.equal(email({ from: 'BCA <BCA@news.bca.co.uk>', subject: 'Your weekend event is here' }).kind, 'ignore');
         assert.equal(email({ from: SELF, subject: 'Re: Porsche' }).kind, 'ignore');
         assert.equal(
             email({ from: 'dealer-leads@messages.cargurus.com', subject: 'Lead Intelligence: weekly' }).kind,

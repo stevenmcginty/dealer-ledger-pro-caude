@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.buildMime = exports.salesAgentGmailPush = exports.reprocessGmailMessage = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
+exports.salesAgentBackfillLeads = exports.salesAgentReplayEmail = exports.labelEmailThread = exports.ledgerColour = exports.gmailSender = exports.buildMime = exports.salesAgentGmailPush = exports.catchUpGmail = exports.reprocessGmailMessage = exports.emailBodyForBrain = exports.FULL_EMAIL_CHARS = exports.toRawEmail = exports.stripQuotedReply = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const crypto = __importStar(require("crypto"));
 const companyIds_1 = require("../../utils/companyIds");
@@ -61,6 +61,45 @@ const identity_1 = require("../identity");
 const leadParsers_1 = require("./leadParsers");
 const gmailParse_1 = require("./gmailParse");
 // --- Reading a message ------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+/**
+ * The car on a BCA invoice lives in the attached PDF, not the email. Read the PDFs
+ * until one names a reg. Any failure leaves the lead as it was.
+ */
+const vehicleFromPdfs = async (companyId, message) => {
+    const parts = [];
+    const visit = (part) => {
+        if (!part)
+            return;
+        if (part.body?.attachmentId && /pdf/i.test(`${part.mimeType} ${part.filename}`))
+            parts.push(part);
+        (part.parts || []).forEach(visit);
+    };
+    visit(message.payload);
+    if (!parts.length || !message.id)
+        return undefined;
+    try {
+        const gmail = await (0, gmailAuth_1.gmailClientFor)(companyId);
+        for (const part of parts.slice(0, 3)) {
+            const res = await gmail.users.messages.attachments.get({
+                userId: 'me',
+                messageId: message.id,
+                id: part.body.attachmentId,
+            });
+            if (!res.data.data)
+                continue;
+            const { text } = await pdfParse(Buffer.from(res.data.data, 'base64'));
+            const found = (0, leadParsers_1.bcaInvoiceVehicle)(text);
+            if (found)
+                return found;
+        }
+    }
+    catch (error) {
+        console.error(`Could not read the PDF on Gmail message ${message.id}`, error);
+    }
+    return undefined;
+};
 const headerValue = (message, name) => {
     const found = (message.payload?.headers || []).find(h => (h.name || '').toLowerCase() === name.toLowerCase());
     return (found?.value || '').trim();
@@ -163,6 +202,11 @@ const processMessage = async (companyId, selfEmail, message, options = {}) => {
         return;
     const raw = (0, exports.toRawEmail)(message, selfEmail);
     const lead = (0, leadParsers_1.parseLeadEmail)(raw);
+    if (lead.kind === 'supplier' && !lead.vehicle?.reg) {
+        const vehicle = await vehicleFromPdfs(companyId, message);
+        if (vehicle)
+            lead.vehicle = vehicle;
+    }
     if (lead.kind === 'ignore') {
         await recordIgnored(companyId, message.id || String(Date.now()), raw.from, raw.subject, lead.ignoreReason || 'ignored');
         return;
@@ -268,68 +312,37 @@ const recordOwnerSentMessage = async (credentialCompanyId, selfEmail, message) =
     }
 };
 /**
- * The Pub/Sub push.
+ * Everything that landed in INBOX since `startHistoryId`, put through the inbox
+ * pipeline, then everything the desk sent from Gmail itself, recorded. Returns how
+ * many inbound messages were handled and moves the stored history floor forward.
  *
- * A 404 from history.list means the stored id has aged out (Gmail keeps roughly a week).
- * There is no way to recover the gap, so the watch is restarted from now rather than
- * replaying an unbounded backfill nobody asked for.
+ * Shared by the push and by a reconnect, so a token that died and was replaced
+ * catches up exactly the way a normal push would have.
  */
-exports.salesAgentGmailPush = functions
-    .runWith({ timeoutSeconds: 300, memory: '512MB', secrets: [...gmailAuth_1.GMAIL_SECRETS, ...conversations_1.BRAIN_SECRETS] })
-    .pubsub.topic('gmail-sales-agent')
-    .onPublish(async (message) => {
-    const payload = (message.json || {});
-    const emailAddress = (payload.emailAddress || '').toLowerCase();
-    if (!emailAddress) {
-        console.warn('Gmail push carried no emailAddress');
-        return null;
-    }
-    const companyId = await companyForGmailAddress(emailAddress);
-    if (!companyId) {
-        console.warn(`Gmail push for ${emailAddress}: no company connected`);
-        return null;
-    }
-    const priv = await (0, conversations_1.readPrivate)(companyId);
-    const startHistoryId = priv.gmail?.historyId;
-    if (!startHistoryId) {
-        // No floor to work from; set one and let the next push do the work.
-        await (0, gmailAuth_1.startGmailWatch)(companyId);
-        return null;
-    }
-    const gmail = await (0, gmailAuth_1.gmailClientFor)(companyId);
+const catchUpGmail = async (companyId, emailAddress, startHistoryId, gmail, pushHistoryId) => {
     const seen = new Set();
-    let latestHistoryId = String(payload.historyId || startHistoryId);
+    let latestHistoryId = String(pushHistoryId || startHistoryId);
     let pageToken;
-    try {
-        do {
-            const page = await gmail.users.history.list({
-                userId: 'me',
-                startHistoryId,
-                historyTypes: ['messageAdded'],
-                labelId: 'INBOX',
-                maxResults: 500,
-                pageToken,
-            });
-            if (page.data.historyId)
-                latestHistoryId = String(page.data.historyId);
-            for (const record of page.data.history || []) {
-                for (const added of record.messagesAdded || []) {
-                    const id = added.message?.id;
-                    if (id)
-                        seen.add(id);
-                }
+    do {
+        const page = await gmail.users.history.list({
+            userId: 'me',
+            startHistoryId,
+            historyTypes: ['messageAdded'],
+            labelId: 'INBOX',
+            maxResults: 500,
+            pageToken,
+        });
+        if (page.data.historyId)
+            latestHistoryId = String(page.data.historyId);
+        for (const record of page.data.history || []) {
+            for (const added of record.messagesAdded || []) {
+                const id = added.message?.id;
+                if (id)
+                    seen.add(id);
             }
-            pageToken = page.data.nextPageToken || undefined;
-        } while (pageToken);
-    }
-    catch (error) {
-        if (error?.code === 404 || error?.response?.status === 404) {
-            console.warn(`Gmail history for ${emailAddress} has expired; restarting the watch`);
-            await (0, gmailAuth_1.startGmailWatch)(companyId);
-            return null;
         }
-        throw error;
-    }
+        pageToken = page.data.nextPageToken || undefined;
+    } while (pageToken);
     for (const id of seen) {
         try {
             const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
@@ -375,6 +388,58 @@ exports.salesAgentGmailPush = functions
         console.warn(`Gmail: sent-mail pass for ${emailAddress} failed`, error);
     }
     await (0, conversations_1.db)().ref((0, conversations_1.privatePath)(companyId, 'gmail/historyId')).set(latestHistoryId);
+    return seen.size;
+};
+exports.catchUpGmail = catchUpGmail;
+/**
+ * The Pub/Sub push.
+ *
+ * A 404 from history.list means the stored id has aged out (Gmail keeps roughly a week).
+ * There is no way to recover the gap, so the watch is restarted from now rather than
+ * replaying an unbounded backfill nobody asked for.
+ *
+ * `invalid_grant` means the refresh token is dead. Retrying cannot help, so the push
+ * is swallowed after flagging the disconnect; the mail is still in Gmail and is
+ * caught up from the stored history floor when someone reconnects.
+ */
+exports.salesAgentGmailPush = functions
+    .runWith({ timeoutSeconds: 300, memory: '512MB', secrets: [...gmailAuth_1.GMAIL_SECRETS, ...conversations_1.BRAIN_SECRETS] })
+    .pubsub.topic('gmail-sales-agent')
+    .onPublish(async (message) => {
+    const payload = (message.json || {});
+    const emailAddress = (payload.emailAddress || '').toLowerCase();
+    if (!emailAddress) {
+        console.warn('Gmail push carried no emailAddress');
+        return null;
+    }
+    const companyId = await companyForGmailAddress(emailAddress);
+    if (!companyId) {
+        console.warn(`Gmail push for ${emailAddress}: no company connected`);
+        return null;
+    }
+    const priv = await (0, conversations_1.readPrivate)(companyId);
+    const startHistoryId = priv.gmail?.historyId;
+    try {
+        if (!startHistoryId) {
+            // No floor to work from; set one and let the next push do the work.
+            await (0, gmailAuth_1.startGmailWatch)(companyId);
+            return null;
+        }
+        const gmail = await (0, gmailAuth_1.gmailClientFor)(companyId);
+        await (0, exports.catchUpGmail)(companyId, emailAddress, startHistoryId, gmail, payload.historyId ? String(payload.historyId) : undefined);
+    }
+    catch (error) {
+        if ((0, gmailAuth_1.isInvalidGrant)(error)) {
+            await (0, gmailAuth_1.markGmailDisconnected)(companyId, error);
+            return null;
+        }
+        if (error?.code === 404 || error?.response?.status === 404) {
+            console.warn(`Gmail history for ${emailAddress} has expired; restarting the watch`);
+            await (0, gmailAuth_1.startGmailWatch)(companyId);
+            return null;
+        }
+        throw error;
+    }
     return null;
 });
 // --- Sending ----------------------------------------------------------------
@@ -619,7 +684,8 @@ exports.salesAgentReplayEmail = functions
             await report({ dryRun: true, from: raw.from, subject: raw.subject, textLength: raw.text.length, hasHtml: !!raw.html, mimeParts: parts, textPreview: raw.text.slice(0, 3000), bodyText: (0, leadParsers_1.htmlToText)(raw.html).slice(0, 10000), lead: JSON.parse(JSON.stringify(lead)) });
             return;
         }
-        await processMessage(companyId, selfEmail, full.data);
+        // anyLabel: the message was archived since it arrived.
+        await processMessage(companyId, selfEmail, full.data, { ignoreMailboxLabels: job.anyLabel === true });
         await report({ dryRun: false, lead: JSON.parse(JSON.stringify(lead)) });
     }
     catch (error) {

@@ -39,10 +39,49 @@ import { GMAIL_SECRETS, gmailClientFor, isInvalidGrant, markGmailDisconnected, s
 import { handleInbound } from '../router';
 import { ChannelSender, InboundMessage, extractUkMobiles, rtdbKey } from '../types';
 import { isUsableEmail } from '../identity';
-import { ParsedLead, crmLeadSource, htmlToText, parseFromHeader, parseLeadEmail } from './leadParsers';
+import { ParsedLead, bcaInvoiceVehicle, crmLeadSource, htmlToText, parseFromHeader, parseLeadEmail } from './leadParsers';
 import { stripQuotedReply } from './gmailParse';
 
 // --- Reading a message ------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfParse: (data: Buffer) => Promise<{ text: string }> = require('pdf-parse/lib/pdf-parse.js');
+
+/**
+ * The car on a BCA invoice lives in the attached PDF, not the email. Read the PDFs
+ * until one names a reg. Any failure leaves the lead as it was.
+ */
+const vehicleFromPdfs = async (
+    companyId: string,
+    message: gmail_v1.Schema$Message
+): Promise<{ reg: string; title?: string } | undefined> => {
+    const parts: gmail_v1.Schema$MessagePart[] = [];
+    const visit = (part?: gmail_v1.Schema$MessagePart): void => {
+        if (!part) return;
+        if (part.body?.attachmentId && /pdf/i.test(`${part.mimeType} ${part.filename}`)) parts.push(part);
+        (part.parts || []).forEach(visit);
+    };
+    visit(message.payload);
+    if (!parts.length || !message.id) return undefined;
+
+    try {
+        const gmail = await gmailClientFor(companyId);
+        for (const part of parts.slice(0, 3)) {
+            const res = await gmail.users.messages.attachments.get({
+                userId: 'me',
+                messageId: message.id,
+                id: part.body!.attachmentId!,
+            });
+            if (!res.data.data) continue;
+            const { text } = await pdfParse(Buffer.from(res.data.data, 'base64'));
+            const found = bcaInvoiceVehicle(text);
+            if (found) return found;
+        }
+    } catch (error) {
+        console.error(`Could not read the PDF on Gmail message ${message.id}`, error);
+    }
+    return undefined;
+};
 
 const headerValue = (message: gmail_v1.Schema$Message, name: string): string => {
     const found = (message.payload?.headers || []).find(
@@ -162,6 +201,11 @@ const processMessage = async (
 
     const raw = toRawEmail(message, selfEmail);
     const lead = parseLeadEmail(raw);
+
+    if (lead.kind === 'supplier' && !lead.vehicle?.reg) {
+        const vehicle = await vehicleFromPdfs(companyId, message);
+        if (vehicle) lead.vehicle = vehicle;
+    }
 
     if (lead.kind === 'ignore') {
         await recordIgnored(companyId, message.id || String(Date.now()), raw.from, raw.subject, lead.ignoreReason || 'ignored');
@@ -698,7 +742,7 @@ export const salesAgentReplayEmail = functions
     .database.ref('/companies/{companyId}/salesAgent/replay/{jobId}')
     .onCreate(async (snap, context) => {
         const companyId = context.params.companyId as string;
-        const job = (snap.val() || {}) as { messageId?: string; dryRun?: boolean };
+        const job = (snap.val() || {}) as { messageId?: string; dryRun?: boolean; anyLabel?: boolean };
         const messageId = String(job.messageId || '');
         const report = (patch: Record<string, unknown>) => snap.ref.update({ ...patch, finishedAt: Date.now() });
         if (!messageId) { await report({ error: 'messageId is required' }); return; }
@@ -714,7 +758,8 @@ export const salesAgentReplayEmail = functions
                 await report({ dryRun: true, from: raw.from, subject: raw.subject, textLength: raw.text.length, hasHtml: !!raw.html, mimeParts: parts, textPreview: raw.text.slice(0, 3000), bodyText: htmlToText(raw.html).slice(0, 10000), lead: JSON.parse(JSON.stringify(lead)) });
                 return;
             }
-            await processMessage(companyId, selfEmail, full.data);
+            // anyLabel: the message was archived since it arrived.
+            await processMessage(companyId, selfEmail, full.data, { ignoreMailboxLabels: job.anyLabel === true });
             await report({ dryRun: false, lead: JSON.parse(JSON.stringify(lead)) });
         } catch (error) {
             await report({ error: (error as Error).message || String(error) });

@@ -368,11 +368,31 @@ const email = (over) => (0, leadParsers_1.parseLeadEmail)({
         });
         node_assert_1.strict.equal(lead.kind, 'enquiry');
     });
+    (0, node_test_1.it)('reads the car off a BCA purchase title and never makes it a customer', () => {
+        const collection = email({
+            from: 'Bristol Stock Controllers <BristolStockControllers@bca.com>',
+            subject: 'Fw: SV66 OAS - Collection',
+            text: 'Please advise when you would like to collect your vehicle.',
+        });
+        node_assert_1.strict.equal(collection.kind, 'supplier');
+        node_assert_1.strict.equal(collection.vehicle?.reg, 'SV66OAS');
+        node_assert_1.strict.equal(collection.contactable, false);
+        const invoice = email({
+            from: 'British Car Auctions <donotreply@bca-group.com>',
+            subject: 'Copy of Invoice BW/1215852',
+            text: 'BCA Buy Online Invoice Email 2 Text\nDear Customer,\nPlease email bcabuyersupport@bca.com',
+        });
+        node_assert_1.strict.equal(invoice.kind, 'supplier');
+        node_assert_1.strict.equal(invoice.vehicle, undefined);
+        node_assert_1.strict.equal(invoice.replyTargets.length, 0);
+        node_assert_1.strict.deepEqual((0, leadParsers_1.bcaInvoiceVehicle)('WD7 7HU\nBW3S1J/U089BW BJ64 JBU PEUGEOT RCZ 1.6 TH R C13  AS SEEN BLACK\nODOMETER:52916'), { reg: 'BJ64JBU', title: 'Peugeot RCZ 1.6 TH R C13' });
+    });
     (0, node_test_1.it)('drops the newsletters, the finance payouts and its own sent mail', () => {
         node_assert_1.strict.equal(email({ from: 'marketing@cargurus.com', subject: 'News' }).kind, 'ignore');
         node_assert_1.strict.equal(email({ from: 'sales@cardealer5.co.uk', subject: 'Newsletter' }).kind, 'ignore');
         node_assert_1.strict.equal(email({ from: 'payouts@jigsawfinance.com', subject: 'Payout' }).kind, 'ignore');
         node_assert_1.strict.equal(email({ from: 'noreply@facebookmail.com', subject: 'Hi' }).kind, 'ignore');
+        node_assert_1.strict.equal(email({ from: 'BCA <BCA@news.bca.co.uk>', subject: 'Your weekend event is here' }).kind, 'ignore');
         node_assert_1.strict.equal(email({ from: SELF, subject: 'Re: Porsche' }).kind, 'ignore');
         node_assert_1.strict.equal(email({ from: 'dealer-leads@messages.cargurus.com', subject: 'Lead Intelligence: weekly' }).kind, 'ignore');
     });
