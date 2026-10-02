@@ -7,7 +7,9 @@
 - Mambatek invoices (2) are uploaded and linked. They show 0% VAT, but the bank lines still claim 20% (£9.37). **Waiting on Steve.**
 - Jaguar XF DS66 ZCT: already in stock (#5023, £6,874, invoice PH/6042 attached, bank line linked). Nothing changed. BCA invoice MM/1178613 (BD67 SFX F-Pace, £9,335.80) is not on Steve's bank lines and is probably Chris's. Not booked.
 
-## 2 Oct 2026 — WhatsApp made prominent (LIVE, NOT committed)
+## 2 Oct 2026 — WhatsApp made prominent (LIVE, committed 87dc811 + pushed)
+
+Also committed + deployed another session's functions work (83bbb92: BCA invoice PDF reg via pdf-parse, MOT-record car title, Gmail reprocess `anyLabel`). All 30 sales-agent functions redeployed by name 2 Oct; functions build OK, leadParsers 40/40, no errors in the logs after deploy.
 
 Steve's ask: WhatsApp is only readable in DLP (email he sees in Gmail first), so a WhatsApp must be obvious when it pops up, and WhatsApps, newest first, must sit at the top.
 
