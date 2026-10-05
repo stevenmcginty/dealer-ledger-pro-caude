@@ -1,6 +1,6 @@
 # Handoff
 
-## 5 Oct 2026 — VAT adjustments (late claims) in the VAT Summary + MT12 NBZ finalised (LIVE, NOT committed)
+## 5 Oct 2026 — VAT adjustments (late claims) in the VAT Summary + MT12 NBZ finalised (LIVE, commit 6ba5594, pushed)
 
 - New: VAT Summary → "VAT adjustments". A dated Input (claim back) or Output (pay) amount counts in the quarter it is dated in: Box 1/4/5, the MTD sheet and the Accountant hub's VAT due. Stored at `businessDetails/vatAdjustments` (same pattern as yearEndAdjustments). Files: `types.ts`, `services/dataService.ts`, `contexts/DataContext.tsx`, `components/reporting/VatSummary.tsx` (`computeVatSummary` takes optional `vatAdjustments`), `pages/AccountantPage.tsx`, new `tests/accounting/vatSummary.test.ts`. 305/305 tests, tsc OK, build OK, hosting deployed 5 Oct. Seen live: the add form works and the figures update.
 - Q3 2026 adjustments (both dated 30 Sep 2026): Input £1,844.57 (BMW X1 VK71 BJZ late claim, BCA MM/1162652) and Output £124.17 (MT12 NBZ margin VAT; its sale fell in filed Q1). **Q3 VAT due in the app is now ~£4,735.98** (it was £6,456.38). Q3 is not filed yet.
@@ -20,7 +20,7 @@
 - Added by a backend push with the same fields as #5022, plus the invoice PNG in Storage. Colour/engine/MOT come from the invoice, not a DVLA lookup.
 - Log + Q4 VAT to-dos: `C:\Users\steve\Desktop\radlett-vat\2026-Q4\bca-invoices\stock-log.md`. Ruling saved in the skill's `payee-rules.md`.
 
-## 5 Oct 2026 — Agent Inbox: right car or no car, plus a car picker (LIVE, NOT committed)
+## 5 Oct 2026 — Agent Inbox: right car or no car, plus a car picker (LIVE, commit 1357f80, pushed)
 
 Steve's ask: emails got the wrong reg/car. General emails got a car. Lead emails got a different reg. He wants an easy picker.
 
