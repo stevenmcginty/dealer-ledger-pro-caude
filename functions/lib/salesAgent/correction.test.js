@@ -11,7 +11,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_assert_1 = require("node:assert");
 const node_test_1 = require("node:test");
+const brain_1 = require("./brain");
 const correction_1 = require("./correction");
+const router_1 = require("./router");
 const car = (over) => ({
     url: `https://radlettcarsales.com/used/cars/${over.id}/`,
     make: 'Porsche',
@@ -54,6 +56,58 @@ const SITE = [
     });
     (0, node_test_1.it)('returns nothing when the note names no car we hold', () => {
         node_assert_1.strict.equal((0, correction_1.carFromCorrection)(SITE, 'wrong one mate', undefined, 'taycan'), null);
+    });
+});
+(0, node_test_1.describe)('what the car picker may send', () => {
+    const rejects = (data) => {
+        node_assert_1.strict.throws(() => (0, correction_1.parseCorrectionInput)(data), (error) => error?.code === 'invalid-argument' && error?.message === 'Pick a car, or choose No car.');
+    };
+    (0, node_test_1.it)('takes a stock car', () => {
+        node_assert_1.strict.deepEqual((0, correction_1.parseCorrectionInput)({ companyId: 'c', convId: 'x', stockId: ' 1919959 ' }), { note: '', stockId: '1919959' });
+    });
+    (0, node_test_1.it)('takes a ledger car, with the ledger it is on', () => {
+        node_assert_1.strict.deepEqual((0, correction_1.parseCorrectionInput)({ convId: 'x', ledgerVehicleId: '-Oabc', vehicleCompanyId: CHRIS }), { note: '', ledgerVehicleId: '-Oabc', vehicleCompanyId: CHRIS });
+    });
+    (0, node_test_1.it)('takes "No car"', () => {
+        node_assert_1.strict.deepEqual((0, correction_1.parseCorrectionInput)({ convId: 'x', noCar: true }), { note: '', noCar: true });
+    });
+    (0, node_test_1.it)('takes a title typed in by hand', () => {
+        node_assert_1.strict.deepEqual((0, correction_1.parseCorrectionInput)({ convId: 'x', freeTitle: ' BMW S1000R ' }), { note: '', freeTitle: 'BMW S1000R' });
+    });
+    (0, node_test_1.it)('still takes a note on its own', () => {
+        node_assert_1.strict.deepEqual((0, correction_1.parseCorrectionInput)({ convId: 'x', note: "It's the black Boxster" }), { note: "It's the black Boxster" });
+    });
+    (0, node_test_1.it)('refuses nothing at all, blanks, and a noCar that is not true', () => {
+        rejects({ companyId: 'c', convId: 'x' });
+        rejects({ convId: 'x', note: '   ', stockId: '', freeTitle: ' ' });
+        rejects({ convId: 'x', noCar: 'true' });
+        rejects(null);
+    });
+});
+(0, node_test_1.describe)('Steve\'s pick sticks (carSetByOwner)', () => {
+    const OWNERS = car({ id: 'boxster-black', variant: '3.4 S', title: 'Porsche Boxster 3.4 S', reg: 'AB07BXT', ownerCompanyId: CHRIS });
+    const OTHER = car({ id: 'cayman', model: 'Cayman', title: 'Porsche Cayman 2.9', reg: 'AB10CAY', ownerCompanyId: CHRIS });
+    const locked = { vehicleInterest: { stockId: OWNERS.id, title: OWNERS.title }, carSetByOwner: 1700000000000 };
+    const lockedNoCar = { vehicleInterest: undefined, carSetByOwner: 1700000000000 };
+    (0, node_test_1.it)('the router does not pin a car over it, even on a new match', () => {
+        node_assert_1.strict.equal((0, router_1.homePinAllowed)(lockedNoCar, true, OTHER, { stockId: OTHER.id }), false);
+        node_assert_1.strict.equal((0, router_1.homePinAllowed)(lockedNoCar, false, OTHER, { reg: 'AB10CAY' }), false);
+    });
+    (0, node_test_1.it)('without the lock, a new thread is pinned and a later reply only on exact evidence', () => {
+        const open = { vehicleInterest: undefined };
+        node_assert_1.strict.equal((0, router_1.homePinAllowed)(open, true, OTHER, { text: 'the cayman' }), true);
+        node_assert_1.strict.equal((0, router_1.homePinAllowed)(open, false, OTHER, { text: 'the leather on that cayman' }), false);
+        node_assert_1.strict.equal((0, router_1.homePinAllowed)(open, false, OTHER, { text: 'is AB10 CAY still there?' }), true);
+    });
+    (0, node_test_1.it)('the brain does not change it', () => {
+        node_assert_1.strict.equal((0, brain_1.brainCarUpdate)(locked, { stockId: OTHER.id, title: OTHER.title }, undefined), undefined);
+        node_assert_1.strict.equal((0, brain_1.brainCarUpdate)(lockedNoCar, undefined, { stockId: OTHER.id, title: OTHER.title }), undefined);
+    });
+    (0, node_test_1.it)('without the lock the brain still moves the car, and carries the ledger and the reg', () => {
+        const fromTool = { stockId: OTHER.id, title: OTHER.title, ownerCompanyId: CHRIS, reg: 'AB10CAY' };
+        node_assert_1.strict.deepEqual((0, brain_1.brainCarUpdate)({ vehicleInterest: locked.vehicleInterest }, { stockId: OTHER.id, title: OTHER.title }, fromTool), fromTool);
+        // The same car again is no change, so ownerCompanyId is never dropped by a rewrite.
+        node_assert_1.strict.equal((0, brain_1.brainCarUpdate)({ vehicleInterest: fromTool }, { stockId: OTHER.id, title: OTHER.title }, undefined), undefined);
     });
 });
 //# sourceMappingURL=correction.test.js.map

@@ -15,7 +15,7 @@
  */
 import { Type } from '@google/genai';
 import type { FunctionDeclaration } from '@google/genai';
-import { broadenQueryText, countStock, describeStockItem, getStockItem, searchStock } from '../stock/search';
+import { broadenQueryText, countStock, describeStockItem, getStockItem, pinFromStock, searchStock } from '../stock/search';
 import type { StockSearchResult } from '../stock/search';
 import type { Contact, Conversation, SalesAgentSettings, StockItem } from '../types';
 
@@ -62,7 +62,7 @@ export interface ToolEffects {
     priceRequests?: number;
     contact?: Contact;
     preferredTime?: string;
-    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; ownerCompanyId?: string };
+    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; ownerCompanyId?: string; reg?: string };
     /** Listed price of every vehicle a tool returned this run, by stock id. Feeds the price guard. */
     seenPrices: Map<string, number>;
     /** Every monthly finance figure a tool returned this run. A monthly figure the
@@ -463,7 +463,7 @@ const handlers: Record<string, (args: Record<string, unknown>, ctx: ToolContext)
         }
         rememberPrices(ctx, [item]);
         if (!ctx.effects.searched || ctx.effects.strongIds.has(item.id)) {
-            ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };
+            ctx.effects.vehicleInterest = pinFromStock(item);
         }
         return { vehicle: detailView(item) };
     },

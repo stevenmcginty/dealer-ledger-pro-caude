@@ -16,6 +16,7 @@ import firebase from 'firebase/compat/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage } from './firebase';
 import { isWhatsAppStoragePath, storagePathFromUrl } from '../utils/whatsappMedia';
+import type { PickerStockItem } from '../utils/carPickerSearch';
 
 // --- Contract (mirror of functions/src/salesAgent/types.ts) -----------------
 
@@ -124,7 +125,10 @@ export interface Conversation {
     contact: Contact;
     mode: ConversationMode;
     stage: ConversationStage;
-    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string };
+    /** `reg` has no spaces and is upper case. */
+    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; reg?: string };
+    /** When Steve last picked the car himself in the inbox (ms). */
+    carSetByOwner?: number;
     partExOrFinance?: string;
     preferredTime?: string;
     booking?: { name: string; phone: string; window: string; confirmedAt: number };
@@ -925,8 +929,23 @@ export interface ThreadCorrection {
     message: string;
 }
 
+/** What the car picker sends. The server wants at least one of these. */
+export interface CarCorrection {
+    note?: string;
+    /** A car on the sales-agent stock index (either ledger). */
+    stockId?: string;
+    /** A ledger vehicle, with the ledger it lives on. */
+    ledgerVehicleId?: string;
+    vehicleCompanyId?: string;
+    /** "No car": clear the car off the thread. */
+    noCar?: boolean;
+    /** A car named in Steve's own words that is in neither list. */
+    freeTitle?: string;
+}
+
 /**
- * "Wrong car." Tell Dave which car the thread is really about, in your own words.
+ * "Change car." Tell Dave which car the thread is really about: a ledger car, a
+ * stock-index car, no car, or one named in your own words (plus an optional note).
  *
  * It re-pins the thread, bins the draft it wrote about the wrong car, keeps what
  * you said as a standing lesson, and — if the right car belongs to the other
@@ -934,13 +953,60 @@ export interface ThreadCorrection {
  * Dave write it again from that side. The returned convId/companyId is where the
  * thread has ended up, which is not where it started when it moved.
  */
-export const correctThreadCar = (companyId: string, convId: string, note: string, stockId?: string) =>
-    call<{ companyId: string; convId: string; note: string; stockId?: string }, ThreadCorrection>(
+export function correctThreadCar(companyId: string, convId: string, correction: CarCorrection): Promise<ThreadCorrection>;
+export function correctThreadCar(companyId: string, convId: string, note: string, stockId?: string): Promise<ThreadCorrection>;
+export function correctThreadCar(
+    companyId: string,
+    convId: string,
+    correction: CarCorrection | string,
+    stockId?: string
+): Promise<ThreadCorrection> {
+    const input: CarCorrection = typeof correction === 'string' ? { note: correction, stockId } : correction;
+    const note = input.note?.trim();
+    const freeTitle = input.freeTitle?.trim();
+    return call<{ companyId: string; convId: string } & CarCorrection, ThreadCorrection>(
         'salesAgentCorrectThread',
-        { companyId, convId, note, ...(stockId ? { stockId } : {}) },
+        {
+            companyId,
+            convId,
+            ...(note ? { note } : {}),
+            ...(input.stockId ? { stockId: input.stockId } : {}),
+            ...(input.ledgerVehicleId ? { ledgerVehicleId: input.ledgerVehicleId } : {}),
+            ...(input.vehicleCompanyId ? { vehicleCompanyId: input.vehicleCompanyId } : {}),
+            ...(input.noCar ? { noCar: true } : {}),
+            ...(freeTitle ? { freeTitle } : {}),
+        },
         300000,
         'That correction could not be applied.'
     );
+}
+
+/**
+ * The website's cars as the stock index holds them, for the inbox car picker.
+ * Read once when the picker opens; an empty list if it cannot be read.
+ */
+export const fetchAgentStockForPicker = async (companyId: string): Promise<PickerStockItem[]> => {
+    try {
+        const snap = await db.ref(`${agentRoot(companyId)}/stock`).once('value');
+        const raw = (snap.val() || {}) as Record<string, any>;
+        return Object.entries(raw)
+            .filter(([, item]) => item && typeof item === 'object')
+            .map(([key, item]) => ({
+                id: String(item.id || key),
+                ...(item.title ? { title: String(item.title) } : {}),
+                ...(item.reg ? { reg: String(item.reg) } : {}),
+                ...(item.make ? { make: String(item.make) } : {}),
+                ...(item.model ? { model: String(item.model) } : {}),
+                ...(Number.isFinite(Number(item.year)) && item.year ? { year: Number(item.year) } : {}),
+                ...(item.status ? { status: item.status } : {}),
+                ...(item.ledgerVehicleId ? { ledgerVehicleId: String(item.ledgerVehicleId) } : {}),
+                ...(item.ownerCompanyId ? { ownerCompanyId: String(item.ownerCompanyId) } : {}),
+                ...(item.indexedAt ? { indexedAt: Number(item.indexedAt) || 0 } : {}),
+            }));
+    } catch {
+        return [];
+    }
+};
 
 export interface ThreadSplit {
     ok: true;

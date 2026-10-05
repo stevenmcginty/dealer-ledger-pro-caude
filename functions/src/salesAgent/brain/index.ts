@@ -404,6 +404,29 @@ const deriveSummary = (conversation: Conversation, inbound: InboundMessage): str
  * Runs one turn of the conversation and returns what the router should do.
  * Throws only if the model call itself fails; the router owns error alerts.
  */
+/**
+ * The car this turn writes onto the thread, or undefined for no change.
+ *
+ * The model only names a stock id and a title; when that is the car a tool just
+ * fetched, the tool's copy also carries whose ledger it is on and its reg. The
+ * same car again is not a change (rewriting it used to drop ownerCompanyId), and
+ * a car Steve picked himself is never the brain's to change.
+ */
+export const brainCarUpdate = (
+    conversation: Pick<Conversation, 'vehicleInterest' | 'carSetByOwner'>,
+    fromModel: Conversation['vehicleInterest'] | undefined,
+    fromTools: Conversation['vehicleInterest'] | undefined
+): Conversation['vehicleInterest'] | undefined => {
+    if (conversation.carSetByOwner) return undefined;
+    const proposed = fromModel?.stockId && fromModel.stockId === fromTools?.stockId
+        ? fromTools
+        : fromModel || fromTools;
+    if (!proposed) return undefined;
+    if (proposed.stockId && proposed.stockId === conversation.vehicleInterest?.stockId) return undefined;
+    if (JSON.stringify(proposed) === JSON.stringify(conversation.vehicleInterest || null)) return undefined;
+    return proposed;
+};
+
 export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Promise<BrainResult> => {
     const { companyId, conversation, history, inbound, settings, emailContext, lessons } = input;
 
@@ -523,10 +546,8 @@ export const runBrain = async (input: RunBrainInput, deps: BrainDeps = {}): Prom
 
     const updates: BrainResult['updates'] = {};
 
-    const vehicleInterest = modelUpdates.vehicleInterest || effects.vehicleInterest;
-    if (vehicleInterest && JSON.stringify(vehicleInterest) !== JSON.stringify(conversation.vehicleInterest || null)) {
-        updates.vehicleInterest = vehicleInterest;
-    }
+    const vehicleInterest = brainCarUpdate(conversation, modelUpdates.vehicleInterest, effects.vehicleInterest);
+    if (vehicleInterest) updates.vehicleInterest = vehicleInterest;
     if (modelUpdates.partExOrFinance && modelUpdates.partExOrFinance !== conversation.partExOrFinance) {
         updates.partExOrFinance = modelUpdates.partExOrFinance;
     }

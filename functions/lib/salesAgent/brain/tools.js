@@ -364,7 +364,7 @@ const handlers = {
         }
         rememberPrices(ctx, [item]);
         if (!ctx.effects.searched || ctx.effects.strongIds.has(item.id)) {
-            ctx.effects.vehicleInterest = { stockId: item.id, title: item.title, ledgerVehicleId: item.ledgerVehicleId };
+            ctx.effects.vehicleInterest = (0, search_1.pinFromStock)(item);
         }
         return { vehicle: detailView(item) };
     },

@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentSimulate = exports.salesAgentSaveSharedInbox = exports.salesAgentSendInvoice = exports.salesAgentStartWhatsApp = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentDraftNow = exports.draftNow = exports.awaitingReply = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.answerPendingQuestion = exports.ownerOutsideWindowMessage = exports.discardDraft = exports.approveDraft = exports.signAsOwner = exports.needsApproval = exports.runAgentTurn = exports.handleInbound = exports.ledgerLabelName = exports.BRAIN_SECRETS = void 0;
+exports.salesAgentSimulate = exports.salesAgentSaveSharedInbox = exports.salesAgentSendInvoice = exports.salesAgentStartWhatsApp = exports.salesAgentSavePrivate = exports.salesAgentDiscardDraft = exports.salesAgentDraftNow = exports.draftNow = exports.awaitingReply = exports.salesAgentApproveDraft = exports.salesAgentInstruct = exports.salesAgentAnswerQuestion = exports.salesAgentSendReply = exports.salesAgentSetMode = exports.answerPendingQuestion = exports.ownerOutsideWindowMessage = exports.discardDraft = exports.approveDraft = exports.signAsOwner = exports.needsApproval = exports.runAgentTurn = exports.handleInbound = exports.ledgerLabelName = exports.homePinAllowed = exports.BRAIN_SECRETS = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const brain_1 = require("./brain");
 const prompt_1 = require("./brain/prompt");
@@ -127,48 +127,35 @@ const dvlaTitle = async (reg) => {
     }
 };
 const tidyWord = (s) => (s || '').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
-const attachVehicle = async (companyId, conversation, lead) => {
+const attachVehicle = async (companyId, conversation, lead, exactOnly) => {
     if (conversation.vehicleInterest?.stockId)
+        return;
+    // Steve picked the car (or "no car") himself; nothing automatic overrides that.
+    if (conversation.carSetByOwner)
         return;
     let item = null;
     try {
-        if (lead.vehicle?.stockId) {
-            item = await (0, search_1.getStockItem)(companyId, lead.vehicle.stockId);
-        }
-        if (!item && lead.vehicle?.reg) {
-            const reg = lead.vehicle.reg.replace(/\s/g, '').toUpperCase();
-            const hits = await (0, search_1.searchStock)(companyId, { text: reg, includeReserved: true, limit: 10 });
-            item = hits.find(hit => (hit.reg || '').replace(/\s/g, '').toUpperCase() === reg) || null;
-        }
-        if (!item) {
-            const text = lead.vehicle?.title || lead.vehicleHint;
-            if (text) {
-                // Free text is a guess, so it is held to a standard the two exact
-                // routes above are not. Cars still on the forecourt are tried first
-                // and a loose word overlap is thrown away: a "still available?" with
-                // no reg in it must not pin the thread to a car that sold last year
-                // and then have Dave quote its price (Steve, 28 Aug).
-                const live = await (0, search_1.searchStock)(companyId, { text, limit: 1 });
-                item = live.find(hit => hit.matchQuality !== 'weak') || null;
-                if (!item) {
-                    // Nothing available fits. A car that has gone may still be the one
-                    // they mean, but only if they described it exactly.
-                    const gone = await (0, search_1.searchStock)(companyId, { text, includeReserved: true, limit: 1 });
-                    item = gone.find(hit => hit.matchQuality === 'exact') || null;
-                }
-            }
-        }
+        // Stock id, then registration, then the strict "names the car" match on
+        // the platform's title or the email's own words. Free text is held to
+        // make-and-model or a full plate: an ordinary word in a signature used to
+        // pin a car (Steve, 5 Oct). On a later message only the exact routes
+        // count. Cars Dave may not discuss are left out here.
+        const stock = (await (0, search_1.readStock)(companyId)).filter(stockItem => !stockItem.hiddenReason);
+        const hint = {
+            stockId: lead.vehicle?.stockId,
+            reg: lead.vehicle?.reg,
+            title: lead.vehicle?.title || lead.vehicleHint,
+        };
+        item = exactOnly ? (0, search_1.matchExactStock)(stock, hint) : (0, search_1.matchEnquiryStock)(stock, hint);
     }
     catch (error) {
         console.error(`Stock lookup failed for company ${companyId}`, error);
     }
+    // A platform's own title for the car is kept when it is not in stock. A
+    // general email's words never become a title-only car: those only reach
+    // this as vehicleHint.
     const vehicleInterest = item
-        ? {
-            stockId: item.id,
-            title: item.title,
-            ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
-            ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
-        }
+        ? (0, search_1.pinFromStock)(item)
         : lead.vehicle?.title
             ? { title: lead.vehicle.title }
             : null;
@@ -178,34 +165,47 @@ const attachVehicle = async (companyId, conversation, lead) => {
     conversation.vehicleInterest = vehicleInterest;
 };
 /**
+ * May the car the shared inbox matched for this message be pinned on the thread?
+ *
+ * Not when the thread already has a stock car (switchVehicleIfNamed decides
+ * moves), and never once Steve has picked the car himself. A reply on a thread
+ * with no stock car yet (or only the platform's title for one that has left
+ * stock) is pinned on exact evidence only: a car named in passing in a later
+ * email is not what the thread is about — "that Z4 seat" in a Boxster buyer's
+ * reply, or "Audi A5" in a reply about an A5 Cabriolet that had sold (5 Oct).
+ */
+const homePinAllowed = (conversation, isNew, item, hint) => !conversation.vehicleInterest?.stockId
+    && !conversation.carSetByOwner
+    && (isNew || !!(0, search_1.matchExactStock)([item], hint));
+exports.homePinAllowed = homePinAllowed;
+/**
  * A customer on a live thread who names a different car is now asking about that
  * car. The thread used to stay pinned to the first one forever, so Tobias asking
  * to view the MX-5 sat in the inbox as a Z4 enquiry and looked like a mix-up of
  * two people (Steve, 30 Aug).
  *
  * Only the words they wrote this time count — not the subject line, which still
- * carries the old car in a reply. The match has to be a car for sale and has to
- * be unambiguous, otherwise the thread keeps the car it had.
+ * carries the old car in a reply, and not the quoted history (the parsers strip
+ * it, HTML-only replies included). A quoted "2 Sep 2026" and a "£500" in it once
+ * moved a Boxster thread to a Fiat 500 (5 Oct). The rules are switchTargetFor's:
+ * a different car's full plate, or exactly one car for sale named by make and
+ * model in a sentence that is not about their own car. Never once Steve has
+ * picked the car himself.
  */
 const switchVehicleIfNamed = async (credentialCompanyId, companyId, conversation, msg, lead) => {
     const current = conversation.vehicleInterest;
     if (!current?.stockId)
+        return;
+    if (conversation.carSetByOwner)
         return;
     if (lead && lead.kind !== 'enquiry')
         return;
     const body = ((lead ? lead.message : msg.text) || '').trim();
     if (!body)
         return;
-    // One car for sale, named clearly. "The Mazda" when two are in must not move
-    // the thread, and neither must a car that has gone.
     let item = null;
     try {
-        const stock = await (0, search_1.readStock)(credentialCompanyId);
-        const text = (0, search_1.carWordsOnly)(stock, body);
-        const hits = text
-            ? (0, search_1.rankStock)(stock, { text, includeHidden: true, limit: 5 }).filter(hit => hit.matchQuality !== 'weak')
-            : [];
-        item = hits.length === 1 ? hits[0] : null;
+        item = (0, search_1.switchTargetFor)(await (0, search_1.readStock)(credentialCompanyId), body, current.stockId);
     }
     catch (error) {
         console.error(`Stock lookup failed for company ${credentialCompanyId}`, error);
@@ -213,12 +213,7 @@ const switchVehicleIfNamed = async (credentialCompanyId, companyId, conversation
     }
     if (!item || item.id === current.stockId)
         return;
-    const vehicleInterest = {
-        stockId: item.id,
-        title: item.title,
-        ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
-        ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
-    };
+    const vehicleInterest = (0, search_1.pinFromStock)(item);
     await (0, conversations_1.updateConversation)(companyId, conversation.id, { vehicleInterest });
     conversation.vehicleInterest = vehicleInterest;
     await (0, alerts_1.sendOwnerAlert)(companyId, 'inbound', conversation, `#${conversation.shortId} ${(0, alerts_1.describeCustomer)(conversation)} is now asking about the ${item.title} (was ${current.title || 'another car'}).`);
@@ -490,34 +485,32 @@ const handleInbound = async (msg, options = {}) => {
         const item = reg && (home.stockItem?.reg || '').replace(/\s/g, '').toUpperCase() === reg
             ? home.stockItem
             : undefined;
-        const vehicleInterest = item
-            ? {
-                stockId: item.id,
-                title: item.title,
-                ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
-                ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
-            }
-            : reg ? { title: lead.vehicle?.title ? `${lead.vehicle.title} (${reg})` : await dvlaTitle(reg) } : null;
-        await (0, conversations_1.updateConversation)(companyId, conversation.id, { vehicleInterest });
-        conversation.vehicleInterest = vehicleInterest || undefined;
+        const vehicleInterest = conversation.carSetByOwner
+            ? conversation.vehicleInterest || null
+            : item
+                ? (0, search_1.pinFromStock)(item)
+                : reg ? { title: lead.vehicle?.title ? `${lead.vehicle.title} (${reg})` : await dvlaTitle(reg) } : null;
+        if (!conversation.carSetByOwner) {
+            await (0, conversations_1.updateConversation)(companyId, conversation.id, { vehicleInterest });
+            conversation.vehicleInterest = vehicleInterest || undefined;
+        }
         // A note for Steve, not a customer: no Dave, no draft, no reply.
         const line = `${msg.subject || 'BCA email'}${vehicleInterest?.title && vehicleInterest.title !== reg ? ` — ${vehicleInterest.title}` : ''}`;
         await (0, alerts_1.sendOwnerAlert)(companyId, isNew ? 'new_conversation' : 'inbound', conversation, `#${conversation.shortId} BCA: ${line}`, { title: 'BCA · Email', body: line });
         return;
     }
-    else if (home.stockItem && !conversation.vehicleInterest?.stockId) {
-        const item = home.stockItem;
-        const vehicleInterest = {
-            stockId: item.id,
-            title: item.title,
-            ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
-            ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
-        };
+    else if (home.stockItem && (0, exports.homePinAllowed)(conversation, isNew, home.stockItem, {
+        stockId: lead?.vehicle?.stockId,
+        reg: lead?.vehicle?.reg,
+        title: lead?.vehicle?.title || lead?.vehicleHint,
+        text: lead ? lead.message : msg.text,
+    })) {
+        const vehicleInterest = (0, search_1.pinFromStock)(home.stockItem);
         await (0, conversations_1.updateConversation)(companyId, conversation.id, { vehicleInterest });
         conversation.vehicleInterest = vehicleInterest;
     }
     else if (lead) {
-        await attachVehicle(companyId, conversation, lead);
+        await attachVehicle(companyId, conversation, lead, !isNew);
     }
     if (!isNew) {
         await switchVehicleIfNamed(credentialCompanyId, companyId, conversation, msg, lead);

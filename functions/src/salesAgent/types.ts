@@ -170,7 +170,14 @@ export interface Conversation {
     contact: Contact;
     mode: ConversationMode;              // 'human' = owner took over, bot silent
     stage: ConversationStage;
-    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; ownerCompanyId?: string };
+    /** `reg` (no spaces, upper case) is set whenever the car came from a stock item or a ledger vehicle. */
+    vehicleInterest?: { stockId?: string; title?: string; ledgerVehicleId?: string; ownerCompanyId?: string; reg?: string };
+    /**
+     * When Steve picked this thread's car (or "No car") himself, in ms. While it is
+     * set only salesAgentCorrectThread changes vehicleInterest: the router, the
+     * reply switch and the brain all leave it alone.
+     */
+    carSetByOwner?: number;
     /**
      * Set when this thread was placed by a shared inbox. `existing` means a later
      * message found the person already; we never move a thread once it has a home.

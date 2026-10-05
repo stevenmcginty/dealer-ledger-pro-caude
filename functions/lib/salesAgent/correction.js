@@ -56,13 +56,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.salesAgentCorrectThread = exports.correctThreadVehicle = exports.moveConversationHome = exports.carFromCorrection = exports.positivePartOfNote = void 0;
+exports.salesAgentCorrectThread = exports.correctThreadVehicle = exports.moveConversationHome = exports.parseCorrectionInput = exports.carFromCorrection = exports.positivePartOfNote = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const gmail_1 = require("./channels/gmail");
 const conversations_1 = require("./conversations");
 const inboxRouting_1 = require("./inboxRouting");
 const lessons_1 = require("./lessons");
 const router_1 = require("./router");
+const leadParsers_1 = require("./channels/leadParsers");
 const search_1 = require("./stock/search");
 const types_1 = require("./types");
 /**
@@ -79,8 +80,9 @@ const positivePartOfNote = (note) => {
 exports.positivePartOfNote = positivePartOfNote;
 /**
  * Which car Steve means. `stockId` is taken as given; otherwise the note is put
- * through the same matcher the router uses, minus the car it already got wrong,
- * so "another Porsche" cannot resolve back to the Porsche being complained about.
+ * through the same strict matcher the router uses, minus the car it already got
+ * wrong, so "another Porsche" cannot resolve back to the Porsche being
+ * complained about.
  */
 const carFromCorrection = (items, note, stockId, excludeStockId) => {
     if (stockId)
@@ -89,9 +91,51 @@ const carFromCorrection = (items, note, stockId, excludeStockId) => {
     if (!text)
         return null;
     const candidates = excludeStockId ? items.filter(item => item.id !== excludeStockId) : items;
-    return (0, search_1.matchEnquiryStock)(candidates, { text });
+    return (0, search_1.matchNamedStock)(candidates, text);
 };
 exports.carFromCorrection = carFromCorrection;
+/**
+ * The callable's arguments, checked. At least one way of saying which car is
+ * needed: a stock car, a ledger car, "No car", a title typed in, or a note.
+ * Throws invalid-argument otherwise.
+ */
+const parseCorrectionInput = (data) => {
+    const raw = (data && typeof data === 'object' ? data : {});
+    const text = (value) => (typeof value === 'string' ? value.trim() : '');
+    const input = {
+        note: text(raw.note),
+        ...(text(raw.stockId) ? { stockId: text(raw.stockId) } : {}),
+        ...(text(raw.ledgerVehicleId) ? { ledgerVehicleId: text(raw.ledgerVehicleId) } : {}),
+        ...(text(raw.vehicleCompanyId) ? { vehicleCompanyId: text(raw.vehicleCompanyId) } : {}),
+        ...(raw.noCar === true ? { noCar: true } : {}),
+        ...(text(raw.freeTitle) ? { freeTitle: text(raw.freeTitle) } : {}),
+    };
+    if (!input.note && !input.stockId && !input.ledgerVehicleId && !input.noCar && !input.freeTitle) {
+        throw new functions.https.HttpsError('invalid-argument', 'Pick a car, or choose No car.');
+    }
+    return input;
+};
+exports.parseCorrectionInput = parseCorrectionInput;
+/** "YA08 MLL" or "ya08mll" typed as the whole title, or a plate in capitals inside it. */
+const regInTitle = (title) => {
+    const whole = title.replace(/\s+/g, '').toUpperCase();
+    if (/^(?:[A-Z]{2}[0-9]{2}[A-Z]{3}|[A-Z][0-9]{1,3}[A-Z]{3}|[A-Z]{3}[0-9]{1,3}[A-Z])$/.test(whole))
+        return whole;
+    return (0, leadParsers_1.findReg)(title);
+};
+/** A ledger car as the thread stores it, for one that is not in the stock index (a sold car). */
+const pinFromLedgerVehicle = async (vehicleCompanyId, ledgerVehicleId) => {
+    const snap = await (0, conversations_1.db)().ref(`companies/${vehicleCompanyId}/vehicles/${ledgerVehicleId}`).once('value');
+    const vehicle = snap.val();
+    if (!vehicle)
+        return null;
+    const reg = String(vehicle.reg || '').replace(/\s+/g, '').toUpperCase();
+    const title = [vehicle.year, vehicle.make, vehicle.model]
+        .map(part => String(part ?? '').trim())
+        .filter(Boolean)
+        .join(' ') || reg || 'Vehicle';
+    return { title, ...(reg ? { reg } : {}), ledgerVehicleId, ownerCompanyId: vehicleCompanyId };
+};
 /** Every address this customer is known by, so no index is left pointing at the old home. */
 const addressesOf = (conversation) => {
     const contact = conversation.contact || {};
@@ -193,60 +237,103 @@ const ledgerName = async (companyId) => {
 /**
  * Put Dave right about which car a thread is about, and act on it.
  *
+ * The desk says which car in one of five ways, most explicit first: a car from
+ * the stock index (`stockId`), a car on a ledger (`ledgerVehicleId`, for one that
+ * has sold and left the index), "No car" (`noCar`), a title typed in by hand
+ * (`freeTitle`), or a note in its own words. Whichever it is, the pick is
+ * stamped `carSetByOwner` so nothing automatic moves it again.
+ *
  * Everything here is best-effort in one direction only: if no car can be found
  * the correction is still recorded, the wrong car is still unpinned and the bad
  * draft is still binned. Leaving a thread pinned to a car Steve has just said is
  * wrong would be worse than leaving it pinned to nothing.
  */
 const correctThreadVehicle = async (args) => {
-    const { companyId, convId, note, stockId, by } = args;
+    const { companyId, convId, by } = args;
+    const note = (args.note || '').trim();
     const conversation = await (0, conversations_1.getConversation)(companyId, convId);
     if (!conversation)
         throw new Error(`Conversation ${convId} not found`);
     const inbox = await (0, inboxRouting_1.inboxForMember)(companyId);
     const credentialCompany = await (0, inboxRouting_1.credentialsCompanyId)(companyId);
+    const wasTitle = conversation.vehicleInterest?.title;
     // The credential company's index is the one that carries the whole website,
     // other dealers' cars included, so it is the only place a correction can find
     // a car that is not on this ledger.
-    const stock = await (0, search_1.readStock)(credentialCompany);
-    const wasTitle = conversation.vehicleInterest?.title;
-    const car = (0, exports.carFromCorrection)(stock, note, stockId, conversation.vehicleInterest?.stockId);
-    const ownerCompanyId = car?.ownerCompanyId;
-    const willMove = !!car &&
-        !!ownerCompanyId &&
+    let car = null;
+    let vehicleInterest = null;
+    /** True when the desk asked for a car and none could be found: the thread is flagged. */
+    let unidentified = false;
+    if (args.stockId) {
+        car = (0, exports.carFromCorrection)(await (0, search_1.readStock)(credentialCompany), note, args.stockId);
+        unidentified = !car;
+    }
+    else if (args.ledgerVehicleId) {
+        const vehicleCompanyId = args.vehicleCompanyId || companyId;
+        if (vehicleCompanyId !== companyId && !inbox?.memberCompanyIds.includes(vehicleCompanyId)) {
+            throw new Error('That car is not on a ledger this inbox shares.');
+        }
+        const stock = await (0, search_1.readStock)(credentialCompany);
+        car = stock.find(item => item.id === `ledger-${args.ledgerVehicleId}`
+            || (item.ledgerVehicleId === args.ledgerVehicleId && item.ownerCompanyId === vehicleCompanyId)) || null;
+        if (!car) {
+            vehicleInterest = await pinFromLedgerVehicle(vehicleCompanyId, args.ledgerVehicleId);
+            if (!vehicleInterest)
+                throw new Error('That car was not found on the ledger.');
+        }
+    }
+    else if (args.noCar) {
+        vehicleInterest = null;
+    }
+    else if (args.freeTitle) {
+        const reg = regInTitle(args.freeTitle);
+        vehicleInterest = { title: args.freeTitle, ...(reg ? { reg } : {}) };
+    }
+    else {
+        car = (0, exports.carFromCorrection)(await (0, search_1.readStock)(credentialCompany), note, undefined, conversation.vehicleInterest?.stockId);
+        unidentified = !car;
+    }
+    if (car)
+        vehicleInterest = (0, search_1.pinFromStock)(car);
+    // A typed title or "No car" stays on this ledger; only a real car can move it.
+    const ownerCompanyId = args.noCar || args.freeTitle ? undefined : vehicleInterest?.ownerCompanyId;
+    const willMove = !!ownerCompanyId &&
         ownerCompanyId !== companyId &&
         !!inbox &&
         inbox.memberCompanyIds.includes(ownerCompanyId);
-    const vehicleInterest = car
-        ? {
-            stockId: car.id,
-            title: car.title,
-            ...(car.ledgerVehicleId ? { ledgerVehicleId: car.ledgerVehicleId } : {}),
-            ...(car.ownerCompanyId ? { ownerCompanyId: car.ownerCompanyId } : {}),
-        }
-        : null;
+    const pinnedTitle = vehicleInterest?.title || '';
+    const fact = car
+        ? `It is the ${(0, search_1.describeStockItem)(car)}.`
+        : vehicleInterest
+            ? `It is the ${pinnedTitle}${vehicleInterest.reg && !pinnedTitle.includes(vehicleInterest.reg) ? ` (reg ${vehicleInterest.reg})` : ''}.`
+            : args.noCar ? 'It is not about any one car.' : '';
     // Bin the draft first: it was written about the wrong car, and if the thread is
     // about to move it must not travel with it.
     await (0, router_1.discardDraft)(companyId, convId).catch(() => ({ had: false }));
     await (0, conversations_1.updateConversation)(companyId, convId, {
         vehicleInterest,
+        carSetByOwner: Date.now(),
         // A correction is a fact about this thread, not a passing note, so it goes
         // where the prompt already reads from.
         summary: [
             conversation.summary || '',
-            `The desk corrected the car on this thread: ${note.trim()}${car ? ` It is the ${(0, search_1.describeStockItem)(car)}.` : ''}`,
+            `The desk corrected the car on this thread:${note ? ` ${note}` : ''}${fact ? ` ${fact}` : ''}`,
         ].filter(Boolean).join(' '),
-        ...(car ? {} : { escalated: true, escalationReason: 'The car on this thread was wrong and could not be identified' }),
+        ...(unidentified ? { escalated: true, escalationReason: 'The car on this thread was wrong and could not be identified' } : {}),
     });
-    const lesson = {
-        note: note.trim(),
-        convId,
-        ...(by ? { by } : {}),
-        ...(wasTitle ? { was: wasTitle } : {}),
-        ...(car ? { corrected: car.title } : {}),
-        ...(willMove ? { movedTo: ownerCompanyId } : {}),
-    };
-    await (0, lessons_1.recordLesson)(companyId, lesson);
+    // Only words are a lesson. A pick from the list teaches Dave nothing new.
+    const lesson = note
+        ? {
+            note,
+            convId,
+            ...(by ? { by } : {}),
+            ...(wasTitle ? { was: wasTitle } : {}),
+            ...(pinnedTitle ? { corrected: pinnedTitle } : {}),
+            ...(willMove ? { movedTo: ownerCompanyId } : {}),
+        }
+        : null;
+    if (lesson)
+        await (0, lessons_1.recordLesson)(companyId, lesson);
     let homeCompanyId = companyId;
     let homeConvId = convId;
     let toName;
@@ -262,7 +349,8 @@ const correctThreadVehicle = async (args) => {
             },
         });
         // The receiving ledger learns it too — it is their car and their lead.
-        await (0, lessons_1.recordLesson)(ownerCompanyId, { ...lesson, convId: homeConvId });
+        if (lesson)
+            await (0, lessons_1.recordLesson)(ownerCompanyId, { ...lesson, convId: homeConvId });
     }
     // Redraft on whichever ledger now owns it, unless that dealer has the agent off.
     const homeSettings = await (0, conversations_1.readSettings)(homeCompanyId);
@@ -277,11 +365,14 @@ const correctThreadVehicle = async (args) => {
         }
     }
     const agent = homeSettings.agentName || 'Dave';
-    const message = !car
+    const again = redrafted ? ` ${agent} is writing it again.` : '';
+    const message = unidentified
         ? `Noted, and ${agent} will remember it. No car on the site matched that, so this thread is flagged for you.`
-        : willMove
-            ? `Moved to ${toName}'s ledger and pinned to the ${car.title}.${redrafted ? ` ${agent} is writing it again.` : ''}`
-            : `Pinned to the ${car.title}.${redrafted ? ` ${agent} is writing it again.` : ''}`;
+        : !vehicleInterest
+            ? `Set to no car.${again}`
+            : willMove
+                ? `Moved to ${toName}'s ledger and pinned to the ${pinnedTitle}.${again}`
+                : `Pinned to the ${pinnedTitle}.${again}`;
     return {
         ok: true,
         ...(car ? { vehicle: { stockId: car.id, title: car.title, ownerCompanyId: car.ownerCompanyId, status: car.status } } : {}),
@@ -295,28 +386,26 @@ const correctThreadVehicle = async (args) => {
 };
 exports.correctThreadVehicle = correctThreadVehicle;
 /**
- * The Agent Inbox's "Wrong car" button.
+ * The Agent Inbox's car picker ("Wrong car").
  *
- * Mounts the brain and Gmail secrets because the redraft at the end of it is a
- * full agent turn on the receiving ledger.
+ * Takes `{ companyId, convId, note?, stockId?, ledgerVehicleId?, vehicleCompanyId?,
+ * noCar?, freeTitle? }`; at least one of note / stockId / ledgerVehicleId / noCar /
+ * freeTitle. Mounts the brain and Gmail secrets because the redraft at the end of
+ * it is a full agent turn on the receiving ledger.
  */
 exports.salesAgentCorrectThread = functions
     .runWith({ secrets: [...conversations_1.BRAIN_SECRETS, 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET'], timeoutSeconds: 300, memory: '1GB' })
     .https.onCall(async (data, context) => {
     const companyId = await (0, conversations_1.requireInboxAccess)(context, data?.companyId);
     const convId = String(data?.convId || '');
-    const note = String(data?.note || '').trim();
-    const stockId = String(data?.stockId || '').trim();
     if (!convId)
         throw new functions.https.HttpsError('invalid-argument', 'No conversation was given.');
-    if (!note)
-        throw new functions.https.HttpsError('invalid-argument', 'Tell Dave what the right car is.');
+    const input = (0, exports.parseCorrectionInput)(data);
     try {
         return await (0, exports.correctThreadVehicle)({
             companyId,
             convId,
-            note,
-            ...(stockId ? { stockId } : {}),
+            ...input,
             ...(context.auth?.uid ? { by: context.auth.uid } : {}),
         });
     }

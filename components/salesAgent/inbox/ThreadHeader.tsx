@@ -1,14 +1,14 @@
 /**
  * Top of an open thread: who, which car, who is answering, which channel pane.
- * The car-fix, details and options menu hang off it. State lives in the page.
+ * The car picker, details and options menu hang off it. State lives in the page.
  */
 
 import React from 'react';
-import Spinner from '../../common/Spinner';
 import {
     ArrowLeftIcon,
     ArrowTopRightOnSquareIcon,
     CarIcon,
+    CheckCircleIcon,
     EllipsisVerticalIcon,
     PencilIcon,
     PhoneIcon,
@@ -19,11 +19,14 @@ import {
 } from '../../icons';
 import {
     STAGE_LABELS,
+    type CarCorrection,
     type Conversation,
     type ConversationMode,
 } from '../../../services/salesAgentService';
 import type { CustomerGroup, ThreadChannel } from '../../../utils/agentInboxGroups';
 import { displayUkPhone } from '../../../utils/agentInboxBounce';
+import { titleHasReg } from '../../../utils/carPickerSearch';
+import CarPicker, { RegPlate } from './CarPicker';
 import { Avatar, ChannelIcon, MenuItem, channelName } from './parts';
 
 export interface ThreadHeaderProps {
@@ -47,10 +50,8 @@ export interface ThreadHeaderProps {
     onToggleDetails: () => void;
     carFixOpen: boolean;
     onCarFixOpen: (open: boolean) => void;
-    carFixNote: string;
-    onCarFixNote: (note: string) => void;
-    carFixBusy: boolean;
-    onCarFix: () => void;
+    /** Resolves once the server has re-pinned the car; rejects with its message. */
+    onCarPick: (pick: CarCorrection) => Promise<void>;
     onSplit: () => void;
     onOpenLead: () => void;
     canWhatsAppFollowUp: boolean;
@@ -85,10 +86,7 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
     onToggleDetails,
     carFixOpen,
     onCarFixOpen,
-    carFixNote,
-    onCarFixNote,
-    carFixBusy,
-    onCarFix,
+    onCarPick,
     onSplit,
     onOpenLead,
     canWhatsAppFollowUp,
@@ -96,6 +94,7 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
     onDelete,
 }) => {
     const car = conv.vehicleInterest?.title;
+    const reg = conv.vehicleInterest?.reg && !titleHasReg(car, conv.vehicleInterest.reg) ? conv.vehicleInterest.reg : '';
     const mode = MODE_TEXT(conv.mode, agentName);
     const closeMenu = () => onMenuOpen(false);
 
@@ -165,11 +164,23 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
                     type="button"
                     onClick={() => onCarFixOpen(!carFixOpen)}
                     aria-expanded={carFixOpen}
-                    title={car ? `${agentName} has this down as the ${car}. Tap if that is wrong.` : 'Tell Dave which car this is about'}
+                    aria-haspopup="dialog"
+                    title={car ? `${agentName} has this down as the ${car}. Tap to change it.` : `Tell ${agentName} which car this is about`}
                     className="group inline-flex min-h-[44px] min-w-0 max-w-full items-center gap-2 sm:min-h-[34px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 text-left text-[13px] text-gray-100 transition-colors hover:border-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                 >
                     <CarIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
-                    <span className={`truncate ${car ? 'font-medium' : 'text-gray-400'}`}>{car || 'Which car?'}</span>
+                    {car ? (
+                        <span className="truncate"><span className="text-gray-400">Car: </span><span className="font-medium">{car}</span></span>
+                    ) : (
+                        <span className="truncate text-gray-400">No car — tap to set</span>
+                    )}
+                    {car && reg && <RegPlate reg={reg} />}
+                    {car && conv.carSetByOwner ? (
+                        <span className="inline-flex flex-shrink-0 items-center gap-1 text-[11px] text-emerald-300" title="You set this car">
+                            <CheckCircleIcon className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">set by you</span>
+                        </span>
+                    ) : null}
                     <PencilIcon className="h-3 w-3 flex-shrink-0 text-gray-500 opacity-60 transition-opacity group-hover:opacity-100" />
                 </button>
                 {paneChannels.length <= 1 && (
@@ -183,46 +194,12 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
             </div>
 
             {carFixOpen && (
-                <div className="mx-3 mb-3 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-3 py-3 sm:mx-4">
-                    <p className="text-[13px] leading-snug text-gray-100">
-                        {car
-                            ? <>{agentName} has this down as the <span className="font-semibold text-amber-200">{car}</span>. Which car is it really?</>
-                            : <>Which car is this enquiry about?</>}
-                    </p>
-                    <textarea
-                        value={carFixNote}
-                        onChange={e => onCarFixNote(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onCarFix(); }
-                        }}
-                        rows={2}
-                        autoFocus
-                        placeholder="It's the black Boxster, not the Taycan. That one sold months ago."
-                        className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-[16px] text-gray-100 placeholder:text-gray-500 focus:border-amber-400/50 focus:outline-none focus:ring-2 focus:ring-amber-400/20 sm:text-[13px]"
-                    />
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <p className="min-w-0 flex-1 basis-60 text-[11.5px] leading-snug text-gray-400">
-                            {agentName} re-pins the thread, bins the draft and remembers this. If the car is the other ledger&apos;s, the thread goes to them.
-                        </p>
-                        <div className="flex flex-shrink-0 items-center gap-1">
-                            <button
-                                type="button"
-                                onClick={() => { onCarFixOpen(false); onCarFixNote(''); }}
-                                className="h-10 rounded-lg px-3 text-[13px] font-medium text-gray-400 hover:bg-white/[0.06] hover:text-white"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onCarFix}
-                                disabled={carFixBusy || !carFixNote.trim()}
-                                className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 text-[13px] font-semibold text-gray-950 hover:bg-amber-300 disabled:opacity-40"
-                            >
-                                {carFixBusy ? <Spinner className="h-3.5 w-3.5 text-gray-950" /> : `Tell ${agentName}`}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <CarPicker
+                    agentName={agentName}
+                    currentTitle={car}
+                    onPick={onCarPick}
+                    onClose={() => onCarFixOpen(false)}
+                />
             )}
 
             {detailsOpen && (
@@ -336,7 +313,7 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
                         </MenuItem>
                         <MenuItem onClick={() => { closeMenu(); onCarFixOpen(true); }}>
                             <CarIcon className="h-4 w-4 text-amber-300" />
-                            Wrong car
+                            Change car
                         </MenuItem>
                         <MenuItem onClick={() => { closeMenu(); onSplit(); }}>
                             <UsersIcon className="h-4 w-4 text-amber-300" />

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildSystemPrompt = exports.toolDeclarations = exports.runBrain = exports.applyPriceGuard = exports.unvouchedFigure = exports.scanFigures = exports.capReply = exports.softenDashes = exports.MAX_EMAIL_REPLY_CHARS = exports.MAX_EMAIL_REPLY_SENTENCES = exports.MAX_REPLY_CHARS = exports.MAX_REPLY_SENTENCES = exports.MAX_TOOL_ROUNDS = exports.BRAIN_MODEL = exports.GEMINI_SECRET_NAME = void 0;
+exports.buildSystemPrompt = exports.toolDeclarations = exports.runBrain = exports.brainCarUpdate = exports.applyPriceGuard = exports.unvouchedFigure = exports.scanFigures = exports.capReply = exports.softenDashes = exports.MAX_EMAIL_REPLY_CHARS = exports.MAX_EMAIL_REPLY_SENTENCES = exports.MAX_REPLY_CHARS = exports.MAX_REPLY_SENTENCES = exports.MAX_TOOL_ROUNDS = exports.BRAIN_MODEL = exports.GEMINI_SECRET_NAME = void 0;
 /**
  * The sales-agent brain: one Gemini call (plus a round per tool batch), then a
  * set of guards that the model cannot talk its way past.
@@ -326,6 +326,29 @@ const deriveSummary = (conversation, inbound) => {
  * Runs one turn of the conversation and returns what the router should do.
  * Throws only if the model call itself fails; the router owns error alerts.
  */
+/**
+ * The car this turn writes onto the thread, or undefined for no change.
+ *
+ * The model only names a stock id and a title; when that is the car a tool just
+ * fetched, the tool's copy also carries whose ledger it is on and its reg. The
+ * same car again is not a change (rewriting it used to drop ownerCompanyId), and
+ * a car Steve picked himself is never the brain's to change.
+ */
+const brainCarUpdate = (conversation, fromModel, fromTools) => {
+    if (conversation.carSetByOwner)
+        return undefined;
+    const proposed = fromModel?.stockId && fromModel.stockId === fromTools?.stockId
+        ? fromTools
+        : fromModel || fromTools;
+    if (!proposed)
+        return undefined;
+    if (proposed.stockId && proposed.stockId === conversation.vehicleInterest?.stockId)
+        return undefined;
+    if (JSON.stringify(proposed) === JSON.stringify(conversation.vehicleInterest || null))
+        return undefined;
+    return proposed;
+};
+exports.brainCarUpdate = brainCarUpdate;
 const runBrain = async (input, deps = {}) => {
     const { companyId, conversation, history, inbound, settings, emailContext, lessons } = input;
     // The bot is silent the moment it stops owning the conversation. No API call,
@@ -434,10 +457,9 @@ const runBrain = async (input, deps = {}) => {
     if (guarded.escalate)
         escalate = guarded.escalate;
     const updates = {};
-    const vehicleInterest = modelUpdates.vehicleInterest || effects.vehicleInterest;
-    if (vehicleInterest && JSON.stringify(vehicleInterest) !== JSON.stringify(conversation.vehicleInterest || null)) {
+    const vehicleInterest = (0, exports.brainCarUpdate)(conversation, modelUpdates.vehicleInterest, effects.vehicleInterest);
+    if (vehicleInterest)
         updates.vehicleInterest = vehicleInterest;
-    }
     if (modelUpdates.partExOrFinance && modelUpdates.partExOrFinance !== conversation.partExOrFinance) {
         updates.partExOrFinance = modelUpdates.partExOrFinance;
     }

@@ -17,6 +17,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const node_assert_1 = require("node:assert");
 const node_test_1 = require("node:test");
+const leadParsers_1 = require("../channels/leadParsers");
 const search_1 = require("./search");
 const car = (over) => ({
     url: `https://radlettcarsales.com/used/cars/${over.id}/`,
@@ -279,10 +280,18 @@ const ids = (items) => items.map(item => item.id);
         car({ id: 'boxster-chris', make: 'Porsche', model: 'Boxster', variant: '2.7', title: 'Porsche Boxster 2.7', price: 9995, year: 2007, ownerCompanyId: CHRIS }),
         car({ id: 'cayman-chris', make: 'Porsche', model: 'Cayman', variant: '2.9', title: 'Porsche Cayman 2.9', price: 15995, year: 2010, ownerCompanyId: CHRIS }),
     ];
-    (0, node_test_1.it)('gives a vague enquiry to the dealer whose car is still for sale', () => {
-        const item = (0, search_1.matchEnquiryStock)(SITE, { text: 'porsche' });
+    (0, node_test_1.it)('pins nothing on a make alone, so a vague "the Porsche" never lands on the sold one', () => {
+        // Was: picked Chris's live Porsche. A make on its own names no car (Steve, 5 Oct).
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(SITE, { text: 'porsche' }), null);
+    });
+    (0, node_test_1.it)('gives a named model to the dealer whose car is still for sale', () => {
+        const withSoldBoxster = [
+            ...SITE,
+            car({ id: 'boxster-sold', make: 'Porsche', model: 'Boxster', variant: '3.4 S', title: 'Porsche Boxster 3.4 S', year: 2009, status: 'sold', ownerCompanyId: STEVE }),
+        ];
+        const item = (0, search_1.matchEnquiryStock)(withSoldBoxster, { text: 'have you still got the porsche boxster' });
+        node_assert_1.strict.equal(item?.id, 'boxster-chris');
         node_assert_1.strict.equal(item?.ownerCompanyId, CHRIS);
-        node_assert_1.strict.equal(item?.status, 'available');
     });
     (0, node_test_1.it)('still picks the sold car when the customer names it outright', () => {
         // All one dealer's, so the answer turns on the car and not on the ambiguity
@@ -291,9 +300,21 @@ const ids = (items) => items.map(item => item.id);
         node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(mine, { title: 'porsche taycan 4s' })?.id, 'taycan-sold');
     });
     (0, node_test_1.it)('prefers the car still for sale when the description fits both', () => {
-        const mine = SITE.map(item => ({ ...item, ownerCompanyId: STEVE }));
-        const item = (0, search_1.matchEnquiryStock)(mine, { text: 'porsche' });
+        // Was: text 'porsche' (make alone), which now names nothing.
+        const mine = [
+            ...SITE.map(item => ({ ...item, ownerCompanyId: STEVE })),
+            car({ id: 'cayman-sold', make: 'Porsche', model: 'Cayman', variant: '2.7', title: 'Porsche Cayman 2.7', year: 2008, status: 'sold', ownerCompanyId: STEVE }),
+        ];
+        const item = (0, search_1.matchEnquiryStock)(mine, { text: 'porsche cayman' });
+        node_assert_1.strict.equal(item?.id, 'cayman-chris');
         node_assert_1.strict.equal(item?.status, 'available');
+    });
+    (0, node_test_1.it)('still picks a sold car named by its registration over a live one of the same model', () => {
+        const mine = [
+            ...SITE,
+            car({ id: 'cayman-sold', make: 'Porsche', model: 'Cayman', title: 'Porsche Cayman 2.7', year: 2008, status: 'sold', reg: 'AB08CAY' }),
+        ];
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(mine, { text: 'the cayman AB08 CAY' })?.id, 'cayman-sold');
     });
     (0, node_test_1.it)('keeps refusing when the live cars belong to different dealers', () => {
         const split = [
@@ -360,6 +381,97 @@ const ids = (items) => items.map(item => item.id);
         for (const text of ['Can I come and see it tomorrow?', 'Is the roof operating ok?', 'Hope all is well!']) {
             node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(STOCK, { text }), null, text);
         }
+    });
+});
+(0, node_test_1.describe)('the right car or no car (Steve, 5 Oct)', () => {
+    // Shapes of the cars that ordinary words used to pin, with made-up plates.
+    const ASTRA_LTD = car({ id: 'astra-ltd', make: 'Vauxhall', model: 'Astra GTC', variant: '1.4 i Turbo Limited Edition', title: 'Vauxhall Astra GTC 1.4 i Turbo Limited Edition', reg: 'AB17TST', year: 2017 });
+    const TESLA = car({ id: 'tesla', make: 'TESLA', model: 'MODEL 3', variant: '(Dual Motor) Long Range', title: '2022 TESLA MODEL 3', reg: 'AB71TST', year: 2022 });
+    const XF_300 = car({ id: 'xf-300', make: 'Jaguar', model: 'XF', variant: '3.0 d V6 300 Sport', title: 'Jaguar XF 3.0 d V6 300 Sport', reg: 'AB69TST', year: 2019 });
+    const Z4 = car({ id: 'z4', make: 'BMW', model: 'Z4', variant: '2.0 Z4 2.0i Sport Roadster', title: 'BMW Z4 2.0 Z4 2.0i Sport Roadster', reg: 'AB07TST', year: 2007 });
+    const A5 = car({ id: 'a5', make: 'Audi', model: 'A5', variant: '2.0 TFSI 35 Black Edition', title: 'Audi A5 2.0 TFSI 35 Black Edition', reg: 'AB19TST', year: 2019 });
+    const A7 = car({ id: 'a7', make: 'Audi', model: 'A7', variant: '3.0 TDI V6 Black Edition', title: 'Audi A7 3.0 TDI V6 Black Edition', reg: 'AB66TST', year: 2016 });
+    const FIAT_500 = car({ id: 'fiat-500', make: 'Fiat', model: '500', variant: '', title: '2026 Fiat 500', reg: 'AB26TST', year: 2026 });
+    const P508 = car({ id: 'p508', make: 'Peugeot', model: '508', variant: '1.6 PureTech First Edition', title: 'Peugeot 508 1.6 PureTech First Edition', reg: 'AB19TSU', year: 2019 });
+    const SITE = [ASTRA_LTD, TESLA, XF_300, Z4, A5, A7, FIAT_500, P508];
+    const noCar = (text) => {
+        node_assert_1.strict.equal((0, search_1.matchNamedStock)(SITE, text), null, text);
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(SITE, { title: text }), null, text);
+    };
+    (0, node_test_1.it)('a company name ending "Limited" in a signature names no car', () => {
+        noCar('Please find the renewal paperwork attached.\n\nKind regards\nOffice Manager\nLogic Industrial Limited\nM: 07700 900000');
+    });
+    (0, node_test_1.it)('"subject to vehicle model" names no car', () => {
+        noCar('Rates from 9.9% APR (Subject to vehicle model and applicant status). First payment in 30 days.');
+    });
+    (0, node_test_1.it)('a phone number with 300 in it names no car', () => {
+        noCar('ONLY 30% UPFRONT - SHIPPED ANY VEHICLE. WhatsApp: +92 300 9212345');
+    });
+    (0, node_test_1.it)('a BMW motorbike with its own plate is not the BMW for sale', () => {
+        const subject = 'Re: BMW S1000R SK15 WNA';
+        const body = 'Please see attached confirmation of deposit.';
+        node_assert_1.strict.equal((0, leadParsers_1.findReg)(subject, body), 'SK15WNA');
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(SITE, { reg: (0, leadParsers_1.findReg)(subject, body), title: `${subject} ${body}` }), null);
+        noCar(`${subject} ${body}`);
+    });
+    (0, node_test_1.it)('a make on its own names no car', () => {
+        noCar('Is the BMW still available?');
+        noCar('10% off Peugeot parts this weekend');
+    });
+    (0, node_test_1.it)('"Audi A5" with one A5 for sale is that A5', () => {
+        node_assert_1.strict.equal((0, search_1.matchNamedStock)(SITE, 'Re: Radlett Cars Audi A5')?.id, 'a5');
+        node_assert_1.strict.equal((0, search_1.matchEnquiryStock)(SITE, { title: 'Re: Radlett Cars Audi A5' })?.id, 'a5');
+    });
+    (0, node_test_1.it)('variant words never name a car: "first", "door", "works", "tdi"', () => {
+        noCar('First of all, thanks for the quick reply. The tdi works fine and the 4-door is great.');
+    });
+    (0, node_test_1.it)('a full plate names the car, written any way', () => {
+        node_assert_1.strict.equal((0, search_1.matchNamedStock)(SITE, 'about ab07 tst please')?.id, 'z4');
+        node_assert_1.strict.equal((0, search_1.matchNamedStock)(SITE, 'Re: AB07TST')?.id, 'z4');
+    });
+    (0, node_test_1.it)('two cars named equally is nobody, and the year they wrote splits the tie', () => {
+        const twoA5s = [...SITE, car({ id: 'a5-two', make: 'Audi', model: 'A5', title: 'Audi A5 Sportback', reg: 'AB20TST', year: 2020 })];
+        node_assert_1.strict.equal((0, search_1.matchNamedStock)(twoA5s, 'the Audi A5'), null);
+        node_assert_1.strict.equal((0, search_1.matchNamedStock)(twoA5s, 'the 2020 Audi A5')?.id, 'a5-two');
+    });
+});
+(0, node_test_1.describe)('a reply on a live thread does not move it to a wrong car', () => {
+    const BOXSTER = car({ id: 'boxster', make: 'Porsche', model: 'Boxster', variant: '3.4 987 S', title: 'Porsche Boxster 3.4 987 S', reg: 'AB07BXT', year: 2007, status: 'sold' });
+    const FIAT_500 = car({ id: 'fiat-500', make: 'Fiat', model: '500', variant: '', title: '2026 Fiat 500', reg: 'AB26TST', year: 2026 });
+    const A7 = car({ id: 'a7', make: 'Audi', model: 'A7', variant: '3.0 TDI V6 Black Edition', title: 'Audi A7 3.0 TDI V6 Black Edition', reg: 'AB66WVT', year: 2016 });
+    const A5 = car({ id: 'a5', make: 'Audi', model: 'A5', variant: '2.0 TFSI 35 Black Edition', title: 'Audi A5 2.0 TFSI 35 Black Edition', reg: 'AB19TST', year: 2014 });
+    const MINI_5DOOR = car({ id: 'mini', make: 'Mini', model: 'Hatch', variant: '2.0 5-Door Hatch Cooper S', title: 'Mini Hatch 2.0 5-Door Hatch Cooper S', reg: 'AB64TST', year: 2014 });
+    const SLK = car({ id: 'slk', make: 'Mercedes-Benz', model: 'SLK', variant: '1.8 SLK200 AMG Sport', title: 'Mercedes-Benz SLK 1.8 SLK200 AMG Sport', reg: 'AB61TST', year: 2011, status: 'sold' });
+    const Z4 = car({ id: 'z4', make: 'BMW', model: 'Z4', variant: '2.0i Sport Roadster', title: 'BMW Z4 2.0i Sport Roadster', reg: 'AB07TST', year: 2007 });
+    const MX5 = car({ id: 'mx5', make: 'Mazda', model: 'MX-5', variant: '2.0 Sport Nav', title: 'Mazda MX-5 2.0 Sport Nav', reg: 'AB16TST', year: 2016 });
+    const SITE = [BOXSTER, FIAT_500, A7, A5, MINI_5DOOR, SLK, Z4, MX5];
+    (0, node_test_1.it)('"£500" and a quoted 2026 date leave the Boxster thread alone', () => {
+        const body = 'I pushed another £500 through this morning.\n\nOn Mon, 1 Sep 2026 at 14:05, Radlett Cars <sales@example.com> wrote:\n> Thanks, see you in 2026';
+        node_assert_1.strict.equal((0, search_1.switchTargetFor)(SITE, body, 'boxster'), null);
+    });
+    (0, node_test_1.it)('the part-ex car in "my current car" does not move an A7 thread', () => {
+        const body = "Thanks. For the part exchange, my current car, it's a 2014 Audi A5 3.0 TDI S line, 4-door, full history.";
+        node_assert_1.strict.equal((0, search_1.switchTargetFor)(SITE, body, 'a7'), null);
+    });
+    (0, node_test_1.it)('"~1,500 rpm" does not move an SLK thread to a Fiat 500', () => {
+        node_assert_1.strict.equal((0, search_1.switchTargetFor)(SITE, 'It judders when holding the engine at ~1,500 rpm for a long time.', 'slk'), null);
+    });
+    (0, node_test_1.it)('an HTML-only reply is judged on its own words, not the quoted thread', () => {
+        const lead = (0, leadParsers_1.parseLeadEmail)({
+            from: 'Sam Example <sam@example.org>',
+            subject: 'Re: AB07 BXT',
+            text: '',
+            html: '<div dir="ltr">Can I collect on Saturday?</div><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, 1 Sep 2026 at 14:05, Radlett Cars &lt;sales@example.com&gt; wrote:<br></div><blockquote>We also have a Mazda MX-5 in, if you fancy a look. £500 holds it.</blockquote></div>',
+            selfEmail: 'sales@example.com',
+        });
+        node_assert_1.strict.equal(lead.message, 'Can I collect on Saturday?');
+        node_assert_1.strict.equal((0, search_1.switchTargetFor)(SITE, lead.message, 'boxster'), null);
+    });
+    (0, node_test_1.it)('"can I view the MX5" on a Z4 thread moves it to the one MX-5 for sale', () => {
+        node_assert_1.strict.equal((0, search_1.switchTargetFor)(SITE, 'Hi, would it be possible to view the MX5 tomorrow?', 'z4')?.id, 'mx5');
+    });
+    (0, node_test_1.it)('a different car\'s full plate moves it', () => {
+        node_assert_1.strict.equal((0, search_1.switchTargetFor)(SITE, 'Actually is AB16 TST still there?', 'z4')?.id, 'mx5');
     });
 });
 //# sourceMappingURL=search.test.js.map

@@ -18,12 +18,19 @@ import {
 import { formatAgentTime } from '../../../services/salesAgentService';
 import type { CustomerGroup, InboxFilter } from '../../../utils/agentInboxGroups';
 import { needsReasonOf, type InboxSections, type NeedsReason } from '../../../utils/agentInboxSections';
+import { titleHasReg } from '../../../utils/carPickerSearch';
+import { RegPlate } from './CarPicker';
 import { Avatar, ChannelIcon } from './parts';
 
-const carOf = (group: CustomerGroup): string =>
-    (group.latest.vehicleInterest?.title
-        || group.conversations.find(conv => conv.vehicleInterest?.title)?.vehicleInterest?.title
-        || '').trim();
+/** The car the thread is about, and its reg when the title does not already say it. */
+const carOf = (group: CustomerGroup): { title: string; reg: string } => {
+    const interest = group.latest.vehicleInterest?.title
+        ? group.latest.vehicleInterest
+        : group.conversations.find(conv => conv.vehicleInterest?.title)?.vehicleInterest;
+    const title = (interest?.title || '').trim();
+    const reg = interest?.reg && !titleHasReg(title, interest.reg) ? interest.reg : '';
+    return { title, reg };
+};
 
 const StatusPill: React.FC<{ reason: NeedsReason; agentName: string }> = ({ reason, agentName }) => {
     if (reason === 'escalated') {
@@ -56,7 +63,7 @@ const ThreadRow: React.FC<{
     muted?: boolean;
     onClick: () => void;
 }> = ({ group, active, reason, agentName, muted, onClick }) => {
-    const car = carOf(group);
+    const { title: car, reg } = carOf(group);
     const unread = group.unread > 0;
     const preview = group.preview && group.preview !== car ? group.preview : (group.latest.address || 'No messages yet');
 
@@ -96,6 +103,7 @@ const ThreadRow: React.FC<{
                     <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[12.5px] text-gray-300">
                         <CarIcon className="h-3.5 w-3.5 flex-shrink-0 text-gray-500" />
                         <span className="truncate">{car}</span>
+                        {reg && <RegPlate reg={reg} />}
                     </span>
                 )}
                 <span className="mt-1 flex items-center gap-2">

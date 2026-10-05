@@ -476,10 +476,6 @@ export const readStock = async (companyId: string): Promise<StockItem[]> => {
  * Which advert an inbound enquiry is about, for placing the thread on the ledger
  * that owns the car. Hidden cars are in play here: we need to see Chris's stock
  * even when Steve's Dave is not allowed to sell it.
- *
- * Stock id and registration are exact. Free text has to be an exact or close
- * match, and two close hits owned by different members count as "we do not know"
- * rather than a guess.
  */
 export interface EnquiryVehicleHint {
     stockId?: string;
@@ -488,28 +484,269 @@ export interface EnquiryVehicleHint {
     text?: string;
 }
 
-/**
- * Just the words in a message that name a car: nicknames, makes, models, variants,
- * plates, years and colours. Everything else is dropped.
- *
- * A whole email used to go through the matcher, and every filler word scored a
- * point on any advert whose blurb happened to use it. A sold MX-5 with a chatty
- * description then outranked the one for sale, and "would it be possible to view
- * the MX5 today" came back as "we do not know" (Tobias, 30 Aug).
- */
-export const carWordsOnly = (items: StockItem[], text: string | undefined): string => {
-    const q = normaliseQueryText(text);
-    const parts: string[] = [];
-    for (const alias of q.aliases) parts.push(alias.phrase);
-    for (const year of q.years) parts.push(String(year));
-    for (const colour of q.colours) parts.push(colour);
-    for (const facet of q.facets) parts.push(facet.words[0]);
-    for (const token of q.tokens) {
-        if (items.some(item => identityToken(item, token))) parts.push(token);
-    }
-    return parts.join(' ').trim();
+// --- Which car a message names (routing only) -------------------------------
+//
+// Everything below decides which car the Agent Inbox pins a thread to. It is
+// deliberately much stricter than rankStock, which serves the brain's
+// customer-facing search and is allowed to suggest. Here the rule is Steve's:
+// the right car or no car, never a guess (5 Oct). A month of real threads showed
+// what a guess looks like: "Logic Industrial Limited" in a signature pinned an
+// Astra GTC Limited Edition, "subject to vehicle model" a Tesla Model 3, a
+// "+92 300" phone number a Jaguar XF 300 Sport, and "£500" in a quoted reply a
+// Fiat 500.
+//
+// So a car only counts as named by its full registration, or by make and model
+// together, or by a model name nobody would write by accident. Variant words,
+// colours, years, body words, numbers and pieces of a plate never name a car.
+
+/** Normalised registration, or '' when the field does not hold a real plate. */
+const regKey = (value: unknown): string => {
+    const reg = String(value ?? '').replace(/\s+/g, '').toUpperCase();
+    return reg.length >= 5 && /[A-Z]/.test(reg) && /\d/.test(reg) ? reg : '';
 };
 
+/** "AB12 CDE" written in capitals: the one plate shape that is never an ordinary word. */
+const CURRENT_REG_RE = /\b([A-Z]{2}[0-9]{2}\s?[A-Z]{3})\b/g;
+
+/**
+ * Model words that are also everyday words, body styles or bare numbers. Each one
+ * only names a car with the make written right before it ("Fiat 500", "Tesla
+ * Model 3", "Mini Hatch"), never on its own.
+ */
+const NEEDS_MAKE = new Set([
+    'golf', 'polo', 'focus', 'note', 'leaf', 'jazz', 'mini', 'model', 'works', 'first',
+    'edition', 'sport', 'line', 'style', 'active', 'limited', 'one', 'up', 'ka', 'series',
+    'hatch', 'hatchback', 'convertible', 'cabriolet', 'roadster', 'coupe', 'saloon', 'estate',
+    'range', 'discovery', 'insight', 'cayenne', 'beetle', 'pace', 'gran', 'cooper',
+]);
+
+/** Make spellings people use that are not the make itself, from the alias list. */
+const MAKE_ONLY_ALIASES = ALIASES.filter(alias => alias.make && !alias.model && !alias.variant);
+
+const tokensOf = (text: string): string[] => padded(text).trim().split(' ').filter(Boolean);
+
+/** Does `form` (already tokenised) start at tokens[i]? Returns the index after it, or -1. */
+const seqAt = (tokens: string[], i: number, form: string[]): number => {
+    if (!form.length || i + form.length > tokens.length) return -1;
+    for (let k = 0; k < form.length; k++) if (tokens[i + k] !== form[k]) return -1;
+    return i + form.length;
+};
+
+/** "mx5", "mx 5" and "mx-5" all as one: tokens from i joined (up to three) equal to `squashed`. */
+const joinedAt = (tokens: string[], i: number, squashed: string): number => {
+    let joined = '';
+    for (let k = i; k < Math.min(tokens.length, i + 3); k++) {
+        joined += tokens[k];
+        if (joined === squashed) return k + 1;
+        if (!squashed.startsWith(joined)) return -1;
+    }
+    return -1;
+};
+
+interface ModelForm {
+    tokens: string[];
+    squashed: string;
+    /** True when this form names the car with no make in front of it. */
+    alone: boolean;
+}
+
+const standsAlone = (squashed: string, firstWord: string): boolean =>
+    squashed.length >= 4 &&
+    /[a-z]/.test(squashed) &&
+    !/^\d+$/.test(firstWord) &&
+    !NEEDS_MAKE.has(firstWord) &&
+    !NEEDS_MAKE.has(squashed);
+
+/** Every way the text could write this car's model, and whether each needs the make. */
+const modelFormsOf = (item: StockItem): ModelForm[] => {
+    const words = tokensOf(String(item.model ?? ''));
+    if (!words.length) return [];
+    const squashed = words.join('');
+    const forms: ModelForm[] = [{ tokens: words, squashed, alone: standsAlone(squashed, words[0]) }];
+    // "Astra" for an "Astra GTC". Only a real word of four letters or more.
+    if (words.length > 1 && /^[a-z]{4,}$/.test(words[0])) {
+        forms.push({ tokens: [words[0]], squashed: words[0], alone: standsAlone(words[0], words[0]) });
+    }
+    return forms;
+};
+
+/** Every way the text could write this car's make. */
+const makeFormsOf = (item: StockItem): string[][] => {
+    const make = tokensOf(String(item.make ?? ''));
+    if (!make.length) return [];
+    const forms: string[][] = [make];
+    // "Mercedes" for "Mercedes-Benz".
+    if (make.length > 1 && make[0].length >= 5 && make[0] !== 'land') forms.push([make[0]]);
+    const makeText = make.join(' ');
+    for (const alias of MAKE_ONLY_ALIASES) {
+        if (makeText.includes(alias.make as string)) forms.push(alias.phrase.split(' '));
+    }
+    return forms;
+};
+
+/** True when the model form sits at tokens[i] (written out, or run together). */
+const modelAt = (tokens: string[], i: number, form: ModelForm): boolean =>
+    seqAt(tokens, i, form.tokens) !== -1 || joinedAt(tokens, i, form.squashed) !== -1;
+
+const namesByModel = (item: StockItem, tokens: string[]): boolean => {
+    const models = modelFormsOf(item);
+    if (!models.length) return false;
+    const makes = makeFormsOf(item);
+
+    for (let i = 0; i < tokens.length; i++) {
+        for (const form of models) {
+            if (form.alone && modelAt(tokens, i, form)) return true;
+        }
+        // Make then model, side by side: "Audi A5", "Fiat 500", "Mercedes-Benz SLK".
+        for (const make of makes) {
+            const after = seqAt(tokens, i, make);
+            if (after === -1) continue;
+            if (models.some(form => modelAt(tokens, after, form))) return true;
+        }
+    }
+    return false;
+};
+
+/** A nickname that carries the model ("boxster", "mx5", "z4", "a5 cab"). A make-only alias never counts. */
+const namesByAlias = (item: StockItem, paddedText: string): boolean =>
+    ALIASES.some(alias => !!alias.model && paddedText.includes(` ${alias.phrase} `) && aliasHits(item, alias));
+
+/** Cars whose full registration is in the text, as one token or split across two. */
+const namedByReg = (items: StockItem[], tokens: string[]): StockItem[] =>
+    items.filter(item => {
+        const reg = regKey(item.reg).toLowerCase();
+        if (!reg) return false;
+        for (let i = 0; i < tokens.length; i++) {
+            if (tokens[i] === reg) return true;
+            if (i + 1 < tokens.length && tokens[i] + tokens[i + 1] === reg) return true;
+        }
+        return false;
+    });
+
+/**
+ * The one car the text names, or null.
+ *
+ * A full registration wins outright, sold or not. Otherwise every car named by
+ * make and model (or a nickname, or a distinctive model on its own) is a
+ * candidate; a car still for sale beats one that has gone, then the year and the
+ * colour they wrote split a tie. If more than one is still standing, nobody can
+ * say which they meant, so the answer is none. A plate in capitals that is not
+ * one of ours means they are talking about some other car entirely: none.
+ */
+export const matchNamedStock = (items: StockItem[], text: string | undefined): StockItem | null => {
+    const raw = String(text || '');
+    if (!raw.trim()) return null;
+    const pool = items.filter(Boolean);
+    const tokens = tokensOf(raw);
+    if (!tokens.length) return null;
+
+    const byReg = namedByReg(pool, tokens);
+    if (byReg.length) return byReg.length === 1 ? byReg[0] : null;
+
+    const ours = new Set(pool.map(item => regKey(item.reg)).filter(Boolean));
+    for (const m of raw.matchAll(CURRENT_REG_RE)) {
+        if (!ours.has(regKey(m[1]))) return null;
+    }
+
+    const paddedText = ` ${tokens.join(' ')} `;
+    let named = pool.filter(item => namesByAlias(item, paddedText) || namesByModel(item, tokens));
+    if (!named.length) return null;
+
+    const live = named.filter(item => item.status === 'available');
+    if (live.length) named = live;
+
+    // Tie-breaks only: a year or a colour narrows the field, it never empties it.
+    const years = new Set((raw.match(/\b(?:19|20)\d{2}\b/g) || []).map(Number));
+    if (named.length > 1 && years.size) {
+        const inYear = named.filter(item => item.year !== undefined && years.has(item.year));
+        if (inYear.length) named = inYear;
+    }
+    const colours = Object.entries(COLOUR_WORDS).filter(([word]) => hasWord(paddedText, word)).flatMap(([, spellings]) => spellings);
+    if (named.length > 1 && colours.length) {
+        const inColour = named.filter(item => colours.some(spelling => lower(item.colour).includes(spelling)));
+        if (inColour.length) named = inColour;
+    }
+
+    return named.length === 1 ? named[0] : null;
+};
+
+/** Part-ex and ownership words: a car named in the same sentence is theirs, not one they want. */
+const OWN_CAR_RE = /\b(?:my|mine|current|part[\s-]?ex(?:change)?|px|trade[\s-]?in|swap|i own|i have a)\b/i;
+
+/**
+ * The car a follow-up on a live thread has moved on to, or null to leave it.
+ *
+ * Only the customer's own new words count, quoted history already stripped. A
+ * full registration of a different car moves the thread. Otherwise exactly one
+ * car for sale has to be named, in a sentence that is not about their own car:
+ * "my current car is a 2014 Audi A5" is a part-exchange, not a new enquiry.
+ */
+export const switchTargetFor = (
+    items: StockItem[],
+    body: string | undefined,
+    currentStockId: string | undefined
+): StockItem | null => {
+    const text = String(body || '').trim();
+    if (!text) return null;
+    const pool = items.filter(Boolean);
+
+    const byReg = namedByReg(pool, tokensOf(text));
+    if (byReg.length) {
+        return byReg.length === 1 && byReg[0].id !== currentStockId ? byReg[0] : null;
+    }
+
+    const sentences = text.split(/(?<=[.!?])\s+|\n+/).filter(sentence => !OWN_CAR_RE.test(sentence));
+    const item = matchNamedStock(pool.filter(stock => stock.status === 'available'), sentences.join('\n'));
+    return item && item.id !== currentStockId ? item : null;
+};
+
+/** What a thread stores about the car it is pinned to, from a stock item. */
+export const pinFromStock = (item: StockItem): {
+    stockId: string;
+    title: string;
+    ledgerVehicleId?: string;
+    ownerCompanyId?: string;
+    reg?: string;
+} => {
+    const reg = String(item.reg || '').replace(/\s+/g, '').toUpperCase();
+    return {
+        stockId: item.id,
+        title: item.title,
+        ...(item.ledgerVehicleId ? { ledgerVehicleId: item.ledgerVehicleId } : {}),
+        ...(item.ownerCompanyId ? { ownerCompanyId: item.ownerCompanyId } : {}),
+        ...(reg ? { reg } : {}),
+    };
+};
+
+/**
+ * Only the routes that are never a guess: the stock id, the registration the
+ * platform gave, or one of our full plates written in the text. For a later
+ * message on a thread, where a car mentioned in passing ("the leather looks great,
+ * given the state that Z4 seat started in") is not what the thread is about.
+ */
+export const matchExactStock = (items: StockItem[], hint: EnquiryVehicleHint): StockItem | null => {
+    if (hint.stockId) {
+        const exact = items.find(item => item.id === hint.stockId);
+        if (exact) return exact;
+    }
+    if (hint.reg) {
+        const reg = regKey(hint.reg);
+        return reg ? items.find(item => regKey(item.reg) === reg) || null : null;
+    }
+    const byReg = namedByReg(items.filter(Boolean), tokensOf(`${hint.title || ''} ${hint.text || ''}`));
+    return byReg.length === 1 ? byReg[0] : null;
+};
+
+/**
+ * Which car an inbound enquiry is about, for placing the thread and pinning it.
+ *
+ * Stock id and registration are exact. A registration we do not hold means the
+ * enquiry is about some other car — one that has left the index, or not ours at
+ * all — so nothing else is tried: matching its make and model would only find a
+ * different car of the same kind (a sold A5 Cabriolet lead used to land on an A7,
+ * a BMW motorbike on the only BMW for sale). Free text goes through the strict
+ * matcher above.
+ */
 export const matchEnquiryStock = (items: StockItem[], hint: EnquiryVehicleHint): StockItem | null => {
     if (hint.stockId) {
         const exact = items.find(item => item.id === hint.stockId);
@@ -520,31 +757,11 @@ export const matchEnquiryStock = (items: StockItem[], hint: EnquiryVehicleHint):
         const reg = hint.reg.replace(/\s/g, '').toUpperCase();
         if (reg) {
             const exact = items.find(item => (item.reg || '').replace(/\s/g, '').toUpperCase() === reg);
-            if (exact) return exact;
+            return exact || null;
         }
     }
 
-    const text = carWordsOnly(items, hint.title || hint.text);
-    if (!text) return null;
-
-    const hits = rankStock(items, { text, includeReserved: true, includeHidden: true, limit: 5 })
-        .filter(hit => hit.matchQuality !== 'weak');
-
-    if (!hits.length) return null;
-
-    // A car that has gone only keeps the thread when the description clearly picks
-    // it out — when it beats every car still for sale outright. A customer who
-    // names the sold Taycan is asking about the sold Taycan. A customer who writes
-    // "have you still got the Porsche" is not, and used to be pinned to it anyway,
-    // which put the thread on the wrong dealer's ledger and had the agent quoting
-    // a car that went months ago (Steve, 28 Aug).
-    const live = hits.filter(hit => hit.status === 'available');
-    const considered = live.length && live[0].matchScore >= hits[0].matchScore ? live : hits;
-
-    const owners = new Set(considered.map(hit => hit.ownerCompanyId).filter(Boolean));
-    if (owners.size > 1) return null;
-
-    return considered[0];
+    return matchNamedStock(items, hint.title || hint.text);
 };
 
 export const matchEnquiryStockForCompany = async (

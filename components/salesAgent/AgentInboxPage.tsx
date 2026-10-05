@@ -17,6 +17,7 @@ import {
 import {
     AgentMessage,
     CHANNEL_LABELS,
+    CarCorrection,
     Conversation,
     ConversationMode,
     SharedInboxMeta,
@@ -174,8 +175,6 @@ const AgentInboxPage = () => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [carFixOpen, setCarFixOpen] = useState(false);
-    const [carFixNote, setCarFixNote] = useState('');
-    const [carFixBusy, setCarFixBusy] = useState(false);
     const [pendingSplit, setPendingSplit] = useState<{ message: AgentMessage; conv: Conversation } | null>(null);
     const [splitting, setSplitting] = useState(false);
     const [showOther, setShowOther] = useState(readShowOtherLedger);
@@ -394,7 +393,6 @@ const AgentInboxPage = () => {
         setMenuOpen(false);
         setDetailsOpen(false);
         setCarFixOpen(false);
-        setCarFixNote('');
         setSelectedMsgKey(null);
         setBannerCollapsed(false);
         setDrafting(null);
@@ -687,33 +685,23 @@ const AgentInboxPage = () => {
     }, [companyId, draftHost, draftBusy, toast]);
 
     /**
-     * "Wrong car." Put Dave right about which car this thread is about.
+     * "Change car." Put Dave right about which car this thread is about, from the picker.
      *
      * The thread can come back on another ledger — that is the point of it — so the
      * selection is dropped rather than left pointing at an id that no longer exists.
      * The live subscription brings it back under the other dealer within the second.
+     * A failure is thrown back so the picker can show the server's words in place.
      */
-    const handleCarFix = useCallback(async () => {
-        if (!companyId || !active || carFixBusy) return;
-        const note = carFixNote.trim();
-        if (!note) return;
-
-        setCarFixBusy(true);
-        try {
-            const result = await correctThreadCar(homeOf(active, companyId), active.id, note);
-            setCarFixOpen(false);
-            setCarFixNote('');
-            if (result.moved) {
-                setActiveGroupId(null);
-                setActiveConvId(null);
-            }
-            toast.success(result.message);
-        } catch (err: any) {
-            toast.error(err?.message || 'That correction could not be applied.');
-        } finally {
-            setCarFixBusy(false);
+    const handleCarPick = useCallback(async (pick: CarCorrection) => {
+        if (!companyId || !active) return;
+        const result = await correctThreadCar(homeOf(active, companyId), active.id, pick);
+        setCarFixOpen(false);
+        if (result.moved) {
+            setActiveGroupId(null);
+            setActiveConvId(null);
         }
-    }, [companyId, active, carFixNote, carFixBusy, toast]);
+        toast.success(result.message);
+    }, [companyId, active, toast]);
 
     const pickSplitTarget = useCallback((): { message: AgentMessage; conv: Conversation } | null => {
         const isCustomerEmail = (m: AgentMessage) =>
@@ -997,10 +985,7 @@ const AgentInboxPage = () => {
                             onToggleDetails={() => { setDetailsOpen(o => !o); setCarFixOpen(false); }}
                             carFixOpen={carFixOpen}
                             onCarFixOpen={open => { setCarFixOpen(open); if (open) setDetailsOpen(false); }}
-                            carFixNote={carFixNote}
-                            onCarFixNote={setCarFixNote}
-                            carFixBusy={carFixBusy}
-                            onCarFix={handleCarFix}
+                            onCarPick={handleCarPick}
                             onSplit={() => requestSplit()}
                             onOpenLead={openLead}
                             canWhatsAppFollowUp={!!phoneOnFile && !whatsappAlreadySent}

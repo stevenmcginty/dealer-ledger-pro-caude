@@ -461,4 +461,129 @@ const email = (over) => (0, leadParsers_1.parseLeadEmail)({
         node_assert_1.strict.equal(lead.email, 'natasha@gmail.com');
     });
 });
+(0, node_test_1.describe)('Car Dealer 5 mail that is not a lead', () => {
+    (0, node_test_1.it)('drops the weekly "Your 5-Time Last Week" report instead of making "Last week at a glance" a car', () => {
+        const lead = email({
+            from: 'Car Dealer 5 Ltd <noreply@cardealer5.co.uk>',
+            subject: 'Your 5-Time Last Week',
+            text: 'To view the message, please use an HTML compatible email viewer!',
+            html: '<html><body><h1>Your 5-Time Last Week</h1><h2>Last week at a glance</h2><p>9 LEADS RECEIVED</p><p>Top vehicle last week TOYOTA YARIS</p></body></html>',
+        });
+        node_assert_1.strict.equal(lead.kind, 'ignore');
+        node_assert_1.strict.equal(lead.ignoreReason, 'cardealer5_report');
+        node_assert_1.strict.equal(lead.vehicle, undefined);
+    });
+});
+(0, node_test_1.describe)('Car Dealer 5 "Cargurus Vehicle Enquiry" (HTML behind a stub text part)', () => {
+    const lead = email({
+        from: 'noreply@cardealer5.co.uk',
+        subject: 'Cargurus Vehicle Enquiry',
+        text: 'To view the message, please use an HTML compatible email viewer!',
+        html: '<html><body><p>Lead ID: 52680</p><p>Source: Cargurus</p><p>Customer: Alex Sample</p><p>Email: alex.sample@example.com</p><p>Phone: 07700 900123</p><p>Vehicle: 2017 Vauxhall GTC</p><p>Registration: BV17OSY</p><p>Price: 4995</p><p>Message:</p><p>I’m interested in this 2017 Vauxhall GTC and I’d like to know if it’s still available. I prefer to be contacted by: Call (CarGurus deal rating: N/A / Is from deliverable listing: No)</p></body></html>',
+    });
+    (0, node_test_1.it)('reads the car and its reg out of the HTML', () => {
+        node_assert_1.strict.equal(lead.kind, 'enquiry');
+        node_assert_1.strict.equal(lead.source, 'CarGurus');
+        node_assert_1.strict.equal(lead.vehicle?.reg, 'BV17OSY');
+        node_assert_1.strict.equal(lead.vehicle?.title, '2017 Vauxhall GTC');
+        node_assert_1.strict.equal(lead.vehicle?.price, 4995);
+    });
+    (0, node_test_1.it)('answers the customer, with the CarGurus boilerplate taken off', () => {
+        node_assert_1.strict.equal(lead.name, 'Alex Sample');
+        node_assert_1.strict.equal(lead.email, 'alex.sample@example.com');
+        node_assert_1.strict.equal(lead.phone, '+447700900123');
+        node_assert_1.strict.equal(lead.replyTo.address, 'alex.sample@example.com');
+        node_assert_1.strict.equal(lead.message, 'I’m interested in this 2017 Vauxhall GTC and I’d like to know if it’s still available.');
+        node_assert_1.strict.equal(lead.preferredContact, 'phone');
+    });
+});
+(0, node_test_1.describe)('the cd5 lead forwarder (one sender, a different customer every time)', () => {
+    const FORWARDER = 'Radlett Cars <d1917-radlettcarsales-com@mg.cd5.uk>';
+    const vehicleBlock = (year, reg, title, stockId) => `<div>Vehicle</div><div>${year} ${reg}</div><div>${title}</div><div>Stock #${stockId}</div><div>Price</div><div>£8,495</div>`;
+    (0, node_test_1.it)('is never the customer or a reply address', () => {
+        node_assert_1.strict.equal((0, leadParsers_1.isNoReplyAddress)('d1917-radlettcarsales-com@mg.cd5.uk'), true);
+        node_assert_1.strict.equal((0, leadParsers_1.isNoReplyAddress)('reply+msg_abc123@replies.comms.cd5.uk'), true);
+    });
+    (0, node_test_1.it)('makes the customer in the body the contact, and reads the car from the stock block', () => {
+        const lead = email({
+            from: FORWARDER,
+            subject: 'New website enquiry - Jo Sample - MINI Hatchback',
+            text: [
+                'New website enquiry',
+                '',
+                'Lead #57122',
+                'Customer: Jo Sample',
+                'Email: jo.sample@example.com',
+                'Phone: 07700 900456',
+                'Enquiry type: Cargurus',
+                'Message: I’m interested in this 2015 MINI Hatchback and I’d like to know if it’s still available. (CarGurus IMV: £9,997 / Deal rating: Great Deal / Is from deliverable listing: No)',
+                '',
+                'Open lead: https://dealers.cardealer5.co.uk/leads/57122',
+                'Reply email: reply+msg_abc123@replies.comms.cd5.uk',
+            ].join('\n'),
+            html: `<html><body><p>Jo is interested in your MINI Hatchback.</p><p>Preferred contact: Email</p>${vehicleBlock('2015', 'YN64GUF', 'MINI Hatchback', '1854362')}</body></html>`,
+        });
+        node_assert_1.strict.equal(lead.kind, 'enquiry');
+        node_assert_1.strict.equal(lead.source, 'CarGurus');
+        node_assert_1.strict.equal(lead.name, 'Jo Sample');
+        node_assert_1.strict.equal(lead.email, 'jo.sample@example.com');
+        node_assert_1.strict.equal(lead.replyTo.address, 'jo.sample@example.com');
+        node_assert_1.strict.equal(lead.phone, '+447700900456');
+        node_assert_1.strict.deepEqual(lead.vehicle, { title: 'MINI Hatchback', reg: 'YN64GUF', stockId: '1854362' });
+        node_assert_1.strict.equal(lead.message, 'I’m interested in this 2015 MINI Hatchback and I’d like to know if it’s still available.');
+        node_assert_1.strict.equal(lead.preferredContact, 'email');
+    });
+    (0, node_test_1.it)('keeps the part-exchange car out of vehicle.reg: it is the customer\'s own', () => {
+        const lead = email({
+            from: FORWARDER,
+            subject: 'Part Exchange | radlettcarsales.com',
+            text: [
+                'New website enquiry',
+                '',
+                'Lead #75279',
+                'Customer: Dee Sample',
+                'Email: dee.sample@example.com',
+                'Phone: 07700 900789',
+                'Enquiry type: Part Exchange',
+                '',
+                'Open lead: https://dealers.cardealer5.co.uk/leads/75279',
+                '',
+                'Enquiry details',
+                'Interested in: Part Exchange',
+                'Make: Audi',
+                'Model: A5',
+                'Registration: RJ16CRU',
+                'Year: 2016',
+                'Mileage: 88000 Miles',
+                'Desired value: 6000',
+                'Part exchange requested: Yes',
+                'Part exchange vehicle: BMW X1 SUV 1.5 X1 xDrive25e M Sport (2022)',
+                'Part exchange vehicle URL: https://www.radlettcarsales.com/cars/bmw/x1/1.5-x1-xdrive25e-m-sport/1848608/',
+            ].join('\n'),
+        });
+        node_assert_1.strict.equal(lead.email, 'dee.sample@example.com');
+        node_assert_1.strict.equal(lead.vehicle?.stockId, '1848608');
+        node_assert_1.strict.equal(lead.vehicle?.title, 'BMW X1 SUV 1.5 X1 xDrive25e M Sport');
+        node_assert_1.strict.notEqual(lead.vehicle?.reg, 'RJ16CRU');
+        node_assert_1.strict.match(lead.flags?.partEx || '', /RJ16CRU/);
+        node_assert_1.strict.match(lead.message, /part-exchange valuation against the BMW X1/);
+    });
+});
+(0, node_test_1.describe)('findReg only reads plates written in capitals', () => {
+    (0, node_test_1.it)('does not turn ordinary words into plates', () => {
+        node_assert_1.strict.equal((0, leadParsers_1.findReg)('The DJI Mini 5 V2 Pro is back in stock'), undefined);
+        node_assert_1.strict.equal((0, leadParsers_1.findReg)('the Z4 and the Boxster'), undefined);
+    });
+    (0, node_test_1.it)('still reads a real plate', () => {
+        node_assert_1.strict.equal((0, leadParsers_1.findReg)('Re: BMW S1000R SK15 WNA'), 'SK15WNA');
+    });
+    (0, node_test_1.it)('platform fields keep reading the plate in any case', () => {
+        const lead = email({
+            from: 'Cazoo <noreply@info.cazoo.co.uk>',
+            subject: 'Enquiry - Vauxhall Astra GTC bv17osy - Sam',
+            text: 'Customer message\nIs it still available?\nCustomer details\nSam Cobb',
+        });
+        node_assert_1.strict.equal(lead.vehicle?.reg, 'BV17OSY');
+    });
+});
 //# sourceMappingURL=leadParsers.test.js.map
