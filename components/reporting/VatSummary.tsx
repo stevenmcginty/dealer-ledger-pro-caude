@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
-import { DocumentTextIcon, CreditCardIcon } from '../icons';
+import { DocumentTextIcon, CreditCardIcon, PlusIcon, TrashIcon } from '../icons';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
 import { useToast } from '../ui';
 import { exportMtdVatSheet } from '../../utils/mtdVatExport';
-import type { SalesDocument, Vehicle, MiscInvoice, StatementTransaction, JobInvoice } from '../../types';
+import type { SalesDocument, Vehicle, MiscInvoice, StatementTransaction, JobInvoice, VatAdjustment, NewVatAdjustment } from '../../types';
 
 const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Date; end: Date } => {
     // Fallback to standard calendar quarters if no anchor date is set or is invalid
@@ -52,11 +52,12 @@ const getVatPeriod = (targetDate: Date, vatAnchorDateStr?: string): { start: Dat
 
 /**
  * The VAT Summary figures for a period. Moved out of the component unchanged so the
- * Accountant hub's Overview shows the same VAT due as this screen.
+ * Accountant hub's Overview shows the same VAT due as this screen. Optional VAT
+ * adjustments (late claims, corrections) dated in the period add to Box 1 / Box 4 only.
  */
-export function computeVatSummary({ startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices }: {
+export function computeVatSummary({ startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices, vatAdjustments = [] }: {
   startDate: string; endDate: string; salesDocs: SalesDocument[]; vehicles: Vehicle[]; miscInvoices: MiscInvoice[];
-  transactions: StatementTransaction[]; isServiceBusiness: boolean; jobInvoices: JobInvoice[];
+  transactions: StatementTransaction[]; isServiceBusiness: boolean; jobInvoices: JobInvoice[]; vatAdjustments?: VatAdjustment[];
 }) {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
@@ -69,6 +70,9 @@ export function computeVatSummary({ startDate, endDate, salesDocs, vehicles, mis
     // Internal transfers between own accounts (e.g. to savings) are not income or
     // an expense, so they're excluded from all VAT figures below.
     const periodTransactions = transactions.filter(tx => tx.status === 'Reconciled' && tx.reconciliationType !== 'transfer' && new Date(tx.date) >= start && new Date(tx.date) <= end);
+    const periodAdjustments = vatAdjustments.filter(a => new Date(a.date) >= start && new Date(a.date) <= end);
+    const adjustmentOutputVat = periodAdjustments.filter(a => a.box === 'output').reduce((sum, a) => sum + a.amount, 0);
+    const adjustmentInputVat = periodAdjustments.filter(a => a.box === 'input').reduce((sum, a) => sum + a.amount, 0);
 
     // --- Output VAT Calculation ---
     let totalMarginVat = 0;
@@ -103,12 +107,12 @@ export function computeVatSummary({ startDate, endDate, salesDocs, vehicles, mis
       .filter(tx => tx.amount > 0 && !['Vehicle Sale', 'Sales Deposit', 'Miscellaneous Income', 'Job Invoice Payment'].includes(tx.category))
       .reduce((sum, tx) => sum + (tx.vatAmount || 0), 0);
 
-    const totalOutputVat = totalMarginVat + otherOutputVat;
+    const totalOutputVat = totalMarginVat + otherOutputVat + adjustmentOutputVat;
 
     // --- Input VAT Calculation ---
     const totalInputVat = periodTransactions
       .filter(tx => tx.amount < 0)
-      .reduce((sum, tx) => sum + (tx.vatAmount || 0), 0);
+      .reduce((sum, tx) => sum + (tx.vatAmount || 0), 0) + adjustmentInputVat;
 
     const vatDue = totalOutputVat - totalInputVat;
 
@@ -128,16 +132,53 @@ export function computeVatSummary({ startDate, endDate, salesDocs, vehicles, mis
         totalOutputVat,
         totalExpensesNet,
         totalInputVat,
+        adjustmentInputVat,
+        adjustmentOutputVat,
         vatDue 
     };
 }
+
+const inputCls = 'block w-full min-w-0 rounded-md border-0 bg-gray-700 px-3 py-2 text-sm text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-500';
+const boxLabel = (box: VatAdjustment['box']) => box === 'input' ? 'Input VAT (claim back)' : 'Output VAT (pay)';
+
+/** Add form for one VAT adjustment. The date starts at the period end. */
+const VatAdjustmentForm = ({ defaultDate, onSave }: { defaultDate: string; onSave: (a: NewVatAdjustment) => Promise<void> }) => {
+    const [date, setDate] = useState(defaultDate);
+    const [box, setBox] = useState<VatAdjustment['box']>('input');
+    const [amount, setAmount] = useState('');
+    const [description, setDescription] = useState('');
+    const [busy, setBusy] = useState(false);
+    const value = Number(amount);
+    const valid = date !== '' && description.trim() !== '' && isFinite(value) && value > 0;
+    return (
+        <form
+            className="grid grid-cols-1 gap-2 sm:grid-cols-[11rem_minmax(0,14rem)_8rem_minmax(0,1fr)_auto] sm:items-center"
+            onSubmit={async e => {
+                e.preventDefault(); if (!valid || busy) return; setBusy(true);
+                try { await onSave({ date, box, amount: Math.round(Math.abs(value) * 100) / 100, description: description.trim() }); setAmount(''); setDescription(''); }
+                finally { setBusy(false); }
+            }}
+        >
+            <UkDateInput id="vat-adjustment-date" name="vat-adjustment-date" value={date} onChange={e => setDate(e.target.value)} />
+            <select aria-label="Adjustment type" value={box} onChange={e => setBox(e.target.value as VatAdjustment['box'])} className={inputCls}>
+                <option value="input">Input VAT to claim back</option>
+                <option value="output">Output VAT to pay</option>
+            </select>
+            <input aria-label="Amount in pounds" value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className={`${inputCls} text-right tabular-nums`} />
+            <input aria-label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Late claim: BCA invoice ..." className={inputCls} />
+            <button type="submit" disabled={!valid || busy} className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-40">
+                <PlusIcon className="h-4 w-4" />Add
+            </button>
+        </form>
+    );
+};
 
 /** Optional controlled period (the Accountant hub drives it). Without it the report keeps its own dates. */
 interface ControlledPeriodProps { startDate?: string; endDate?: string; hidePeriodBar?: boolean; }
 
 const VatSummary = ({ startDate: startProp, endDate: endProp, hidePeriodBar = false }: ControlledPeriodProps = {}) => {
   // FIX: Replaced `isPaintShop` with `isServiceBusiness` which is available in the data context.
-  const { transactions, salesDocs, vehicles, miscInvoices, businessDetails, isServiceBusiness, jobInvoices } = useData();
+  const { transactions, salesDocs, vehicles, miscInvoices, businessDetails, isServiceBusiness, jobInvoices, vatAdjustments, addVatAdjustment, deleteVatAdjustment } = useData();
   const toast = useToast();
   
   const [ownStart, setStartDate] = useState(() => toYYYYMMDD(getVatPeriod(new Date(), businessDetails?.vatStartDate).start));
@@ -184,9 +225,23 @@ const VatSummary = ({ startDate: startProp, endDate: endProp, hidePeriodBar = fa
   };
 
   const vatData = useMemo(
-    () => computeVatSummary({ startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices }),
-    [startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices],
+    () => computeVatSummary({ startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices, vatAdjustments }),
+    [startDate, endDate, salesDocs, vehicles, miscInvoices, transactions, isServiceBusiness, jobInvoices, vatAdjustments],
   );
+
+  // The adjustments listed on screen: the same period filter computeVatSummary uses.
+  const periodAdjustments = useMemo(() => {
+    const start = new Date(startDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate); end.setHours(23, 59, 59, 999);
+    return vatAdjustments
+      .filter(a => new Date(a.date) >= start && new Date(a.date) <= end)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [vatAdjustments, startDate, endDate]);
+
+  const handleAddAdjustment = async (a: NewVatAdjustment) => {
+    try { await addVatAdjustment(a); }
+    catch (err) { console.error('Add VAT adjustment failed:', err); toast.error("Could not save the VAT adjustment. Please try again."); }
+  };
 
   const handleExportMtdSheet = async () => {
     const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -238,6 +293,7 @@ const VatSummary = ({ startDate: startProp, endDate: endProp, hidePeriodBar = fa
                         <div className="mt-2 text-xs text-gray-400 space-y-1">
                             {!isServiceBusiness && <p>VAT on Margin: <span className="font-semibold text-gray-200">{formatCurrency(vatData.totalMarginVat)}</span></p>}
                             <p>Other Output VAT: <span className="font-semibold text-gray-200">{formatCurrency(vatData.otherOutputVat)}</span></p>
+                            {vatData.adjustmentOutputVat !== 0 && <p>Adjustments: pay <span className="font-semibold text-gray-200">{formatCurrency(vatData.adjustmentOutputVat)}</span></p>}
                             <p className="font-bold text-sm text-gray-200 pt-1 border-t border-blue-800">Total Output VAT: <span className="text-white">{formatCurrency(vatData.totalOutputVat)}</span></p>
                         </div>
                     </div>
@@ -250,10 +306,33 @@ const VatSummary = ({ startDate: startProp, endDate: endProp, hidePeriodBar = fa
                         <p className="text-sm font-medium text-gray-300">Total Expenses (Net)</p>
                         <p className="mt-1 text-3xl font-bold text-white">{formatCurrency(vatData.totalExpensesNet)}</p>
                         <p className="mt-2 text-xs text-gray-400">VAT on Expenses (Input): <span className="font-semibold text-gray-200">{formatCurrency(vatData.totalInputVat)}</span></p>
+                        {vatData.adjustmentInputVat !== 0 && <p className="mt-1 text-xs text-gray-400">Includes adjustments: claim <span className="font-semibold text-gray-200">{formatCurrency(vatData.adjustmentInputVat)}</span></p>}
                     </div>
                     <div className="p-3 rounded-full bg-yellow-900/50 border-yellow-700"><CreditCardIcon className="h-6 w-6 text-yellow-400" /></div>
                  </div>
              </div>
+        </div>
+
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <p className="text-sm font-medium text-gray-300">VAT adjustments</p>
+            <p className="mt-1 text-xs text-gray-500">Late claims and corrections dated in this period. Included in the totals above and in the MTD sheet.</p>
+            {periodAdjustments.length === 0 ? (
+                <p className="mt-3 text-sm text-gray-500">No adjustments in this period.</p>
+            ) : (
+                <ul className="mt-3 divide-y divide-gray-700/60 rounded-lg ring-1 ring-inset ring-gray-700/70">
+                    {periodAdjustments.map(a => (
+                        <li key={a.id} className="flex items-center gap-3 px-3 py-2">
+                            <span className="w-24 shrink-0 text-sm text-gray-400">{formatDate(a.date)}</span>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm text-white">{a.description}</p>
+                                <p className="text-xs text-gray-500">{boxLabel(a.box)}</p>
+                            </div>
+                            <span className="tabular-nums text-sm text-gray-200">{formatCurrency(a.amount)}</span>
+                            <button type="button" data-html2canvas-ignore="true" aria-label={`Delete ${a.description}`} onClick={() => { if (window.confirm(`Delete "${a.description}"?`)) deleteVatAdjustment(a.id); }} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-700 hover:text-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"><TrashIcon className="h-4 w-4" /></button>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </div>
 
         <div className={`p-8 rounded-lg shadow-xl text-center ${vatData.vatDue >= 0 ? 'bg-gradient-to-tr from-red-800 to-orange-700' : 'bg-gradient-to-tr from-green-800 to-emerald-700'}`}>
@@ -261,6 +340,11 @@ const VatSummary = ({ startDate: startProp, endDate: endProp, hidePeriodBar = fa
             <p className="mt-2 text-5xl font-bold text-white tracking-tight">{formatCurrency(Math.abs(vatData.vatDue))}</p>
             <p className="mt-2 text-sm text-white/70">Based on the selected period</p>
         </div>
+        </div>
+
+        <div className="rounded-lg bg-gray-800 p-4 shadow-md">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">New VAT adjustment</p>
+            <VatAdjustmentForm key={endDate} defaultDate={endDate} onSave={handleAddAdjustment} />
         </div>
     </div>
   );

@@ -17,7 +17,7 @@ import {
     InternalJob, NewInternalJob, InternalJobUpdate,
     PDI, NewPDI, PDIUpdate,
     Lead, NewLead, LeadUpdate, LeadStage, Activity,
-    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate, NewYearEndAdjustment
+    EmailTemplate, NewEmailTemplate, EmailTemplateUpdate, NewYearEndAdjustment, NewVatAdjustment
 } from '../types';
 import { isWithinDays, generateStockNumber, toYYYYMMDD } from '../utils/helpers';
 import { applyColumnMapping, readRowByHeaderAliases } from '../utils/csvMapping';
@@ -580,6 +580,12 @@ const yearEndAdjustmentsPath = (companyId: string) => `${FOLDER_ROOTS(companyId)
 export const addYearEndAdjustment = async (companyId: string, data: NewYearEndAdjustment): Promise<void> => { await db.ref(yearEndAdjustmentsPath(companyId)).push().set(data); };
 export const updateYearEndAdjustment = async (companyId: string, id: string, data: Partial<NewYearEndAdjustment>): Promise<void> => db.ref(`${yearEndAdjustmentsPath(companyId)}/${id}`).update(data);
 export const deleteYearEndAdjustment = async (companyId: string, id: string): Promise<void> => db.ref(`${yearEndAdjustmentsPath(companyId)}/${id}`).remove();
+
+// VAT adjustments (late claims, corrections): same home and reasons as year-end adjustments.
+const vatAdjustmentsPath = (companyId: string) => `${FOLDER_ROOTS(companyId).businessDetails}/vatAdjustments`;
+export const addVatAdjustment = async (companyId: string, data: NewVatAdjustment): Promise<void> => { await db.ref(vatAdjustmentsPath(companyId)).push().set(data); };
+export const updateVatAdjustment = async (companyId: string, id: string, data: Partial<NewVatAdjustment>): Promise<void> => db.ref(`${vatAdjustmentsPath(companyId)}/${id}`).update(data);
+export const deleteVatAdjustment = async (companyId: string, id: string): Promise<void> => db.ref(`${vatAdjustmentsPath(companyId)}/${id}`).remove();
 
 export const renameCategoryAndUpdateReferences = async (companyId: string, categoryId: string, newName: string, receipts: Receipt[], transactions: StatementTransaction[]): Promise<void> => {
     const roots = FOLDER_ROOTS(companyId);

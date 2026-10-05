@@ -29,7 +29,7 @@ const isDay = (s: unknown) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.tes
 
 const AccountantPage = () => {
     const data = useData();
-    const { isVatRegistered, isServiceBusiness, businessDetails, yearEndAdjustments } = data;
+    const { isVatRegistered, isServiceBusiness, businessDetails, yearEndAdjustments, vatAdjustments } = data;
     const { setView } = useUI();
 
     const saved = useMemo(readStore, []);
@@ -65,8 +65,8 @@ const AccountantPage = () => {
 
     const vatDue = useMemo(() => isVatRegistered ? computeVatSummary({
         startDate: period.start, endDate: period.end, salesDocs: data.salesDocs, vehicles: data.vehicles, miscInvoices: data.miscInvoices,
-        transactions: data.transactions, isServiceBusiness, jobInvoices: data.jobInvoices,
-    }).vatDue : null, [isVatRegistered, period, data.salesDocs, data.vehicles, data.miscInvoices, data.transactions, isServiceBusiness, data.jobInvoices]);
+        transactions: data.transactions, isServiceBusiness, jobInvoices: data.jobInvoices, vatAdjustments,
+    }).vatDue : null, [isVatRegistered, period, data.salesDocs, data.vehicles, data.miscInvoices, data.transactions, isServiceBusiness, data.jobInvoices, vatAdjustments]);
 
     const ct = useMemo(() => estimateCorporationTax({
         period,

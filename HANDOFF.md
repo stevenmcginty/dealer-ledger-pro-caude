@@ -1,5 +1,60 @@
 # Handoff
 
+## 5 Oct 2026 — VAT adjustments (late claims) in the VAT Summary + MT12 NBZ finalised (LIVE, NOT committed)
+
+- New: VAT Summary → "VAT adjustments". A dated Input (claim back) or Output (pay) amount counts in the quarter it is dated in: Box 1/4/5, the MTD sheet and the Accountant hub's VAT due. Stored at `businessDetails/vatAdjustments` (same pattern as yearEndAdjustments). Files: `types.ts`, `services/dataService.ts`, `contexts/DataContext.tsx`, `components/reporting/VatSummary.tsx` (`computeVatSummary` takes optional `vatAdjustments`), `pages/AccountantPage.tsx`, new `tests/accounting/vatSummary.test.ts`. 305/305 tests, tsc OK, build OK, hosting deployed 5 Oct. Seen live: the add form works and the figures update.
+- Q3 2026 adjustments (both dated 30 Sep 2026): Input £1,844.57 (BMW X1 VK71 BJZ late claim, BCA MM/1162652) and Output £124.17 (MT12 NBZ margin VAT; its sale fell in filed Q1). **Q3 VAT due in the app is now ~£4,735.98** (it was £6,456.38). Q3 is not filed yet.
+- MT12 NBZ (Corsa, #4969): Steve said it sold. Added Sales Invoice #92146 dated 7 Jan 2026 (Steve Marshall; deposit £150 + £1,595 card on 7 Jan, per Steve; £50 discount so price £1,745, balance 0) and set the car to Sold. Backup `bca\backup_mt12_vehicle.json` in the session scratchpad.
+- Commit when Steve says so.
+
+## 5 Oct 2026 — RK66 UBL (Jaguar F-Pace, #514) showed as for sale after its sale (data fix, no code change)
+
+- Sales Invoice #57393 (25 Feb 2026, Shane Lawrence, £15,995, balance 0) was always there, and so were the bank lines (£900 card 19 Feb, £14,995 25 Feb, £100 card 2 Mar). Only the car's `status` was `Available`, not `Sold`. It is the only Sales Invoice in either ledger whose car is not Sold.
+- Fixed: `vehicles/-OXe5LCliEl3q8GUHJqL/status` = Sold; `customerEmail` Exup1990@live.com added to the invoice. Backups: session scratchpad `bca\backup_rk66_*.json`.
+- Cause not found. No status history is kept. `undoSale` would also have deleted the invoice. The car had a DVLA lookup on 6 Aug 2026 (mileage 71,800 and MOT 2027-05-22 are from after the sale).
+
+## 5 Oct 2026 — 3 BCA cars added to Steve's stock (no code change)
+
+- #5029 Peugeot RCZ BJ64 JBU (BW/1215852, £1,925, Margin), #5030 Jeep Grand Cherokee GU18 DYP (PWO/0174906, £9,485.80, Margin), #5031 BMW X1 VK71 BJZ (MM/1162652, 3 Jun 2026).
+- The X1 is a **VAT-qualifying** car: its invoice charges £1,844.57 VAT. Steve chose Qualifying: in stock at the net £9,222.83, to be sold with 20% VAT on top. The £1,844.57 goes on the Q4 2026 return as a late claim. The June bank line was left unchanged (Q2 filed).
+- Added by a backend push with the same fields as #5022, plus the invoice PNG in Storage. Colour/engine/MOT come from the invoice, not a DVLA lookup.
+- Log + Q4 VAT to-dos: `C:\Users\steve\Desktop\radlett-vat\2026-Q4\bca-invoices\stock-log.md`. Ruling saved in the skill's `payee-rules.md`.
+
+## 5 Oct 2026 — Agent Inbox: right car or no car, plus a car picker (LIVE, NOT committed)
+
+Steve's ask: emails got the wrong reg/car. General emails got a car. Lead emails got a different reg. He wants an easy picker.
+
+### Cause (read-only check of 127 real threads; 11 wrong, 14 should have had no car)
+- `identityToken` counted any variant/model word ("limited", "model", "300", "first") or reg fragment as naming a car. A make alone ("bmw") was enough.
+- `switchVehicleIfNamed` re-pinned threads from quoted text (HTML replies skipped quote stripping); a quoted year became a hard filter ("£500" moved a Boxster thread to the Fiat 500).
+- cd5 lead forwarder `*@mg.cd5.uk` was taken as the customer: 29 leads merged into one thread (Chris's C18). CarDealer5 weekly report became a car "Last week at a glance". CarDealer5 "Cargurus Vehicle Enquiry" HTML was never read.
+- Direct CarGurus leads were right. CarGurus stock number == stock index id (checked 28/28).
+
+### Done (functions: all 30 sales-agent functions deployed by name; hosting deployed; 5 Oct)
+- New strict matcher for routing only (`stock/search.ts`): full reg, or make + model, or a model alias; never variant words, numbers, years or colours. Ties = no car. Brain's `search_stock` ranking unchanged.
+- `findReg` no longer uppercases free text. Switch only on a full reg or a clear make+model in the customer's own words, not in part-ex sentences.
+- Parsers: CarDealer5 reports ignored; "Cargurus Vehicle Enquiry" parsed; cd5 forwarder parsed (each lead its own thread; part-ex `Registration:` is never the wanted car).
+- New fields: `vehicleInterest.reg`, `carSetByOwner` (Steve's pick locks the car; router/brain/switch leave it).
+- `salesAgentCorrectThread` takes `stockId | ledgerVehicleId (+vehicleCompanyId) | noCar | freeTitle | note`.
+- Client: `components/salesAgent/inbox/CarPicker.tsx` + `utils/carPickerSearch.ts`. Tap the car line (or menu "Change car"), type reg/make/model; ledger cars + stock index; "No car"; "Use what I typed".
+- 20 old threads fixed in RTDB (6 to the right car, 14 to No car). Backup + script: `%TEMP%\claude\...\scratchpad\carmatch\cleanup\` (`backup.json`, `apply.mjs`).
+- Tests: functions 230/230 (`node --test "lib/salesAgent/**/*.test.js"`; a folder argument fails on Node 24), root 300/300, builds OK.
+- Deploy tip: functions deploy timed out loading code ("Timeout after 10000"); `FUNCTIONS_DISCOVERY_TIMEOUT=120 firebase deploy ...` fixed it.
+
+### Open
+- Picker not yet seen in a browser.
+- Still wrong, fix by hand with the picker: C18 (Chris, the old merged forwarder thread), S68 and C23 (the real car left the stock index), C16 (Fiat 500c promo).
+- "CR-Z" with no make gets no car. Two live Boxsters + "Boxster" only = no car (by design).
+- If Chris is logged in, a stock-index pick may not resolve (server looks in the credential company's index); ledger-car picks are fine.
+- Commit when Steve says so.
+
+## 5 Oct 2026 — more eBay invoices in (no code change)
+
+- 4 Q3 invoices came in by email (easywaytosellmycar). Each one is uploaded as a receipt and auto-linked to its reconciled bank line: bikebuybike = KZO Trading Ltd (27-15000-28350), Trade Car Parts x2 (09-15013-76482, 01-15029-23408), The Gasket Shop / Harland (13-14989-83803). VAT unchanged.
+- New order 13-15241-57962 (Hikari JDM, £18.95, 3 Oct): invoice request emailed 5 Oct 09:02.
+- Still waiting: AP Parts (22-14995-93802), GetCarParts (09-15240-20481, chase again after 16 Oct). Mambatek: Steve 5 Oct says keep the 20% VAT (lines unchanged).
+- App note: the receipt scan still sets some dates one day early (14 Aug read as 13 Aug, 10 Aug as 9 Aug). Fixed by hand.
+
 ## 2 Oct 2026 — eBay invoices now requested by email (no code change)
 
 - New rule (Steve): for every eBay purchase, email the seller from easywaytosellmycar@gmail.com for a VAT invoice (the seller's email comes from the item page's "Seller contact information"). Claude uploads and links every invoice; Steve never does. The skill's run is now about once a month: reconcile, then sweep every invoice. Skill updated: `~/.claude/skills/radlett-vat-quarter/SKILL.md` + `ebay-invoice-chase.md`.

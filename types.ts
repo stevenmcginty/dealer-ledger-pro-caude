@@ -398,6 +398,12 @@ export interface BusinessDetails {
      */
     yearEndAdjustments?: { [id: string]: NewYearEndAdjustment };
     /**
+     * VAT adjustments (late claims, corrections) keyed by push id. Stored inside
+     * businessDetails for the same reason as yearEndAdjustments; read them via the data
+     * context's `vatAdjustments` list.
+     */
+    vatAdjustments?: { [id: string]: NewVatAdjustment };
+    /**
      * Director's salary from the payroll (run by the accountant). Missing or empty =
      * wages are just the bank lines. See utils/accounting/directorSalary.ts.
      */
@@ -428,6 +434,19 @@ export interface YearEndAdjustment {
     amount: number;
 }
 export type NewYearEndAdjustment = Omit<YearEndAdjustment, 'id'>;
+
+/** One manual VAT adjustment (a late claim or a correction), counted in the VAT period its date falls in. */
+export interface VatAdjustment {
+    id: string;
+    /** 'YYYY-MM-DD': decides which VAT period it counts in. */
+    date: string;
+    /** 'input' = VAT to claim back (Box 4); 'output' = VAT to pay (Box 1). */
+    box: 'input' | 'output';
+    /** Positive amount in pounds. */
+    amount: number;
+    description: string;
+}
+export type NewVatAdjustment = Omit<VatAdjustment, 'id'>;
 
 export interface ToDoItem {
     id: string;
@@ -974,6 +993,8 @@ export interface DataContextState {
     businessDetails: BusinessDetails | null;
     /** businessDetails.yearEndAdjustments as a list (empty when none). */
     yearEndAdjustments: YearEndAdjustment[];
+    /** businessDetails.vatAdjustments as a list (empty when none). */
+    vatAdjustments: VatAdjustment[];
     theme: string;
     todos: ToDoItem[];
     workSheets: WorkSheet[];
@@ -1024,6 +1045,9 @@ export interface DataContextState {
     addYearEndAdjustment: (data: NewYearEndAdjustment) => Promise<void>;
     updateYearEndAdjustment: (id: string, data: Partial<NewYearEndAdjustment>) => Promise<void>;
     deleteYearEndAdjustment: (id: string) => Promise<void>;
+    addVatAdjustment: (data: NewVatAdjustment) => Promise<void>;
+    updateVatAdjustment: (id: string, data: Partial<NewVatAdjustment>) => Promise<void>;
+    deleteVatAdjustment: (id: string) => Promise<void>;
     addToDo: (data: NewToDoItem) => Promise<any>;
     updateToDo: (id: string, data: ToDoItemUpdate) => Promise<void>;
     deleteToDo: (id: string) => Promise<void>;

@@ -6,7 +6,7 @@ import {
     ExpenseCategory, WorkSheet, Customer, MiscInvoice, JobInvoice, InternalJob, InformalVehicle,
     GarageCost, Supplier, CanvasItem, FinancialAccount, UploadBatch, PDI,
     ToDoItem, BusinessDetails, Lead, EmailTemplate, LeadStage, CRMSettings,
-    YearEndAdjustment, NewYearEndAdjustment
+    YearEndAdjustment, NewYearEndAdjustment, VatAdjustment, NewVatAdjustment
 } from '../types';
 import * as dataService from '../services/dataService';
 import { User, onAuthStateChanged } from '../services/firebase';
@@ -229,11 +229,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         () => Object.entries(businessDetails?.yearEndAdjustments || {}).map(([id, a]) => ({ ...a, id })),
         [businessDetails]
     );
+    const vatAdjustments = useMemo<VatAdjustment[]>(
+        () => Object.entries(businessDetails?.vatAdjustments || {}).map(([id, a]) => ({ ...a, id })),
+        [businessDetails]
+    );
 
-    // Demo mode has no database: keep year-end adjustments in local state only.
+    // Demo mode has no database: keep year-end and VAT adjustments in local state only.
     const isDemo = user.uid === 'demo';
     const setDemoAdjustments = (fn: (all: { [id: string]: NewYearEndAdjustment }) => { [id: string]: NewYearEndAdjustment }) =>
         setBusinessDetails(prev => prev ? { ...prev, yearEndAdjustments: fn({ ...(prev.yearEndAdjustments || {}) }) } : prev);
+    const setDemoVatAdjustments = (fn: (all: { [id: string]: NewVatAdjustment }) => { [id: string]: NewVatAdjustment }) =>
+        setBusinessDetails(prev => prev ? { ...prev, vatAdjustments: fn({ ...(prev.vatAdjustments || {}) }) } : prev);
 
     const value: DataContextState = useMemo(() => ({
         user,
@@ -248,6 +254,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         expenseCategories,
         businessDetails,
         yearEndAdjustments,
+        vatAdjustments,
         theme,
         todos: mergedTodos,
         workSheets,
@@ -306,6 +313,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteYearEndAdjustment: async (id) => {
             if (isDemo) { setDemoAdjustments(all => { delete all[id]; return all; }); return; }
             await dataService.deleteYearEndAdjustment(companyId!, id);
+        },
+        addVatAdjustment: async (data) => {
+            if (isDemo) { setDemoVatAdjustments(all => ({ ...all, [`demo-${Date.now()}`]: data })); return; }
+            await dataService.addVatAdjustment(companyId!, data);
+        },
+        updateVatAdjustment: async (id, data) => {
+            if (isDemo) { setDemoVatAdjustments(all => (all[id] ? { ...all, [id]: { ...all[id], ...data } } : all)); return; }
+            await dataService.updateVatAdjustment(companyId!, id, data);
+        },
+        deleteVatAdjustment: async (id) => {
+            if (isDemo) { setDemoVatAdjustments(all => { delete all[id]; return all; }); return; }
+            await dataService.deleteVatAdjustment(companyId!, id);
         },
         addToDo: (data) => dataService.addToDo(companyId!, data),
         updateToDo: (id, data) => dataService.updateToDo(companyId!, id, data),
@@ -383,7 +402,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteDataAndFilesByCategories: (categories) => dataService.deleteDataAndFilesByCategories(companyId!, user.uid, categories),
         batchArchiveDelete: (items) => dataService.batchArchiveDelete(companyId!, items),
         batchRestore: (manifest) => dataService.batchRestore(companyId!, manifest),
-    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, yearEndAdjustments, isDemo, theme, mergedTodos, workSheets, pdis, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, emailTemplates, crmSettings, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
+    }), [companyId, user.uid, user, googleUser, vehicles, receipts, transactions, financeCompanies, expenseCategories, businessDetails, yearEndAdjustments, vatAdjustments, isDemo, theme, mergedTodos, workSheets, pdis, customers, miscInvoices, salesDocs, jobInvoices, internalJobs, informalVehicles, garageCosts, suppliers, canvasItems, financialAccounts, uploadBatches, leads, emailTemplates, crmSettings, selectedLeadId, isLoading, error, googleSyncError, googleConnectionMessage, isServiceBusiness, isVatRegistered, refreshGoogleCalendarEvents, handleGoogleSignIn, handleGoogleSignOut]);
 
     return (
         <DataContext.Provider value={value}>
