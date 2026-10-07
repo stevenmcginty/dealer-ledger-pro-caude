@@ -1,5 +1,33 @@
 # Handoff
 
+## 7 Oct 2026 — Road tax on the car's Edit screen + filled for Steve's stock (LIVE, not committed)
+
+Steve's ask: see each car's road tax in the car details; which stock car has the cheapest road tax.
+
+- Found: the lookup works out road tax (`functions/src/vehicle/ved.ts`) and saves `annualRoadTax`, but no screen showed the saved figure. `DVLA_VES_API_KEY` is empty in `functions/.env`, so lookups and the 6am sweep get no CO2 or tax status; pre-April-2017 cars can't be priced from a lookup.
+- Code: `components/stock/VehicleEditor.tsx` — read-only "Road Tax" cell next to MOT Due Date (£/year, CO2, tax status + due). 313/313 tests, build OK, hosting deployed 7 Oct ~11:26.
+- Data: CO2, tax status and tax due read from the GOV.UK vehicle check page (vehicleenquiry.service.gov.uk) for 29 unsold cars in `-OXmKH0D2CB0JFIi3cEi`; wrote `co2Emissions`, `annualRoadTax` (2026/27 table), `taxStatus`, `taxDueDate`. Skipped: S29CAG (DVLA says Ford 2020, ledger says Fiat 500 2026), ALFA and CR2DZ0/U125CR (no valid reg). No `annualRoadTax` on BL71 OGO and VK71 BJZ (£200 or £640 depending on list price).
+- Cheapest: YH65 EMJ Mercedes CLA 220d £20/yr; next tier £200 (11 cars).
+- Open: tax status will go stale and new pre-2017 cars get no road tax until a DVLA VES key is added.
+
+## 7 Oct 2026 — Agent Inbox unread is now per person (LIVE, not committed)
+
+Steve's ask: when Steve reads a WhatsApp, it stopped looking unread for Chris (and the other way round). Each of them must keep their own unread until they open it.
+
+- Cause: one shared `unread` counter per conversation; opening a thread set it to 0 for everyone. OS notifications were already per device (only the opening device closes its own).
+- Server (`functions/src/salesAgent/router.ts`, `types.ts`): every inbound also bumps `inboundCount` (only goes up, never reset). Legacy `unread` still written.
+- Client: `markConversationRead(companyId, convId, uid, inboundCount)` writes only `readBy/<uid> = {count, at}`. `unreadFor(conv, uid)` in `utils/agentInboxGroups.ts` drives every badge (thread list, WhatsApp button, inbox button, app badge). Threads with no inbound since the change fall back to the old `unread` unless this person read after `lastInboundAt`. A message that lands while the thread is open and visible is marked read for that person only.
+- Replying does not clear it for the other person (Steve: stays until both have opened it).
+- Tests: root 313/313, functions 230/230, builds OK. Deployed 7 Oct: all 30 sales-agent functions by name + hosting. No rules change.
+- Commit when Steve says so (files: router.ts, types.ts, functions/lib router.js/maps, salesAgentService.ts, agentInboxGroups.ts, AgentInboxButton.tsx, WhatsAppButton.tsx, AgentInboxPage.tsx, tests/agentInboxGroups.test.ts).
+
+## 6 Oct 2026 — MINI Paceman SW65 FBK added to Steve's stock (no code change)
+
+- #5032, BCA WB/757, 26 Jun 2026, £3,415, Margin, vehicle `-P3HIBq_-rmyIcNrr4o-`. Invoice PNG on the car. June bank line `-Ox_vgBp2CquEcRiX5xu` linked (Vehicle Purchase; VAT 0, unchanged).
+- Why it was missing: June (Q2) purchase. The server never adds BCA cars (Steve's rule) and the Q3 run only checked Jul–Sep payments.
+- Also added: #5033 AP67 LCA Abarth 595, BCA BB/3579968, 30 Apr 2026, £5,193, Margin (Steve: still owned). MOT data from gov.uk (to 20 Sep 2027). May bank line `-Ovj1NwiSqJ4TkDNG5cI` linked, VAT unchanged. Log: `C:\Users\steve\Desktop\radlett-vat\2026-Q2\bca-invoices\stock-log.md`.
+- Every Steve BCA payment from Apr 2026 now has a car, except the X1 (qualifying, by design) and BV/1766882 (refunded).
+
 ## 5 Oct 2026 — VAT adjustments (late claims) in the VAT Summary + MT12 NBZ finalised (LIVE, commit 6ba5594, pushed)
 
 - New: VAT Summary → "VAT adjustments". A dated Input (claim back) or Output (pay) amount counts in the quarter it is dated in: Box 1/4/5, the MTD sheet and the Accountant hub's VAT due. Stored at `businessDetails/vatAdjustments` (same pattern as yearEndAdjustments). Files: `types.ts`, `services/dataService.ts`, `contexts/DataContext.tsx`, `components/reporting/VatSummary.tsx` (`computeVatSummary` takes optional `vatAdjustments`), `pages/AccountantPage.tsx`, new `tests/accounting/vatSummary.test.ts`. 305/305 tests, tsc OK, build OK, hosting deployed 5 Oct. Seen live: the add form works and the figures update.

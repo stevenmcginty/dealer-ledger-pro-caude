@@ -594,6 +594,24 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                 <div><label htmlFor="engineSize" className="block text-sm font-medium text-gray-300">Engine Size (cc)</label><input type="text" name="engineSize" value={formData.engineSize || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
                  <div><label htmlFor="motDueDate" className="block text-sm font-medium text-gray-300">MOT Due Date</label><UkDateInput id="motDueDate" name="motDueDate" value={formData.motDueDate || ''} onChange={handleChange} className="mt-1" /></div>
                 <div>
+                    {/* Read-only: worked out from CO2 and first registration when the car
+                        is looked up (functions/src/vehicle/ved.ts) and kept on the car. */}
+                    <span className="block text-sm font-medium text-gray-300">Road Tax</span>
+                    <p className="mt-1 py-2 text-white">
+                        {typeof formData.annualRoadTax === 'number'
+                            ? `£${formData.annualRoadTax.toLocaleString('en-GB')} a year`
+                            : <span className="text-gray-500">Not known yet</span>}
+                        {typeof formData.co2Emissions === 'number' && (
+                            <span className="text-gray-400"> · CO2 {formData.co2Emissions} g/km</span>
+                        )}
+                    </p>
+                    {formData.taxStatus && (
+                        <p className="text-xs text-gray-500">
+                            {formData.taxStatus}{formData.taxDueDate ? ` — due ${formatDate(formData.taxDueDate)}` : ''}
+                        </p>
+                    )}
+                </div>
+                <div>
                     <label htmlFor="vatScheme" className="block text-sm font-medium text-gray-300">VAT Scheme</label>
                     <Select name="vatScheme" value={formData.vatScheme} onChange={handleChange} wrapperClassName="mt-1">
                         <option>Margin</option><option>Qualifying</option><option>Commercial</option>
