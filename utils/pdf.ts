@@ -20,15 +20,24 @@ export interface DownloadPdfOptions {
     singlePage?: boolean;
 }
 
-const renderElementToPdf = async (
-    element: HTMLElement,
-    { canvas: canvasOptions, quality = 0.8, singlePage = false }: DownloadPdfOptions = {}
-) => {
+const loadPdfLibs = async () => {
     const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
         import('html2canvas'),
     ]);
+    return { jsPDF, html2canvas };
+};
 
+type PdfLibs = Awaited<ReturnType<typeof loadPdfLibs>>;
+type PdfDocument = InstanceType<PdfLibs['jsPDF']>;
+
+/** Capture one element and draw it onto the PDF's current page (adding pages if it paginates). */
+const drawElement = async (
+    pdf: PdfDocument,
+    html2canvas: PdfLibs['html2canvas'],
+    element: HTMLElement,
+    { canvas: canvasOptions, quality = 0.8, singlePage = false }: DownloadPdfOptions
+) => {
     const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -37,7 +46,6 @@ const renderElementToPdf = async (
     });
 
     const imgData = canvas.toDataURL('image/jpeg', quality);
-    const pdf = new jsPDF('p', 'mm', 'a4');
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const imgProps = pdf.getImageProperties(imgData);
     const pdfPageHeight = pdf.internal.pageSize.getHeight();
@@ -56,6 +64,24 @@ const renderElementToPdf = async (
             pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight);
             heightLeft -= pdfPageHeight;
         }
+    }
+};
+
+const renderElementToPdf = async (element: HTMLElement, options: DownloadPdfOptions = {}) => {
+    const { jsPDF, html2canvas } = await loadPdfLibs();
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    await drawElement(pdf, html2canvas, element, options);
+    return pdf;
+};
+
+/** One PDF page per element, each drawn like `singlePage` (its own capture, its own page). */
+const renderElementsToPdf = async (elements: HTMLElement[], options: DownloadPdfOptions = {}) => {
+    if (elements.length === 0) throw new Error('No elements to render to PDF.');
+    const { jsPDF, html2canvas } = await loadPdfLibs();
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    for (let i = 0; i < elements.length; i++) {
+        if (i > 0) pdf.addPage();
+        await drawElement(pdf, html2canvas, elements[i], { ...options, singlePage: true });
     }
     return pdf;
 };
@@ -76,5 +102,24 @@ export const elementAsPdfBlob = async (
     options: DownloadPdfOptions = {}
 ): Promise<Blob> => {
     const pdf = await renderElementToPdf(element, options);
+    return pdf.output('blob');
+};
+
+/** Several elements as one PDF, one A4 page each, saved to `filename`. */
+export const downloadElementsAsPdf = async (
+    elements: HTMLElement[],
+    filename: string,
+    options: DownloadPdfOptions = {}
+) => {
+    const pdf = await renderElementsToPdf(elements, options);
+    pdf.save(filename);
+};
+
+/** Several elements as one PDF, one A4 page each, as bytes for upload and send. */
+export const elementsAsPdfBlob = async (
+    elements: HTMLElement[],
+    options: DownloadPdfOptions = {}
+): Promise<Blob> => {
+    const pdf = await renderElementsToPdf(elements, options);
     return pdf.output('blob');
 };

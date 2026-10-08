@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { SalesDocument, BusinessDetails, Vehicle, PartExchangeVehicle } from '../../types';
 import { XMarkIcon, PrinterIcon, ArrowDownTrayIcon } from '../icons';
 import { formatDate, formatCurrency } from '../../utils/helpers';
 import { downloadPrintablePdf } from './printablePdf';
+import { showsTermsPage, includesTermsPage, cancellationFormGoods, cancellationFormRecipient, oneLine } from '../../utils/salesTermsPage';
 import SendDocumentPanel from './SendDocumentPanel';
 import { useData } from '../../hooks/useData';
 import { useToast } from '../ui';
@@ -88,6 +89,12 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
     // attach the contact to yet.
     const canSendToCustomer = !isPreview && !!doc.id && doc.id !== 'temp-id';
 
+    // Page 2 (terms + cancellation form) is offered when the company has set it up,
+    // and added only when the desk ticks it for this view. Off every time the view opens.
+    const [addTermsPage, setAddTermsPage] = useState(false);
+    const termsPageAvailable = !isPreview && showsTermsPage(doc.documentType, businessDetails);
+    const showTermsPage = includesTermsPage(doc.documentType, businessDetails, { ticked: addTermsPage, isPreview });
+
      const docTitles = { 
         'Sales Invoice': "INVOICE", 
         'Proforma Invoice': "PROFORMA INVOICE", 
@@ -95,11 +102,43 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
         'Purchase Invoice': "PURCHASE INVOICE"
     };
 
+    // Company details line at the foot of every page.
+    const companyDetails = (
+        <div className="pt-1.5 border-t border-black text-center text-black text-[8px]">
+            <p>
+                {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
+                {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}
+                {isVatRegistered && businessDetails?.vatNumber && `VAT No: ${businessDetails.vatNumber}`}
+            </p>
+            <p>{businessDetails?.address?.replace(/\n/g, ', ')}</p>
+            <p>
+                {businessDetails?.phone && `Tel: ${businessDetails.phone}`}
+                {businessDetails?.phone && businessDetails?.email && ' | '}
+                {businessDetails?.email && `Email: ${businessDetails.email}`}
+            </p>
+        </div>
+    );
+
+    // A label, then a ruled line to write on (pre-filled when the doc already knows the answer).
+    const formLine = (label: string, value = '') => (
+        <div className="flex items-end gap-2 mt-2">
+            <span className="whitespace-nowrap">{label}</span>
+            {/* Bottom padding keeps the text clear of the rule — html2canvas draws text lower than the browser does. */}
+            <span className="flex-1 border-b border-black leading-normal" style={{ minHeight: '14px', paddingBottom: '4px' }}>{value}</span>
+        </div>
+    );
+
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/80 backdrop-blur-sm print:bg-white">
             <header className="bg-gray-800 p-2 flex justify-between items-center print:hidden flex-shrink-0">
                 <h3 className="font-bold text-white ml-2">{isPreview ? 'Invoice Preview' : `${doc.documentType} #${doc.invoiceNumber}`}</h3>
-                <div>
+                <div className="flex items-center">
+                    {termsPageAvailable && (
+                        <label className="flex items-center gap-1.5 mr-3 text-sm text-gray-300 cursor-pointer select-none" title="Add the terms and cancellation page as page 2">
+                            <input type="checkbox" checked={addTermsPage} onChange={e => setAddTermsPage(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600" />
+                            Add terms page
+                        </label>
+                    )}
                     {!isPreview && (
                         <>
                             <button onClick={handleDownloadPdf} className="p-2 mr-1 rounded-full text-gray-300 hover:bg-gray-700" title="Download PDF"><ArrowDownTrayIcon className="h-5 w-5" /></button>
@@ -238,21 +277,40 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                             <p className="text-[7px] leading-tight text-black whitespace-pre-line mb-2">{businessDetails.invoiceTerms}</p>
                         )}
                         {/* Company details */}
-                        <div className="pt-1.5 border-t border-black text-center text-black text-[8px]">
-                            <p>
-                                {businessDetails?.companyNumber && `Company No: ${businessDetails.companyNumber}`}
-                                {businessDetails?.companyNumber && isVatRegistered && businessDetails?.vatNumber && ' | '}
-                                {isVatRegistered && businessDetails?.vatNumber && `VAT No: ${businessDetails.vatNumber}`}
-                            </p>
-                            <p>{businessDetails?.address?.replace(/\n/g, ', ')}</p>
-                            <p>
-                                {businessDetails?.phone && `Tel: ${businessDetails.phone}`}
-                                {businessDetails?.phone && businessDetails?.email && ' | '}
-                                {businessDetails?.email && `Email: ${businessDetails.email}`}
-                            </p>
-                        </div>
+                        {companyDetails}
                     </footer>
                 </div>
+                {showTermsPage && (
+                    <div id="printable-terms" className="bg-white w-full max-w-4xl mx-auto mt-6 text-black font-sans text-sm print:shadow-none print:p-0 print:mt-0 print:break-before-page relative" style={{ padding: '6mm 10mm 30mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
+                        <header className="flex justify-between items-start border-b-2 border-black pb-1 mb-3">
+                            <div className="text-black">
+                                <h1 className="text-lg font-bold uppercase text-black">Terms and your right to cancel</h1>
+                                <p className="text-[10px] text-black">{docTitles[doc.documentType]} #{doc.invoiceNumber}</p>
+                            </div>
+                            <h2 className="text-base font-bold text-right text-black">{businessDetails?.name}</h2>
+                        </header>
+                        {businessDetails?.termsPage?.trim() && (
+                            <p className="text-[9px] leading-snug text-black whitespace-pre-line">{businessDetails.termsPage.trim()}</p>
+                        )}
+                        {businessDetails?.cancellationForm && (
+                            <section className="mt-4 border border-black p-3 text-[9px] leading-snug text-black">
+                                <h2 className="font-bold text-sm text-black">Cancellation form</h2>
+                                <p className="italic">(Complete and return this form only if you wish to cancel the contract.)</p>
+                                <p className="mt-2">To: {cancellationFormRecipient(businessDetails)}</p>
+                                <p className="mt-2">I/We* hereby give notice that I/We* cancel my/our* contract of sale of the following goods: {cancellationFormGoods(doc)}</p>
+                                {formLine('Ordered on* / received on*:')}
+                                {formLine('Name of consumer(s):', doc.customerName || '')}
+                                {formLine('Address of consumer(s):', oneLine(doc.customerAddress))}
+                                {formLine('Signature of consumer(s) (only if this form is notified on paper):')}
+                                {formLine('Date:')}
+                                <p className="mt-2 text-[8px]">* Delete as appropriate</p>
+                            </section>
+                        )}
+                        <footer className="absolute bottom-0 left-0 right-0 text-black" style={{ padding: '0 10mm 8mm 10mm' }}>
+                            {companyDetails}
+                        </footer>
+                    </div>
+                )}
             </main>
             
             {isPreview && onConfirm && onBack && (

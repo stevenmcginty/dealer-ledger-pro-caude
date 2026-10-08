@@ -123,8 +123,10 @@ const BusinessDetailsPage = () => {
     }, [businessDetails]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type } = e.target;
+        // Checkboxes save true/false, not the input's "on" value.
+        const next = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+        setFormData(prev => ({ ...prev, [name]: next }));
     };
 
     // Accounting year end, stored as 'MM-DD'. Unset shows (and saves) the 31 March default.
@@ -285,6 +287,26 @@ const BusinessDetailsPage = () => {
                     <div className="md:col-span-2">
                         <label htmlFor="invoiceTerms" className="block text-sm font-medium text-gray-300">Invoice Terms & Conditions</label>
                         <textarea name="invoiceTerms" id="invoiceTerms" value={formData.invoiceTerms || ''} onChange={handleChange} rows={4} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
+                    </div>
+                    <div className="md:col-span-2">
+                        <label htmlFor="termsPage" className="block text-sm font-medium text-gray-300">Terms page (printed as page 2 of invoices, proformas and deposit slips)</label>
+                        <textarea name="termsPage" id="termsPage" value={formData.termsPage || ''} onChange={handleChange} rows={8} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
+                        <p className="text-xs text-gray-400 mt-1">Page 2 is added only when you tick "Add terms page" on the invoice.</p>
+                    </div>
+                    <div className="md:col-span-2 relative flex items-start">
+                        <div className="flex h-6 items-center">
+                            <input
+                                id="cancellationForm"
+                                name="cancellationForm"
+                                type="checkbox"
+                                checked={formData.cancellationForm || false}
+                                onChange={handleChange}
+                                className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600"
+                            />
+                        </div>
+                        <div className="ml-3 text-sm leading-6">
+                            <label htmlFor="cancellationForm" className="font-medium text-gray-300">Add a cancellation form to page 2 (distance and doorstep sales)</label>
+                        </div>
                     </div>
                  </div>
 

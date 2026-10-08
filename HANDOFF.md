@@ -1,5 +1,26 @@
 # Handoff
 
+## 8 Oct 2026 — Invoice/deposit slip small print + website warranty page in line with UK law, plus optional terms page 2 (LIVE, not committed)
+
+Steve's ask: make sure the invoice/deposit slip small print covers him (warranty, CRA, distance selling, FCA) and matches radlettcarsales.com.
+
+- Found: invoice terms linked to a broken address (`HTTTP://RADLETTCARSALES,COM/WARRANTY`) and said the customer always returns the car on a CRA claim. Website said "14 days to return" for distance sales, made an independent inspection a condition of CRA rights, and had no "statutory rights not affected" line for the warranty (CRA s.30(4)(b)).
+- Law checked on legislation.gov.uk (CRA 2015 ss.19-24, 30, 31; CCR 2013 regs 5, 10, 19, 27-35, Sch 2). Key points: s.20(8) customer only pays return if they collected from the premises; off-premises (doorstep) contracts have the same 14-day cancel right as distance ones, reg 19 makes it an offence not to give the cancel info on paper, and reg 35(1)(b) makes the trader collect a car delivered to the home when the deal was done there. Payment does not decide distance vs not; where/how the deal was agreed does.
+- DLP: `companies/-OXmKH0D2CB0JFIi3cEi/businessDetails/invoiceTerms` rewritten (867 chars; prints on invoices AND deposit slips); `companyNumber` 8348026 -> 08348026. Backup of old businessDetails: session scratchpad `bd_backup_before_terms.json`. Longer draft rejected because it overflowed the one-page PDF.
+- Website: Car Dealer 5 > Tools > Pages > warranty.php (PageID 43682), Content is raw HTML. New sections: statutory rights, distance/doorstep right to cancel, guarantor name+address; "RCL" typo fixed. Old HTML saved in scratchpad `web/warranty_cms_original.html`. Checked live.
+- Website rewritten again on Steve's ask (clean + precise): who gets the warranty (under 10 yrs AND £2,000+, else sold without it), customer pays diagnosis on warranty claims except CRA faults, statutory rights as a separate section (satisfactory quality depends on age/mileage/price; wear and tear not a fault; faults disclosed or that their own inspection ought to show are excluded, CRA s.9(4)), return by transporter about £1.50/mile (Steve's figure). Saved in scratchpad `web/warranty_cms_v2.html`.
+- Invoice blurb now also says "transporter about £1.50 per mile".
+- NEW (LIVE, hosting deployed 8 Oct, NOT committed): optional page 2 on Sales Invoice / Proforma / Deposit Slip. "Add terms page" tick box in the invoice viewer header, unticked every time (Steve: page 2 must not print by default). Ticked = page 2 on screen, print, Download PDF and Send to customer. Page 2 = `businessDetails.termsPage` text + CCR Sch 3 model cancellation form (if `cancellationForm`), prefilled with car + customer. Settings > Business Details has both fields. Files: `types.ts`, `components/settings/BusinessDetailsPage.tsx`, `components/sales/PrintableView.tsx`, `components/sales/printablePdf.ts`, `utils/pdf.ts`, new `utils/salesTermsPage.ts`, new `tests/salesTermsPage.test.ts`. 331/331 tests, build OK. Seen live in a 2-page PDF (#58934). Steve's ledger has termsPage + cancellationForm=true set; Chris's ledger has neither, so no tick box there.
+- Known layout bug (old): on invoices with 2+ payments and 3+ note lines, page 1 notes run under the Payment Details block (absolute footer on a fixed A4 page).
+- Commit when Steve says so.
+
+## 7 Oct 2026 — SA63 YPM MINI Roadster (#500) sold to Sophia Vidal + Q3 VAT adjustment (data fix, no code change)
+
+- Steve: sold for £4,250 (first said £4,000, then corrected), paid in full by bank transfer; date it 10 May 2026. Margin VAT was never paid (Q2 filed).
+- Added Sales Invoice #44580 (`salesDocuments/-P3LDVAVXui_OfC8EeO9`), 10 May 2026, 70 Pentland Close, Edmonton, London N9 0XN, balance 0, VAT £309.37 ((4,250 − 2,393.80) ÷ 6). Car `-OXe5KwSN_6J8vLU8KHg` set to Sold.
+- Payments on the invoice = the Allica lines "From RUSKIN SA, MUM" £2,000 (2 May 2026, `-Ovj1NwiSqJ4TkDNG5cF`) + £2,250 (3 May 2026, `-Ovj1NwiSqJ4TkDNG5cG`). The bank lines themselves were left as they were (category Car Sale, Q2 filed).
+- VAT adjustment: Output £309.37 dated 30 Sep 2026 (Q3, not filed yet), same pattern as MT12 NBZ. Q3 VAT due goes up by £309.37. Backup + update files: session scratchpad `sa63\`.
+
 ## 7 Oct 2026 — Road tax on the car's Edit screen + filled for Steve's stock (LIVE, not committed)
 
 Steve's ask: see each car's road tax in the car details; which stock car has the cheapest road tax.

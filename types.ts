@@ -382,6 +382,10 @@ export interface BusinessDetails {
     companyNumber: string;
     bankDetails: string;
     invoiceTerms: string;
+    /** Full customer terms, printed on page 2 of invoices, proformas and deposit slips. */
+    termsPage?: string;
+    /** Print the model cancellation form (distance and doorstep sales) on page 2. */
+    cancellationForm?: boolean;
     theme: string;
     vatStartDate: string;
     operatingMode: 'dealership' | 'paint_shop' | 'mechanic';
