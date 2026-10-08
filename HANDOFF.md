@@ -1,6 +1,6 @@
 # Handoff
 
-## 8 Oct 2026 — Invoice/deposit slip small print + website warranty page in line with UK law, plus optional terms page 2 (LIVE, not committed)
+## 8 Oct 2026 — Invoice/deposit slip small print + website warranty page in line with UK law, plus optional terms page 2 (LIVE, commit 6557faa, pushed)
 
 Steve's ask: make sure the invoice/deposit slip small print covers him (warranty, CRA, distance selling, FCA) and matches radlettcarsales.com.
 
@@ -10,9 +10,8 @@ Steve's ask: make sure the invoice/deposit slip small print covers him (warranty
 - Website: Car Dealer 5 > Tools > Pages > warranty.php (PageID 43682), Content is raw HTML. New sections: statutory rights, distance/doorstep right to cancel, guarantor name+address; "RCL" typo fixed. Old HTML saved in scratchpad `web/warranty_cms_original.html`. Checked live.
 - Website rewritten again on Steve's ask (clean + precise): who gets the warranty (under 10 yrs AND £2,000+, else sold without it), customer pays diagnosis on warranty claims except CRA faults, statutory rights as a separate section (satisfactory quality depends on age/mileage/price; wear and tear not a fault; faults disclosed or that their own inspection ought to show are excluded, CRA s.9(4)), return by transporter about £1.50/mile (Steve's figure). Saved in scratchpad `web/warranty_cms_v2.html`.
 - Invoice blurb now also says "transporter about £1.50 per mile".
-- NEW (LIVE, hosting deployed 8 Oct, NOT committed): optional page 2 on Sales Invoice / Proforma / Deposit Slip. "Add terms page" tick box in the invoice viewer header, unticked every time (Steve: page 2 must not print by default). Ticked = page 2 on screen, print, Download PDF and Send to customer. Page 2 = `businessDetails.termsPage` text + CCR Sch 3 model cancellation form (if `cancellationForm`), prefilled with car + customer. Settings > Business Details has both fields. Files: `types.ts`, `components/settings/BusinessDetailsPage.tsx`, `components/sales/PrintableView.tsx`, `components/sales/printablePdf.ts`, `utils/pdf.ts`, new `utils/salesTermsPage.ts`, new `tests/salesTermsPage.test.ts`. 331/331 tests, build OK. Seen live in a 2-page PDF (#58934). Steve's ledger has termsPage + cancellationForm=true set; Chris's ledger has neither, so no tick box there.
+- NEW (LIVE, hosting deployed 8 Oct, commit 6557faa): optional page 2 on Sales Invoice / Proforma / Deposit Slip. "Add terms page" tick box in the invoice viewer header, unticked every time (Steve: page 2 must not print by default). Ticked = page 2 on screen, print, Download PDF and Send to customer. Page 2 = `businessDetails.termsPage` text + CCR Sch 3 model cancellation form (if `cancellationForm`), prefilled with car + customer. Settings > Business Details has both fields. Files: `types.ts`, `components/settings/BusinessDetailsPage.tsx`, `components/sales/PrintableView.tsx`, `components/sales/printablePdf.ts`, `utils/pdf.ts`, new `utils/salesTermsPage.ts`, new `tests/salesTermsPage.test.ts`. 331/331 tests, build OK. Seen live in a 2-page PDF (#58934). Steve's ledger has termsPage + cancellationForm=true set; Chris's ledger has neither, so no tick box there.
 - Known layout bug (old): on invoices with 2+ payments and 3+ note lines, page 1 notes run under the Payment Details block (absolute footer on a fixed A4 page).
-- Commit when Steve says so.
 
 ## 7 Oct 2026 — SA63 YPM MINI Roadster (#500) sold to Sophia Vidal + Q3 VAT adjustment (data fix, no code change)
 
