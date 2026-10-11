@@ -39,6 +39,7 @@ export { salesAgentCorrectThread } from './salesAgent/correction';
 export { salesAgentDetachMessage } from './salesAgent/split';
 export { salesAgentRegisterPush, salesAgentUnregisterPush, salesAgentTestPush, salesAgentPushDebug } from './salesAgent/push';
 export { pruneWhatsAppStorage } from './salesAgent/whatsappStorage';
+export { pruneOldEmailThreads } from './salesAgent/emailPrune';
 export { syncCompanyClaim, syncInboxClaims, refreshAuthClaims } from './auth/claims';
 
 // Health check function

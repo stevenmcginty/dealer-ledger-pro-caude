@@ -900,6 +900,9 @@ const SalesAgentSettingsPage = () => {
                                     {connections.gmail ? 'Reconnect' : `Connect ${draft.emailAddress || 'Gmail'}`}
                                 </Button>
                             </div>
+                            <p className="mt-3 text-sm text-ink-3 max-w-xl">
+                                Email threads are cleared from the app 30 days after their last message. Gmail keeps every email. WhatsApp messages are kept.
+                            </p>
                         </Card.Body>
                     </Card>
 
