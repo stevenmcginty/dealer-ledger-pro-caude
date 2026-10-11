@@ -746,9 +746,12 @@ const PrepDictation = () => {
                 onClick={handleMicButton}
                 aria-label={isRecording ? 'Stop dictation' : 'Dictate prep'}
                 title="Dictate prep"
-                className={`p-2 rounded-lg transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-gray-400 hover:text-white'}`}
+                className={`inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold ring-1 transition-colors ${isRecording
+                    ? 'bg-red-500/15 text-red-400 ring-red-500/50 animate-pulse'
+                    : 'bg-green-500/15 text-green-400 ring-green-500/40 hover:bg-green-500/25 hover:text-green-300'}`}
             >
                 <MicIcon className="h-5 w-5" />
+                <span>{isRecording ? 'Stop' : 'Dictate'}</span>
             </button>
             {overlay}
         </>
