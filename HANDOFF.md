@@ -7,6 +7,7 @@
 - Backups taken first: `C:\Users\steve\Desktop\dealer-ledger-pro-backups\inbox-before-email-prune-2026-10-11\` (Steve 1.4 MB, Chris 136 KB).
 - Next: check the function log after 03:30 on 12 Oct (`npx firebase functions:log --only pruneOldEmailThreads`).
 - The WhatsApp buttons are bright WhatsApp green: Button variant `whatsapp`, tokens `--c-whatsapp*`. The Inbox badge (tab bar, rail, sidebar, app icon) counts unread WhatsApp only. Push notifications and the chime are unchanged. "Lead" is gone from the Add menu.
+- Prep mic moved (commit 1a2e3a4, live): it now sits in the app header beside Search on every page except Settings (and not for service businesses). It is no longer on the Today Prep heading. The phone Inbox list has its own header, so the mic is not there.
 - `functions/lib/salesAgent/router.js` shows as modified, but that is line endings only. Left uncommitted.
 
 ## 11 Oct 2026 (evening) — Forecourt Ledger redesign: LIVE, commit bc038df, pushed
