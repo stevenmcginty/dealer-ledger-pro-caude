@@ -1,5 +1,18 @@
 # Handoff
 
+## 11 Oct 2026 (evening) — Forecourt Ledger redesign: LIVE, commit bc038df, pushed
+
+Steve chose the full redesign, then said "just push it live, we can always revert". Built in worktree `C:\Users\steve\Desktop\dealer-ledger-pro-redesign` (branch `redesign/forecourt`, never committed there) by 13 agent jobs, then copied into the main tree, checked, deployed (hosting only) and committed.
+
+- What changed: the look and the navigation only. Data, saved values, calculations, sending and invoice paper are unchanged. Commit message lists the parts.
+- Checks before deploy (main tree): `tsc` 0 errors, 364/364 tests, `vite build` OK, contrast 94/94, 21 views fit at 320 px. Live bundle checked (Car page + new shell present).
+- Steve's ledger `businessDetails/theme` set from `"dark"` (not a real brand, so it showed default blue) to `"green"`. Chris's ledger brand untouched. Theme mode defaults to dark on every device.
+- Gaffer rulings: bank-account rename still saves on blur; proformas not in "still to collect"; VAT hero = Box 5 figure; one canvas "Add note"; Inbox tab opens the list (no longer jumps to the newest WhatsApp); report printing still does not work (LedgerCore `print:hidden`, as before).
+- Not yet seen with real data: Car page prep/PDI/documents/garage-cost sections, service mode, the "Which black Porsche?" picker.
+- To revert: `git revert bc038df`, then `npm run build` and `npx firebase deploy --only hosting`, and set the theme back if wanted.
+- Known, not fixed: `index.html` registers `./sw.js` relatively, so deep `/app/...` links log a service-worker MIME error (old bug). Local `.env.local` has no `VITE_GOOGLE_CLIENT_ID` (dev console error only).
+- Next: Steve tries it on his phone. Fold the screens' local stand-in parts into `components/ui` later. Notes, briefs and screenshots are in the worktree's `_redesign-notes/`. Remove the worktree once Steve is happy: `git worktree remove ../dealer-ledger-pro-redesign` and `git branch -D redesign/forecourt`.
+
 ## 11 Oct 2026 — Prep dictation: LIVE, commits 87bbfb5 + dedcc52, pushed
 
 Steve wants a mic button: walk round the cars, say the prep jobs, the app finds the car (asks "which black Porsche?" only when more than one fits), shows a job list to check, and saves the jobs as prep to-dos in the Dashboard "Vehicle Prep" panel. Full plan + Steve's choices: `docs/prep-dictation/PLAN.md` (existing Gemini key, small mic icon by the "Vehicle Prep" heading).
