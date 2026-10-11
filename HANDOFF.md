@@ -1,6 +1,6 @@
 # Handoff
 
-## 11 Oct 2026 — Prep dictation: LIVE (hosting deployed 11 Oct with Steve's OK; NOT committed)
+## 11 Oct 2026 — Prep dictation: LIVE, commits 87bbfb5 + dedcc52, pushed
 
 Steve wants a mic button: walk round the cars, say the prep jobs, the app finds the car (asks "which black Porsche?" only when more than one fits), shows a job list to check, and saves the jobs as prep to-dos in the Dashboard "Vehicle Prep" panel. Full plan + Steve's choices: `docs/prep-dictation/PLAN.md` (existing Gemini key, small mic icon by the "Vehicle Prep" heading).
 
@@ -8,7 +8,7 @@ Steve wants a mic button: walk round the cars, say the prep jobs, the app finds 
 - Checks: 353/353 tests pass, `tsc` clean, `vite build` ok. Real Gemini smoke test with TTS audio passed (two black Porsches + no-colour Porsche → picker; Golf matched; "urgent" → high).
 - Recording is converted to 16 kHz mono WAV in the browser, so iPhone and Chrome both work.
 - Live check: the live DashboardPage chunk contains the mic; CSP connect-src allows *.googleapis.com (Gemini).
-- Not yet seen: a real phone recording, and the "Which black Porsche?" buttons live. Next: Steve tries it on his phone; fix what he finds; then commit.
+- Steve tested it on his phone 11 Oct: 4 jobs dictated, all worked. Mic is now a small green "Dictate" pill (red "Stop" while recording). Not yet seen live: the "Which black Porsche?" buttons.
 
 ## 11 Oct 2026 — Mobile-first redesign package "Forecourt Ledger" (design only, no code changed)
 
