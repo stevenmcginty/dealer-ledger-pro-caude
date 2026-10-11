@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { fileToBase64 } from './helpers';
 import { GeminiAction, StatementTransaction, Vehicle } from '../types';
+import { PREP_PROMPT, PREP_SCHEMA, normalisePrepResult, type PrepDictationResult, type PrepStockCar } from './prepDictation';
 
 // Load Gemini API key from Vite environment variables
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
@@ -232,3 +233,30 @@ export const analyzeCanvasUpload = async (file: File): Promise<{ headline: strin
     return JSON.parse(response.text || '{}');
 };
 
+
+/**
+ * Prep dictation: a 16 kHz mono WAV of Steve talking about prep jobs, plus the
+ * in-stock cars, in; a transcript and a job list per car out. Gemini only
+ * proposes candidate cars — resolvePrepCars() in utils/prepDictation.ts checks
+ * them against stock and decides whether Steve has to pick.
+ */
+export const parsePrepDictation = async (wav: Blob, stockList: PrepStockCar[]): Promise<PrepDictationResult> => {
+    ensureApiKey();
+    const base64Data = await fileToBase64(new File([wav], 'prep-dictation.wav', { type: 'audio/wav' }));
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: {
+            parts: [
+                { inlineData: { mimeType: 'audio/wav', data: base64Data } },
+                { text: PREP_PROMPT(stockList) }
+            ]
+        },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: PREP_SCHEMA,
+        }
+    });
+
+    return normalisePrepResult(JSON.parse(response.text || '{}'));
+};

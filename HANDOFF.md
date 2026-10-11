@@ -1,5 +1,31 @@
 # Handoff
 
+## 11 Oct 2026 — Prep dictation: LIVE (hosting deployed 11 Oct with Steve's OK; NOT committed)
+
+Steve wants a mic button: walk round the cars, say the prep jobs, the app finds the car (asks "which black Porsche?" only when more than one fits), shows a job list to check, and saves the jobs as prep to-dos in the Dashboard "Vehicle Prep" panel. Full plan + Steve's choices: `docs/prep-dictation/PLAN.md` (existing Gemini key, small mic icon by the "Vehicle Prep" heading).
+
+- Files: `utils/prepDictation.ts` (pure: stock list, prompt/schema, car resolver, to-do mapper, WAV encoder), `utils/ai.ts` (+`parsePrepDictation`), `components/work-prep/PrepDictation.tsx` (mic + overlay), `pages/DashboardPage.tsx` (mic beside heading), `tests/prepDictation.test.ts` (22 tests).
+- Checks: 353/353 tests pass, `tsc` clean, `vite build` ok. Real Gemini smoke test with TTS audio passed (two black Porsches + no-colour Porsche → picker; Golf matched; "urgent" → high).
+- Recording is converted to 16 kHz mono WAV in the browser, so iPhone and Chrome both work.
+- Live check: the live DashboardPage chunk contains the mic; CSP connect-src allows *.googleapis.com (Gemini).
+- Not yet seen: a real phone recording, and the "Which black Porsche?" buttons live. Next: Steve tries it on his phone; fix what he finds; then commit.
+
+## 11 Oct 2026 — Mobile-first redesign package "Forecourt Ledger" (design only, no code changed)
+
+Steve's ask: a full UI redesign package (rationale, IA and journeys, mobile wireframes, component library, engineering checklist). His bar: "unbelievably good", as if professionally made, covering pages, menus, nav, icons and text. The functions already work.
+
+- Published as a private Artifact: https://claude.ai/artifact/Wfn1PKuhhS6HwAWyFqnyoX. The source HTML, contrast script and render script are in session scratchpad `redesign\`.
+- Direction: light theme first, with a full dark theme. Cool blue-grey paper surfaces and ink-navy text. Atkinson Hyperlegible Next for UI text, Atkinson Hyperlegible Mono for money, plates and stock numbers. 12px text floor and 48px touch targets. The 6 brand themes are kept and now map to roles (light uses brand-700, dark uses brand-400), so all 6 pass AA.
+- Nav: phone tab bar Today · Stock · Add · Inbox · More. One Add sheet replaces the header +, the FAB and the task menu. Tablet gets a rail, desktop a 248px sidebar. Inbox keeps the nav on its list.
+- "Opus 5.5 design system" does not exist, because Opus 5.5 is the AI model. The package says so (A1) and is written for build agents instead: tokens as JSON, an old-class to new-token table, and checks with commands.
+- Checks: contrast script 94/94 pass (light and dark, all 6 brands). Headless render at 390/1280px, light and dark: no horizontal overflow, no console errors.
+- Steve's choices: his look is dark + green. Brand colour stays an option (per company). Light/Dark/System goes in Settings › Appearance (per device, defaults to dark).
+- **Build PAUSED (Steve, 11 Oct: "way too big").** The work lives in a separate git worktree, `C:\Users\steve\Desktop\dealer-ledger-pro-redesign`, on branch `redesign/forecourt`. Nothing is committed, nothing is deployed, and the main tree is untouched.
+  - J1 (tokens + Appearance tab) is done and verified.
+  - J2 (app-wide colour codemod) and D1 (UI primitives) are half done.
+  - D2 (nav) and the screens have not started.
+- Full state, resume options (a small ~1h "light/dark + colours only" version, or the full ~5–6h version), the safe-merge steps and all research notes are in `C:\Users\steve\Desktop\dealer-ledger-pro-redesign\_redesign-notes\PAUSED.md`.
+
 ## 8 Oct 2026 — Invoice/deposit slip small print + website warranty page in line with UK law, plus optional terms page 2 (LIVE, commit 6557faa, pushed)
 
 Steve's ask: make sure the invoice/deposit slip small print covers him (warranty, CRA, distance selling, FCA) and matches radlettcarsales.com.

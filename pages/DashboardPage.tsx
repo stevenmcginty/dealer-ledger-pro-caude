@@ -9,6 +9,7 @@ import Calendar from '../components/common/Calendar';
 import Spinner from '../components/common/Spinner';
 import { toYYYYMMDD, formatDate } from '../utils/helpers';
 import DayTasksList, { ToDoItemRow } from '../components/todo/ToDoList';
+import PrepDictation from '../components/work-prep/PrepDictation';
 
 
 // --- Calendar & Tasks Section ---
@@ -354,7 +355,10 @@ const DashboardPage = () => {
                 <div className="lg:col-span-2 space-y-4 sm:space-y-6">
                     <WarrantyClaimsView />
                     <div>
-                        <h2 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4">Vehicle Prep</h2>
+                        <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+                            <h2 className="text-lg sm:text-xl font-bold text-white">Vehicle Prep</h2>
+                            <PrepDictation />
+                        </div>
                         <div className="bg-gray-800 rounded-lg shadow-lg">
                              <VehiclePrepView />
                         </div>
