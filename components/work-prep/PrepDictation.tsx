@@ -122,6 +122,25 @@ const MicIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+// Same mic, stroked in Gemini's multi-colour gradient. useId keeps the gradient id unique on the page.
+const GeminiMicIcon = ({ className }: { className?: string }) => {
+    const gradientId = `gemini-mic-${React.useId().replace(/:/g, '')}`;
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.9} stroke={`url(#${gradientId})`} className={className} aria-hidden="true">
+            <defs>
+                <linearGradient id={gradientId} x1="9" y1="2" x2="15" y2="22" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#4285F4" />
+                    <stop offset="0.28" stopColor="#4285F4" />
+                    <stop offset="0.5" stopColor="#EA4335" />
+                    <stop offset="0.7" stopColor="#FBBC04" />
+                    <stop offset="0.9" stopColor="#34A853" />
+                </linearGradient>
+            </defs>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+        </svg>
+    );
+};
+
 const CheckMark = ({ className }: { className?: string }) => (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2.5} className={className} aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5l3.5 3.5 7.5-8" />
@@ -746,12 +765,9 @@ const PrepDictation = () => {
                 onClick={handleMicButton}
                 aria-label={isRecording ? 'Stop dictation' : 'Dictate prep'}
                 title="Dictate prep"
-                className={`inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold ring-1 transition-colors ${isRecording
-                    ? 'bg-red-500/15 text-red-400 ring-red-500/50 animate-pulse'
-                    : 'bg-green-500/15 text-green-400 ring-green-500/40 hover:bg-green-500/25 hover:text-green-300'}`}
+                className={`p-1.5 rounded-full transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'hover:bg-white/5'}`}
             >
-                <MicIcon className="h-5 w-5" />
-                <span>{isRecording ? 'Stop' : 'Dictate'}</span>
+                {isRecording ? <MicIcon className="h-7 w-7" /> : <GeminiMicIcon className="h-7 w-7" />}
             </button>
             {overlay}
         </>
