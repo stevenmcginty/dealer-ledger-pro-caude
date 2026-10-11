@@ -1,5 +1,14 @@
 # Handoff
 
+## 11 Oct 2026 (late) — Inbox: email clean-up, WhatsApp-green buttons, WhatsApp-only badge: LIVE, commits 4fcaa49 + ef44825, pushed
+
+- Steve's rule: the inbox list downloaded every message on each open (1.4 MB, still growing). So email messages are now cleared 30 days after a thread's last activity, on both ledgers, and "needs you" threads are cleared too. Gmail keeps every email: the app never trashes mail, and replies go through the Gmail API. WhatsApp messages are kept for ever.
+- `pruneOldEmailThreads` (functions/src/salesAgent/emailPrune.ts), 03:30 Europe/London, deployed by name. First run is tonight, 12 Oct. Dry run: Steve 41 deleted whole / 5 trimmed / 80 email messages; Chris 12 / 2 / 35; no WhatsApp message removed.
+- Backups taken first: `C:\Users\steve\Desktop\dealer-ledger-pro-backups\inbox-before-email-prune-2026-10-11\` (Steve 1.4 MB, Chris 136 KB).
+- Next: check the function log after 03:30 on 12 Oct (`npx firebase functions:log --only pruneOldEmailThreads`).
+- The WhatsApp buttons are bright WhatsApp green: Button variant `whatsapp`, tokens `--c-whatsapp*`. The Inbox badge (tab bar, rail, sidebar, app icon) counts unread WhatsApp only. Push notifications and the chime are unchanged. "Lead" is gone from the Add menu.
+- `functions/lib/salesAgent/router.js` shows as modified, but that is line endings only. Left uncommitted.
+
 ## 11 Oct 2026 (evening) — Forecourt Ledger redesign: LIVE, commit bc038df, pushed
 
 Steve chose the full redesign, then said "just push it live, we can always revert". Built in worktree `C:\Users\steve\Desktop\dealer-ledger-pro-redesign` (branch `redesign/forecourt`, never committed there) by 13 agent jobs, then copied into the main tree, checked, deployed (hosting only) and committed.
