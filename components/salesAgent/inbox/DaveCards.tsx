@@ -193,6 +193,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                 )}
                 <Button
                     type="button"
+                    variant={via === 'whatsapp' ? 'whatsapp' : 'primary'}
                     onClick={onApprove}
                     disabled={!text.trim() || !!busy}
                     loading={busy === 'approve'}

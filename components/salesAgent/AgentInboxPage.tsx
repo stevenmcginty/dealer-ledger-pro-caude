@@ -1414,7 +1414,7 @@ const AgentInboxPage = () => {
                                             onClick={submitComposer}
                                             disabled={sending || (replyMode === 'human' && sendViaNow === 'email' && !emailOk) || (replyMode === 'human' && sendViaNow !== 'email' && !phoneOnFile) || (replyMode === 'human' && !reply.trim() && !attachment)}
                                             loading={sending}
-                                            variant={agentComposing ? "secondary" : "primary"}
+                                            variant={agentComposing ? "secondary" : sendViaNow === 'whatsapp' ? "whatsapp" : "primary"}
                                             icon={agentComposing ? <SparklesIcon /> : <SendRouteIcon via={sendViaNow} className="h-5 w-5" />}
                                             iconEnd={agentComposing ? undefined : (
                                                 <svg viewBox="0 0 24 24" className="h-5 w-5 rtl:-scale-x-100" fill="currentColor" aria-hidden>

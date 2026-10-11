@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from '../../types';
-import { BuildingStorefrontIcon, CalendarIcon, CameraIcon, DocumentTextIcon, ExclamationTriangleIcon, GaugeIcon, NavCarIcon, ShieldCheckIcon, UsersIcon } from '../icons';
+import { BuildingStorefrontIcon, CalendarIcon, CameraIcon, DocumentTextIcon, ExclamationTriangleIcon, GaugeIcon, NavCarIcon, ShieldCheckIcon } from '../icons';
 import * as I from './icons';
 
 /*
@@ -9,7 +9,7 @@ import * as I from './icons';
  */
 
 export type AddActionId =
-    | 'car' | 'expense' | 'saleDoc' | 'lead' | 'task' | 'prep' | 'warranty'
+    | 'car' | 'expense' | 'saleDoc' | 'task' | 'prep' | 'warranty'
     | 'receipts' | 'workSheet' | 'pdi' | 'internalJob' | 'garageCar' | 'income'
     | 'jobInvoice';
 
@@ -24,7 +24,6 @@ const ACTIONS: Record<AddActionId, AddAction> = {
     car: { id: 'car', label: 'Car', hint: 'Reg lookup', icon: NavCarIcon },
     expense: { id: 'expense', label: 'Expense', hint: 'Snap a receipt', icon: CameraIcon },
     saleDoc: { id: 'saleDoc', label: 'Sale doc', hint: 'Invoice, proforma', icon: DocumentTextIcon },
-    lead: { id: 'lead', label: 'Lead', hint: 'Enquiry', icon: UsersIcon },
     task: { id: 'task', label: 'Task', hint: 'To-do, reminder', icon: CalendarIcon },
     prep: { id: 'prep', label: 'Prep job', hint: 'Work on a car', icon: I.ClipIcon },
     warranty: { id: 'warranty', label: 'Warranty claim', hint: 'Problem after sale', icon: ExclamationTriangleIcon },
@@ -44,9 +43,6 @@ const CONTEXT: Partial<Record<View, AddActionId>> = {
     sales: 'saleDoc',
     expenses: 'expense',
     income: 'income',
-    pipeline: 'lead',
-    leadDetail: 'lead',
-    agentInbox: 'lead',
     workPrep: 'prep',
     pdi: 'pdi',
     workSheets: 'workSheet',
@@ -59,8 +55,8 @@ export const TILE_COUNT = 6;
 
 export const addActionsFor = (view: View, isServiceBusiness: boolean): { tiles: AddAction[]; rows: AddAction[] } => {
     let order: AddActionId[] = isServiceBusiness
-        ? ['jobInvoice', 'expense', 'lead', 'task', 'workSheet', 'internalJob', 'receipts']
-        : ['car', 'expense', 'saleDoc', 'lead', 'task', 'prep', 'warranty', 'receipts', 'workSheet', 'pdi', 'internalJob', 'garageCar', 'income'];
+        ? ['jobInvoice', 'expense', 'task', 'workSheet', 'internalJob', 'receipts']
+        : ['car', 'expense', 'saleDoc', 'task', 'prep', 'warranty', 'receipts', 'workSheet', 'pdi', 'internalJob', 'garageCar', 'income'];
 
     const first = CONTEXT[view];
     if (first && order.includes(first)) order = [first, ...order.filter(id => id !== first)];

@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ChevronDownIcon, InboxIcon, MagnifyingGlassIcon, PlusIcon } from '../../icons';
+import { ChevronDownIcon, InboxIcon, MagnifyingGlassIcon } from '../../icons';
 import { Button, EmptyState, Search, StatusChip } from '../../ui';
 import { formatAgentTime } from '../../../services/salesAgentService';
 import type { CustomerGroup, InboxFilter } from '../../../utils/agentInboxGroups';
@@ -197,10 +197,10 @@ const ThreadList: React.FC<ThreadListProps> = ({
                         <p className="hidden truncate text-sm text-ink-3 md:block">{inboxName ? `${inboxName} · every ledger` : 'Sales desk'}</p>
                     </div>
                     <Button
-                        variant="secondary"
+                        variant="whatsapp"
                         size="sm"
                         onClick={onStartWhatsApp}
-                        icon={<PlusIcon />}
+                        icon={<WhatsAppMark />}
                         className="flex-shrink-0"
                     >
                         New WhatsApp

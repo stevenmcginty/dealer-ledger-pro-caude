@@ -55,6 +55,7 @@ const pairs = [
   ['warning', 'surface', T], ['warning-ink', 'warning-soft', T],
   ['danger', 'surface', T], ['danger', 'bg', T], ['danger-ink', 'danger-soft', T],
   ['on-danger', 'danger', T], ['on-danger', 'danger-hover', T],
+  ['on-whatsapp', 'whatsapp', T], ['on-whatsapp', 'whatsapp-hover', T], ['on-whatsapp', 'whatsapp-press', T],
   ['info', 'surface', T], ['info-ink', 'info-soft', T],
   ['plate-ink', 'plate-yellow', T], ['plate-ink', 'plate-white', T],
   ['line-strong', 'surface', U], ['line-strong', 'bg', U], ['line-strong', 'surface-2', U],

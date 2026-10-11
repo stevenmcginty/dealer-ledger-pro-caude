@@ -45,7 +45,8 @@ const NavRail: React.FC<NavRailProps> = ({ view, flags, counts, addOpen, moreOpe
                 solidIcon={NavChatSolidIcon}
                 active={current === 'inbox'}
                 onSelect={() => onNavigate('agentInbox')}
-                badge={counts.inbox}
+                badge={counts.inboxBadge}
+                badgeNoun="unread WhatsApp"
                 pulse={counts.whatsappUnread > 0}
             />
             <div className={item}>

@@ -11,6 +11,7 @@ import Modal from '../common/Modal';
 import { Button, Input, useToast } from '../ui';
 import { startAgentWhatsApp } from '../../services/salesAgentService';
 import { useData } from '../../hooks/useData';
+import { WhatsAppMark } from './inbox/parts';
 import { customerMatchesSearch } from '../../utils/customerContact';
 
 export interface StartWhatsAppDefaults {
@@ -162,7 +163,7 @@ const StartWhatsAppSheet: React.FC<{
                     <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
                         Cancel
                     </Button>
-                    <Button type="submit" loading={busy} disabled={!phone.trim() || busy}>
+                    <Button type="submit" variant="whatsapp" icon={<WhatsAppMark />} loading={busy} disabled={!phone.trim() || busy}>
                         Open WhatsApp
                     </Button>
                 </div>

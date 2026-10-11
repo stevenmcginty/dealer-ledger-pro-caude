@@ -41,6 +41,11 @@ export interface ShellCounts {
     inbox: number;
     /** Unread WhatsApp messages (part of `inbox`). */
     whatsappUnread: number;
+    /**
+     * The number on the Inbox tab and the app icon: unread WhatsApp only.
+     * Email is left out; the shop does not always use the app for email.
+     */
+    inboxBadge: number;
     /** Cars not yet sold. */
     stock: number;
     /** Bank lines not yet reconciled. */
@@ -65,8 +70,14 @@ export const useShellCounts = (): ShellCounts => {
         [conversations, userId],
     );
 
+    // The chime still follows everything waiting (`inbox`); only the badge
+    // number is WhatsApp-only.
+    const inboxBadge = whatsappUnread;
     useEffect(() => {
-        setInboxBadge(inbox);
+        setInboxBadge(inboxBadge);
+    }, [inboxBadge]);
+
+    useEffect(() => {
         // Shared-inbox conversations arrive a tick after this company's, and
         // that extra count is not a new message. Ignore increases until the
         // first snapshots have settled; the push handler still chimes at once.
@@ -78,7 +89,7 @@ export const useShellCounts = (): ShellCounts => {
     const stock = useMemo(() => vehicles.filter(v => v.status !== 'Sold').length, [vehicles]);
     const bankToCheck = useMemo(() => transactions.filter(t => t.status === 'Unreconciled').length, [transactions]);
 
-    return { inbox, whatsappUnread, stock, bankToCheck };
+    return { inbox, whatsappUnread, inboxBadge, stock, bankToCheck };
 };
 
 /* ------------------------------------------------------------------ */

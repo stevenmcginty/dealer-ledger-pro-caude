@@ -47,7 +47,6 @@ const AddMenu: React.FC<AddMenuProps> = ({ open, onClose, variant, anchorRef, pl
             case 'car': openModal('vehicle'); break;
             case 'expense': openModal('expense'); break;
             case 'saleDoc': openModal('invoicePicker'); break;
-            case 'lead': openModal('lead'); break;
             case 'task': openModal('todo', { type: 'general' }); break;
             case 'prep': openModal('todo', { type: 'prep' }); break;
             case 'warranty': openModal('todo', { type: 'warranty' }); break;

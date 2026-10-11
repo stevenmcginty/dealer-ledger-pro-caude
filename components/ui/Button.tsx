@@ -2,7 +2,7 @@ import React from 'react';
 import Spinner from '../common/Spinner';
 import { cx } from './cx';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success';
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'whatsapp';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -26,6 +26,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   secondary: 'bg-surface text-ink border-line-strong hover:bg-surface-2 active:bg-surface-3',
   ghost: 'bg-transparent text-accent-text border-transparent hover:bg-accent-soft active:bg-surface-3',
   danger: 'bg-danger text-on-danger border-transparent hover:bg-danger-hover active:bg-danger-hover',
+  // Start or send a WhatsApp: WhatsApp's own green, same in every brand.
+  whatsapp: 'bg-whatsapp text-on-whatsapp border-transparent hover:bg-whatsapp-hover active:bg-whatsapp-press',
 };
 
 // 36 / 48 / 56. Small is 44 on phones and touch screens so it stays

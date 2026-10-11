@@ -76,6 +76,13 @@
     --c-accent-text: var(--color-brand-800);
     --c-focus: var(--color-brand-700);
 
+    /* WhatsApp actions (start / send on WhatsApp): the app's own green, the
+       same in every brand. White fails on it, so the ink is near-black. */
+    --c-whatsapp: 37 211 102;
+    --c-whatsapp-hover: 32 189 92;
+    --c-whatsapp-press: 28 168 82;
+    --c-on-whatsapp: 6 32 18;
+
     /* semantic */
     --c-success: 19 105 58; --c-success-soft: 225 242 231; --c-success-ink: 13 85 46;
     --c-warning: 138 81 0; --c-warning-soft: 251 238 211; --c-warning-ink: 107 63 0;
@@ -144,6 +151,11 @@
     --c-accent-soft-ink: var(--color-brand-200);
     --c-accent-text: var(--color-brand-300);
     --c-focus: var(--color-brand-300);
+
+    --c-whatsapp: 37 211 102;
+    --c-whatsapp-hover: 74 222 128;
+    --c-whatsapp-press: 110 231 155;
+    --c-on-whatsapp: 6 32 18;
 
     --c-success: 102 209 147; --c-success-soft: 16 48 31; --c-success-ink: 163 233 191;
     --c-warning: 242 182 82; --c-warning-soft: 51 38 11; --c-warning-ink: 248 213 146;

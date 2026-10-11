@@ -60,7 +60,8 @@ const BottomTabs: React.FC<BottomTabsProps> = ({ view, flags, counts, addOpen, m
                 solidIcon={NavChatSolidIcon}
                 active={current === 'inbox'}
                 onSelect={() => onNavigate('agentInbox')}
-                badge={counts.inbox}
+                badge={counts.inboxBadge}
+                badgeNoun="unread WhatsApp"
                 pulse={counts.whatsappUnread > 0}
             />
             <MoreTab icon={NavGridIcon} solidIcon={NavGridSolidIcon} active={current === 'more'} expanded={moreOpen} onToggle={onToggleMore} controls="more-screen" />

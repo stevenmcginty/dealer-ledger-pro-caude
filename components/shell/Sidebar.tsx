@@ -59,8 +59,8 @@ const Sidebar: React.FC<SidebarProps> = ({ view, flags, counts, addOpen, onNavig
 
     const count = (v: View): React.ReactNode => {
         // Red only for things waiting on a person; plain counts are grey.
-        if (v === 'agentInbox' && counts.inbox > 0) {
-            return <span className="num ms-auto min-w-[22px] rounded-full bg-danger px-1.5 text-center text-xs font-semibold leading-5 text-on-danger">{badgeText(counts.inbox)}<span className="sr-only"> waiting</span></span>;
+        if (v === 'agentInbox' && counts.inboxBadge > 0) {
+            return <span className="num ms-auto min-w-[22px] rounded-full bg-danger px-1.5 text-center text-xs font-semibold leading-5 text-on-danger">{badgeText(counts.inboxBadge)}<span className="sr-only"> unread WhatsApp</span></span>;
         }
         if (v === 'stock' && counts.stock > 0) {
             return <span className="num ms-auto min-w-[22px] rounded-full bg-surface-2 px-1.5 text-center text-xs font-semibold leading-5 text-ink-2">{badgeText(counts.stock)}<span className="sr-only"> cars</span></span>;

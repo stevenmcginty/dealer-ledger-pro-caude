@@ -6,7 +6,8 @@
  *   accent  = the one main action on screen (Send) and Dave's pending draft
  *   warning = a person is waiting on Steve (needs-you marks only)
  *   danger  = escalations, bounces, failures
- *   WhatsApp green lives only inside the WhatsApp logo glyph (WhatsAppMark).
+ *   WhatsApp green = the WhatsApp logo glyph (WhatsAppMark), and the buttons
+ *                    that start or send a WhatsApp (Button variant "whatsapp").
  */
 
 import React, { useState } from 'react';

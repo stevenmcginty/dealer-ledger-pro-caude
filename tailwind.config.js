@@ -49,6 +49,8 @@ export default {
           text: token('accent-text'),
         },
         'on-accent': token('on-accent'),
+        whatsapp: { DEFAULT: token('whatsapp'), hover: token('whatsapp-hover'), press: token('whatsapp-press') },
+        'on-whatsapp': token('on-whatsapp'),
         focus: token('focus'),
         success: { DEFAULT: token('success'), soft: token('success-soft'), ink: token('success-ink') },
         warning: { DEFAULT: token('warning'), soft: token('warning-soft'), ink: token('warning-ink') },
