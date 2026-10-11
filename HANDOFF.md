@@ -8,7 +8,7 @@ Steve wants a mic button: walk round the cars, say the prep jobs, the app finds 
 - Checks: 353/353 tests pass, `tsc` clean, `vite build` ok. Real Gemini smoke test with TTS audio passed (two black Porsches + no-colour Porsche → picker; Golf matched; "urgent" → high).
 - Recording is converted to 16 kHz mono WAV in the browser, so iPhone and Chrome both work.
 - Live check: the live DashboardPage chunk contains the mic; CSP connect-src allows *.googleapis.com (Gemini).
-- Steve tested it on his phone 11 Oct: 4 jobs dictated, all worked. Mic is now a small green "Dictate" pill (red "Stop" while recording). Not yet seen live: the "Which black Porsche?" buttons.
+- Steve tested it on his phone 11 Oct: 4 jobs dictated, all worked. Mic is an icon-only mic in Gemini colours (blue, red, yellow, green); it turns red and pulses while recording. Steve rejected the green "Dictate" pill. Not yet seen live: the "Which black Porsche?" buttons.
 
 ## 11 Oct 2026 — Mobile-first redesign package "Forecourt Ledger" (design only, no code changed)
 
