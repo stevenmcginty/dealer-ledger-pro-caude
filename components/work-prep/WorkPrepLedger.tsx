@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { ToDoItem, Vehicle } from '../../types';
+import { ToDoItem } from '../../types';
 import { useData } from '../../hooks/useData';
 import { formatDate } from '../../utils/helpers';
 import { WrenchScrewdriverIcon, UndoIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { Button, EmptyState, Plate, Search, SkeletonList } from '../ui';
+import { PageHead } from '../stock/parts';
 import { useUI } from '../../hooks/useUI';
 
 const WorkPrepLedger = () => {
@@ -54,61 +55,76 @@ const WorkPrepLedger = () => {
     }, [todos, vehicles, searchTerm]);
     
     if (isLoading) {
-        return <div className="flex justify-center items-center h-full"><Spinner /></div>;
+        return <SkeletonList rows={3} label="Loading finished prep" />;
     }
 
-    const EmptyState = () => (
-        <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-            <WrenchScrewdriverIcon className="h-12 w-12 text-gray-500 mx-auto" />
-            <h3 className="mt-4 text-lg font-medium text-white">{searchTerm ? 'No Results Found' : 'No Completed Prep Work'}</h3>
-            <p className="mt-1 text-sm text-gray-400">{searchTerm ? 'Try a different search term.' : 'Completed vehicle prep tasks will appear here once archived from the dashboard.'}</p>
-        </div>
-    );
+    const jobCount = archivedPrepTasks.reduce((n, g) => n + g.tasks.length, 0);
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-end">
-                <div className="relative sm:max-w-xs w-full">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
-                    </div>
-                    <input
-                        type="search"
-                        placeholder="Search by Reg, Make, Model..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full rounded-md border-0 bg-gray-700 py-2 pl-10 pr-3 text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-500 sm:text-sm"
-                    />
-                </div>
-            </div>
+        <div className="space-y-4 pb-6">
+            <PageHead
+                facts={jobCount > 0
+                    ? <>Finished prep · {archivedPrepTasks.length} car{archivedPrepTasks.length === 1 ? '' : 's'}, {jobCount} job{jobCount === 1 ? '' : 's'}</>
+                    : 'Finished prep, grouped by car'}
+            />
+            <Search
+                value={searchTerm}
+                onChange={setSearchTerm}
+                label="Search finished prep"
+                placeholder="Reg, make, model or stock no."
+                className="w-full lg:max-w-sm"
+            />
 
-            {archivedPrepTasks.length === 0 ? <EmptyState /> : (
-                <div className="space-y-4">
+            {archivedPrepTasks.length === 0 ? (
+                <div className="rounded-card border border-line bg-surface">
+                    {searchTerm ? (
+                        <EmptyState
+                            icon={<WrenchScrewdriverIcon />}
+                            title={`No cars match “${searchTerm}”`}
+                            description="Search looks at the reg, make, model and stock number."
+                            actionLabel="Clear search"
+                            onAction={() => setSearchTerm('')}
+                        />
+                    ) : (
+                        <EmptyState
+                            icon={<WrenchScrewdriverIcon />}
+                            title="No finished prep yet"
+                            description="When you archive done prep jobs from Today, they land here, grouped by car."
+                        />
+                    )}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {archivedPrepTasks.map(({ vehicle, tasks }) => (
-                        <div key={vehicle.id} className="bg-gray-800 rounded-lg shadow-md">
-                            <header className="p-4 border-b border-gray-700 flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-bold text-white text-lg">{vehicle.reg}</h3>
-                                    <p className="text-sm text-gray-400">{vehicle.make} {vehicle.model}</p>
+                        <section key={vehicle.id} aria-label={`${vehicle.reg} ${vehicle.make} ${vehicle.model}`} className="rounded-card border border-line bg-surface">
+                            <header className="flex items-center gap-3 border-b border-line py-3 pe-2 ps-4">
+                                <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <Plate reg={vehicle.reg} size="sm" />
+                                        <span className="num text-sm font-semibold text-ink-3">#{vehicle.stockNumber}</span>
+                                    </div>
+                                    <h3 className="truncate text-base font-semibold text-ink">{vehicle.make} {vehicle.model}</h3>
                                 </div>
-                                <button
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    icon={<UndoIcon />}
                                     onClick={() => openModal('unarchivePrepConfirm', { vehicle, tasks })}
-                                    className="inline-flex items-center gap-x-2 rounded-md bg-gray-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600"
-                                    title="Move tasks back to the dashboard prep list"
+                                    title="Move these jobs back to the prep list on Today"
                                 >
-                                    <UndoIcon className="h-4 w-4" />
-                                    Move to Prep
-                                </button>
+                                    Back to prep
+                                </Button>
                             </header>
-                            <ul className="divide-y divide-gray-700/50">
+                            <ul className="m-0 list-none divide-y divide-line p-0">
                                 {tasks.map(task => (
-                                    <li key={task.id} className="px-4 py-3 flex justify-between items-center text-sm">
-                                        <p className="text-gray-200">{task.description}</p>
-                                        <p className="text-gray-400 text-xs">{formatDate(task.completionDate!)}</p>
+                                    <li key={task.id} className="flex min-h-[48px] items-center gap-3 px-4 py-2">
+                                        <span aria-hidden="true" className="h-2 w-2 flex-none rounded-full bg-success" />
+                                        <p className="min-w-0 flex-1 text-base text-ink">{task.description}</p>
+                                        <p className="num flex-none text-sm text-ink-3">{formatDate(task.completionDate!)}</p>
                                     </li>
                                 ))}
                             </ul>
-                        </div>
+                        </section>
                     ))}
                 </div>
             )}

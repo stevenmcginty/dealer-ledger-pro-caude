@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Badge, Button, Card, Input, useToast } from '../ui';
+import { Badge, Button, Card, Checkbox, Input, useToast } from '../ui';
 import {
     SharedInboxMeta,
     saveSalesAgentSharedInbox,
@@ -81,12 +81,12 @@ const SharedInboxCard: React.FC<SharedInboxCardProps> = ({ companyId }) => {
                     Shared WhatsApp
                 </Card.Header>
                 <Card.Body>
-                    <p className="text-sm text-gray-300 max-w-2xl">
+                    <p className="text-sm text-ink-2 max-w-2xl">
                         This ledger uses the shared {inbox.name || 'Radlett'} number. You do not connect
                         WhatsApp here — messages in your Agent Inbox go out through that number.
                         {!inbox.whatsappLive ? ' Sending is off until the other ledger marks WhatsApp live.' : ''}
                     </p>
-                    <p className="mt-3 text-xs text-gray-500 font-mono break-all">
+                    <p className="mt-3 text-xs text-ink-3 font-mono break-all">
                         Your company ID (give this to the ledger that holds the number): {companyId}
                     </p>
                 </Card.Body>
@@ -101,7 +101,7 @@ const SharedInboxCard: React.FC<SharedInboxCardProps> = ({ companyId }) => {
             </Card.Header>
             <Card.Body>
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-400 max-w-2xl">
+                    <p className="max-w-2xl text-sm leading-5 text-ink-2">
                         Share this company&rsquo;s Gmail and WhatsApp number with another Dealer Ledger Pro
                         account. Paste their company ID — you do not need to be logged into that ledger.
                         Enquiries land in whichever account owns the car; anything unmatched stays here.
@@ -122,24 +122,18 @@ const SharedInboxCard: React.FC<SharedInboxCardProps> = ({ companyId }) => {
                             placeholder="Radlett"
                         />
                     </div>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-600 bg-gray-800"
-                            checked={live}
-                            onChange={e => setLive(e.target.checked)}
-                        />
-                        <span className="text-sm text-gray-200">
-                            WhatsApp is live (Meta business verification complete)
-                        </span>
-                    </label>
+                    <Checkbox
+                        checked={live}
+                        onChange={e => setLive(e.target.checked)}
+                        label="WhatsApp is live (Meta business verification complete)"
+                    />
                     <div className="flex flex-wrap items-center gap-3">
                         <Button onClick={handleSave} loading={saving} disabled={saving}>
                             Save shared inbox
                         </Button>
-                        {result && <span className="text-sm text-gray-300">{result}</span>}
+                        {result && <span className="text-sm text-ink-2">{result}</span>}
                     </div>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-3">
                         Saving again with the ID blank keeps the current members. Existing threads are
                         mirrored so returning customers stay with the account that already knows them.
                     </p>

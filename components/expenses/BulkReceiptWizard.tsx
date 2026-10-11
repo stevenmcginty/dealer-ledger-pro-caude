@@ -4,11 +4,14 @@ import { NewReceipt, ExpenseCategory, Receipt } from '../../types';
 import * as ai from '../../utils/ai';
 import * as dataService from '../../services/dataService';
 import { compressImage, robustDateParser } from '../../utils/helpers';
-import { XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, TrashIcon, DocumentTextIcon, CameraIcon } from '../icons';
+import { XMarkIcon, CheckCircleIcon, TrashIcon, DocumentTextIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
+import { Button, IconButton, Field, Segmented, StatusChip } from '../ui';
+import { controlFrame, controlInput, cx } from '../ui/cx';
+import './expenses.css';
 
 interface BulkReceiptWizardProps {
     files: File[];
@@ -174,156 +177,159 @@ const BulkReceiptWizard = ({ files, onClose, companyId, userId, expenseCategorie
     const readyCount = items.filter(i => i.status === 'ready').length;
     const errorCount = items.filter(i => i.status === 'error').length;
 
+    const statusChip = (item: ProcessedItem) => {
+        switch (item.status) {
+            case 'pending': return <StatusChip status="neutral">Waiting</StatusChip>;
+            case 'uploading': return <StatusChip status="prep">Uploading</StatusChip>;
+            case 'analyzing': return <StatusChip status="prep">Reading</StatusChip>;
+            case 'ready': return <StatusChip status="reserved">Check</StatusChip>;
+            case 'saved': return <StatusChip status="sold">Saved</StatusChip>;
+            case 'error': return <StatusChip status="due">Failed</StatusChip>;
+        }
+    };
+
     return (
-        <div className="w-full flex flex-col h-full max-h-[90vh]">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between bg-gray-800 flex-shrink-0">
-                <div>
-                    <h2 className="text-lg font-bold text-white">Bulk Receipt Upload</h2>
-                    <p className="text-sm text-gray-400">
-                        {overallStatus === 'analyzing' ? `Processing ${pendingCount} files...` : 
-                         overallStatus === 'review' ? `Review ${readyCount} receipts` :
-                         overallStatus === 'saving' ? 'Saving receipts...' : 'Upload Complete'}
+        <div className="flex h-full max-h-[90vh] w-full flex-col">
+            <header className="flex flex-shrink-0 items-start gap-3 border-b border-line bg-surface px-4 pb-3 pt-1 sm:px-5 sm:pt-5">
+                <div className="min-w-0 flex-1 pt-1.5">
+                    <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Add many receipts</h2>
+                    <p role="status" className="mt-1 text-sm text-ink-2">
+                        {overallStatus === 'analyzing' ? `Reading ${pendingCount} receipt${pendingCount !== 1 ? 's' : ''}…` :
+                         overallStatus === 'review' ? `Check ${readyCount} receipt${readyCount !== 1 ? 's' : ''}, then save${errorCount ? ` · ${errorCount} failed` : ''}` :
+                         overallStatus === 'saving' ? 'Saving receipts…' : 'All saved'}
                     </p>
                 </div>
-                <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} className="-me-2" />
             </header>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
                 {items.length === 0 && (
-                    <div className="text-center py-10 text-gray-400">No files selected.</div>
+                    <p className="py-10 text-center text-sm text-ink-3">No files chosen.</p>
                 )}
 
-                {items.map((item) => (
-                    <div key={item.tempId} className={`bg-gray-700/30 border border-gray-600 rounded-lg p-4 transition-colors ${item.status === 'saved' ? 'border-green-600/50 bg-green-900/10' : ''}`}>
-                        <div className="flex flex-col md:flex-row gap-4">
-                            {/* Preview Section */}
-                            <div className="w-full md:w-24 h-24 flex-shrink-0 bg-gray-800 rounded-md flex items-center justify-center overflow-hidden border border-gray-600">
-                                {item.previewUrl ? (
-                                    <img src={item.previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="text-center p-2">
-                                        <DocumentTextIcon className="h-8 w-8 text-gray-500 mx-auto" />
-                                        <span className="text-[10px] text-gray-400 block mt-1 truncate max-w-[80px]">{item.file.name}</span>
+                {items.map((item) => {
+                    const busy = ['pending', 'uploading', 'analyzing'].includes(item.status);
+                    return (
+                        <div key={item.tempId} className={cx('rounded-card border p-3 transition-colors duration-quick ease-out', item.status === 'saved' ? 'border-success bg-success-soft' : 'border-line bg-surface')}>
+                            <div className="flex items-start gap-3">
+                                {/* Preview */}
+                                <div className="relative grid h-16 w-16 flex-none place-items-center overflow-hidden rounded-control border border-line bg-surface-2">
+                                    {item.previewUrl ? (
+                                        <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <DocumentTextIcon className="h-7 w-7 text-ink-3" />
+                                    )}
+                                    {busy && item.status !== 'pending' && <span className="exp-scan" aria-hidden="true" />}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink" title={item.file.name}>{item.vendor || item.file.name}</p>
+                                        {statusChip(item)}
                                     </div>
+                                    {busy ? (
+                                        <p className="mt-1 flex items-center gap-2 text-sm text-ink-3">
+                                            <Spinner className="h-4 w-4" />
+                                            {item.status === 'pending' ? 'Waiting for its turn…' : item.status === 'uploading' ? 'Uploading…' : 'Reading receipt…'}
+                                        </p>
+                                    ) : item.status === 'error' ? (
+                                        <p className="mt-1 text-sm text-danger">{item.error || 'Unknown error'}</p>
+                                    ) : (
+                                        <p className="num mt-1 truncate text-sm text-ink-3">{item.file.name}</p>
+                                    )}
+                                </div>
+                                {item.status === 'saved' ? (
+                                    <CheckCircleIcon className="m-3 h-6 w-6 flex-none text-success" />
+                                ) : (
+                                    <IconButton
+                                        label={`Remove ${item.file.name}`}
+                                        icon={<TrashIcon />}
+                                        onClick={() => handleRemoveItem(item.tempId)}
+                                        disabled={['uploading', 'analyzing'].includes(item.status)}
+                                        className="-me-1 -mt-1 hover:text-danger [&_svg]:h-5 [&_svg]:w-5"
+                                    />
                                 )}
                             </div>
 
-                            {/* Status Overlay for Processing */}
-                            {['pending', 'uploading', 'analyzing'].includes(item.status) ? (
-                                <div className="flex-1 flex items-center justify-center text-gray-400 gap-2">
-                                    <Spinner />
-                                    <span>{item.status === 'pending' ? 'Waiting...' : item.status === 'uploading' ? 'Uploading...' : 'AI Analyzing...'}</span>
-                                </div>
-                            ) : item.status === 'error' ? (
-                                <div className="flex-1 text-red-400 flex flex-col justify-center">
-                                    <div className="flex items-center gap-2 font-semibold"><ExclamationTriangleIcon className="h-5 w-5"/> Analysis Failed</div>
-                                    <p className="text-xs mt-1">{item.error || 'Unknown error'}</p>
-                                    <button onClick={() => handleRemoveItem(item.tempId)} className="mt-2 text-xs text-red-300 hover:text-white underline text-left">Remove</button>
-                                </div>
-                            ) : (
-                                /* Editable Fields for Ready/Saved Items */
-                                <div className={`flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${item.status === 'saved' ? 'opacity-60 pointer-events-none' : ''}`}>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Vendor</label>
-                                        <input 
-                                            type="text" 
-                                            value={item.vendor || ''} 
-                                            onChange={(e) => handleUpdateItem(item.tempId, { vendor: e.target.value })}
-                                            className="w-full bg-gray-900 border-gray-600 rounded text-sm px-2 py-1.5 text-white"
-                                            placeholder="Vendor Name"
+                            {/* Editable Fields for Ready/Saved Items */}
+                            {(item.status === 'ready' || item.status === 'saved') && (
+                                <fieldset disabled={item.status === 'saved'} className={cx('m-0 mt-3 grid min-w-0 grid-cols-2 gap-3 border-0 p-0 sm:grid-cols-3', item.status === 'saved' && 'opacity-70')}>
+                                    <Field label="Supplier" htmlFor={`vendor-${item.tempId}`} className="col-span-2 sm:col-span-1">
+                                        {ids => (
+                                            <div className={controlFrame()}>
+                                                <input
+                                                    id={ids.id}
+                                                    type="text"
+                                                    value={item.vendor || ''}
+                                                    onChange={(e) => handleUpdateItem(item.tempId, { vendor: e.target.value })}
+                                                    className={controlInput}
+                                                    placeholder="Supplier name"
+                                                />
+                                            </div>
+                                        )}
+                                    </Field>
+                                    <Field label="Date" htmlFor={`date-${item.tempId}`} className="col-span-2 sm:col-span-1">
+                                        <UkDateInput
+                                            id={`date-${item.tempId}`}
+                                            value={item.date || ''}
+                                            onChange={(e) => handleUpdateItem(item.tempId, { date: e.target.value })}
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Date</label>
-                                        <UkDateInput 
-                                            id={`date-${item.tempId}`} 
-                                            value={item.date || ''} 
-                                            onChange={(e) => handleUpdateItem(item.tempId, { date: e.target.value })} 
-                                            className="text-sm"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Category</label>
-                                        <Select 
-                                            value={item.category || ''} 
+                                    </Field>
+                                    <Field label="Category" htmlFor={`cat-${item.tempId}`} className="col-span-2 sm:col-span-1">
+                                        <Select
+                                            id={`cat-${item.tempId}`}
+                                            value={item.category || ''}
                                             onChange={(e) => handleUpdateItem(item.tempId, { category: e.target.value })}
-                                            className="w-full bg-gray-900 border-gray-600 rounded text-sm px-2 py-1.5 text-white"
                                         >
                                             {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                                         </Select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Total Amount</label>
-                                        <CurrencyInput 
-                                            id={`amt-${item.tempId}`} 
-                                            value={item.amountStr} 
+                                    </Field>
+                                    <Field label="Total" htmlFor={`amt-${item.tempId}`}>
+                                        <CurrencyInput
+                                            id={`amt-${item.tempId}`}
+                                            value={item.amountStr}
                                             onChange={(e) => handleUpdateItem(item.tempId, { amountStr: e.target.value })}
-                                            className="bg-gray-900"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">VAT</label>
-                                        <CurrencyInput 
-                                            id={`vat-${item.tempId}`} 
-                                            value={item.vatStr} 
+                                    </Field>
+                                    <Field label="VAT" htmlFor={`vat-${item.tempId}`}>
+                                        <CurrencyInput
+                                            id={`vat-${item.tempId}`}
+                                            value={item.vatStr}
                                             onChange={(e) => handleUpdateItem(item.tempId, { vatStr: e.target.value })}
-                                            className="bg-gray-900"
+                                        />
+                                    </Field>
+                                    <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
+                                        <span className="text-sm font-semibold leading-5 text-ink">Paid</span>
+                                        <Segmented
+                                            ariaLabel="How it was paid"
+                                            full
+                                            value={(item.paymentType || 'Direct') as 'Direct' | 'On Account'}
+                                            onChange={v => handleUpdateItem(item.tempId, { paymentType: v })}
+                                            options={[{ value: 'Direct', label: 'Direct' }, { value: 'On Account', label: 'On account' }]}
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-400 mb-1">Type</label>
-                                        <div className="flex bg-gray-900 rounded p-0.5">
-                                            <button 
-                                                onClick={() => handleUpdateItem(item.tempId, { paymentType: 'Direct' })}
-                                                className={`flex-1 text-xs py-1 rounded ${item.paymentType === 'Direct' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
-                                            >Direct</button>
-                                            <button 
-                                                onClick={() => handleUpdateItem(item.tempId, { paymentType: 'On Account' })}
-                                                className={`flex-1 text-xs py-1 rounded ${item.paymentType === 'On Account' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
-                                            >On Acct</button>
-                                        </div>
-                                    </div>
-                                </div>
+                                </fieldset>
                             )}
-
-                            {/* Actions Column */}
-                            <div className="w-full md:w-10 flex md:flex-col justify-center gap-2 border-t md:border-t-0 md:border-l border-gray-600 pt-2 md:pt-0 md:pl-2">
-                                {item.status === 'saved' ? (
-                                    <div className="text-green-400 text-center"><CheckCircleIcon className="h-6 w-6 mx-auto"/></div>
-                                ) : (
-                                    <button 
-                                        onClick={() => handleRemoveItem(item.tempId)}
-                                        className="p-2 text-gray-400 hover:text-red-400 rounded hover:bg-gray-700/50"
-                                        title="Remove"
-                                        disabled={['uploading', 'analyzing'].includes(item.status)}
-                                    >
-                                        <TrashIcon className="h-5 w-5 mx-auto" />
-                                    </button>
-                                )}
-                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
-            <footer className="p-4 border-t border-gray-700 bg-gray-800 flex justify-end gap-3 flex-shrink-0">
+            <footer className="flex flex-shrink-0 flex-col-reverse gap-2 border-t border-line bg-surface px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
                 {overallStatus === 'complete' ? (
-                    <button onClick={onClose} className="px-6 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-md shadow-sm">
-                        Done
-                    </button>
+                    <Button onClick={onClose}>Done</Button>
                 ) : (
                     <>
-                        <button onClick={onClose} disabled={isProcessing} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md disabled:opacity-50">
+                        <Button variant="secondary" onClick={onClose} disabled={isProcessing}>
                             Cancel
-                        </button>
-                        <button 
-                            onClick={handleConfirmAll} 
-                            disabled={isProcessing || readyCount === 0 || overallStatus === 'saving'} 
-                            className="inline-flex items-center gap-2 px-6 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-md shadow-sm disabled:opacity-50"
+                        </Button>
+                        <Button
+                            onClick={handleConfirmAll}
+                            disabled={isProcessing || readyCount === 0}
+                            loading={overallStatus === 'saving'}
+                            icon={<CheckCircleIcon />}
                         >
-                            {overallStatus === 'saving' ? <Spinner className="h-4 w-4 text-white"/> : <CheckCircleIcon className="h-5 w-5" />}
-                            {overallStatus === 'saving' ? 'Saving...' : `Confirm & Save ${readyCount} Receipts`}
-                        </button>
+                            {overallStatus === 'saving' ? 'Saving…' : `Save ${readyCount} receipt${readyCount !== 1 ? 's' : ''}`}
+                        </Button>
                     </>
                 )}
             </footer>

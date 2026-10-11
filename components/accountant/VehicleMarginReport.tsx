@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { useData } from '../../hooks/useData';
-import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
+import { formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon, DocumentTextIcon } from '../icons';
 import { SalesDocument, Vehicle } from '../../types';
 import UkDateInput from '../common/UkDateInput';
 import DatePresetButtons from './DatePresetButtons';
-import { useToast } from '../ui';
+import { useToast, Button, EmptyState, DataTable, THead, TBody, Th, Tr, Td, Plate } from '../ui';
+import { cx, eyebrow } from '../ui/cx';
+import { moneyText, FootCell } from './hubShared';
 
 interface MarginData {
     doc: SalesDocument;
@@ -110,71 +112,71 @@ const VehicleMarginReport = ({ startDate: startProp, endDate: endProp, hidePerio
     };
 
     return (
-        <div className="space-y-6">
-            <div className={hidePeriodBar ? 'flex flex-wrap items-center justify-end gap-3' : 'p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4'}>
-                <div className={`flex items-center gap-4 flex-wrap ${hidePeriodBar ? 'hidden' : ''}`}>
-                    <div>
-                        <label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label>
-                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/>
+        <div className="min-w-0 space-y-4">
+            <div className="flex flex-col gap-3 print:hidden lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+                {!hidePeriodBar && (
+                    <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:flex">
+                            <div className="min-w-0">
+                                <label htmlFor="start-date" className={cx(eyebrow, 'mb-1.5 block')}>From</label>
+                                <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="sm:w-44" />
+                            </div>
+                            <span aria-hidden="true" className="pb-3.5 text-ink-3">–</span>
+                            <div className="min-w-0">
+                                <label htmlFor="end-date" className={cx(eyebrow, 'mb-1.5 block')}>To</label>
+                                <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="sm:w-44" />
+                            </div>
+                        </div>
+                        <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
                     </div>
-                    <div>
-                        <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
-                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
-                    </div>
-                     <div className="self-end">
-                         <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
-                     </div>
-                </div>
-                <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                    <ArrowDownTrayIcon className="-ml-1 h-5 w-5" />
+                )}
+                <Button variant={hidePeriodBar ? 'secondary' : 'primary'} size="sm" onClick={handleDownload} icon={<ArrowDownTrayIcon />} className="self-start lg:ms-auto lg:self-auto">
                     Download CSV
-                </button>
+                </Button>
             </div>
-            
+
             {marginData.length === 0 ? (
-                 <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-                    <DocumentTextIcon className="h-12 w-12 text-gray-500 mx-auto" />
-                    <h3 className="mt-4 text-lg font-medium text-white">No Sales Found</h3>
-                    <p className="mt-1 text-sm text-gray-400">There are no vehicle sales in the selected date range.</p>
+                <div className="rounded-card border border-line bg-surface">
+                    <EmptyState icon={<DocumentTextIcon />} title="No cars sold in these dates" description="Each sales invoice in the period shows here with its cost, price and margin." />
                 </div>
             ) : (
-                <div className="overflow-x-auto bg-gray-800 rounded-lg shadow">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-900/50">
-                            <tr>
-                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-white sm:pl-6">Sale Date</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Stock #</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Registration</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Vehicle</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">Purchase Price</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">Sale Price</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">Margin</th>
-                                {isVatRegistered && <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white sm:pr-6">VAT on Margin</th>}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700/50">
-                            {marginData.map(item => (
-                                <tr key={item.doc.id} className="even:bg-gray-800/50">
-                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-300 sm:pl-6">{formatDate(item.doc.invoiceDate)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-400">{item.vehicle.stockNumber}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-white">{item.vehicle.reg}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-300">{item.vehicle.make} {item.vehicle.model}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-300">{formatCurrency(item.displayPurchasePrice)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-300">{formatCurrency(item.doc.price)}</td>
-                                    <td className={`whitespace-nowrap px-3 py-4 text-sm text-right font-bold ${item.margin >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(item.margin)}</td>
-                                    {isVatRegistered && <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-300 sm:pr-6">{formatCurrency(item.vatOnMargin)}</td>}
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="bg-gray-900/50">
-                            <tr>
-                                <td colSpan={6} className="px-3 py-3.5 text-right text-sm font-bold text-white sm:pl-6">Totals</td>
-                                <td className={`px-3 py-3.5 text-right text-sm font-bold ${totalMargin >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(totalMargin)}</td>
-                                {isVatRegistered && <td className="px-3 py-3.5 text-right text-sm font-bold text-white sm:pr-6">{formatCurrency(totalVatOnMargin)}</td>}
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
+                <DataTable ariaLabel="Car margins" minWidth={isVatRegistered ? 860 : 760} className="print:overflow-visible">
+                    <THead>
+                        <tr>
+                            <Th className="ps-4">Sold</Th>
+                            <Th>Car</Th>
+                            <Th numeric>Cost</Th>
+                            <Th numeric>Sold for</Th>
+                            <Th numeric className={isVatRegistered ? '' : 'pe-4'}>Margin</Th>
+                            {isVatRegistered && <Th numeric className="pe-4">VAT on margin</Th>}
+                        </tr>
+                    </THead>
+                    <TBody>
+                        {marginData.map(item => (
+                            <Tr key={item.doc.id}>
+                                <Td className="num ps-4 text-ink-2">{formatDate(item.doc.invoiceDate)}</Td>
+                                <Td className="py-2">
+                                    <span className="flex items-center gap-2">
+                                        <Plate reg={item.vehicle.reg} size="sm" />
+                                        <span className="num text-sm text-ink-3">#{item.vehicle.stockNumber}</span>
+                                    </span>
+                                    <span className="mt-0.5 block max-w-[18rem] truncate text-sm text-ink-2">{item.vehicle.make} {item.vehicle.model}</span>
+                                </Td>
+                                <Td numeric className="text-ink-2">{moneyText(item.displayPurchasePrice)}</Td>
+                                <Td numeric className="text-ink-2">{moneyText(item.doc.price)}</Td>
+                                <Td numeric className={`font-bold ${isVatRegistered ? '' : 'pe-4'} ${item.margin < 0 ? 'text-danger' : 'text-ink'}`}>{moneyText(item.margin)}</Td>
+                                {isVatRegistered && <Td numeric className="pe-4 text-ink-2">{moneyText(item.vatOnMargin)}</Td>}
+                            </Tr>
+                        ))}
+                    </TBody>
+                    <tfoot>
+                        <tr>
+                            <FootCell colSpan={4} className="ps-4">Totals · <span className="num">{marginData.length}</span> {marginData.length === 1 ? 'car' : 'cars'}</FootCell>
+                            <FootCell numeric className={`${isVatRegistered ? '' : 'pe-4'} ${totalMargin < 0 ? 'text-danger' : ''}`}>{moneyText(totalMargin)}</FootCell>
+                            {isVatRegistered && <FootCell numeric className="pe-4">{moneyText(totalVatOnMargin)}</FootCell>}
+                        </tr>
+                    </tfoot>
+                </DataTable>
             )}
         </div>
     );

@@ -5,8 +5,7 @@ import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../ut
 import CurrencyInput from '../common/CurrencyInput';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { useToast } from '../ui';
-import Spinner from '../common/Spinner';
+import { useToast, Button, IconButton, Input, Badge, Segmented, Switch } from '../ui';
 
 interface IncomeAllocatorModalProps {
     transaction: StatementTransaction;
@@ -164,138 +163,138 @@ const IncomeAllocatorModal = ({ transaction, onUpdate, onClose }: IncomeAllocato
         openModal('miscInvoice', { transaction });
     };
 
+    const lineSummary = (
+        <div className="rounded-card border border-line bg-surface-2 px-4 py-3">
+            <div className="flex items-baseline justify-between gap-3">
+                <p className="num text-sm text-ink-3">{formatDate(transaction.date)}</p>
+                <p className="num text-xl font-bold text-success">+{formatCurrency(transaction.amount)}</p>
+            </div>
+            <p className="mt-1 truncate text-ink">{transaction.description}</p>
+        </div>
+    );
+
     const renderMatchView = () => (
         <>
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-                <div className="bg-gray-900/50 p-4 rounded-lg">
-                    <div className="flex justify-between items-center"><p className="text-sm text-gray-400">{formatDate(transaction.date)}</p><p className="text-xl font-bold text-green-400">{formatCurrency(transaction.amount)}</p></div>
-                    <p className="text-white mt-1 truncate">{transaction.description}</p>
-                </div>
+            <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+                {lineSummary}
                 <div>
-                    <h3 className="text-base font-semibold text-white mb-2">Select Matching Invoice</h3>
-                    <div className="space-y-2 pr-2 -mr-2 max-h-80 overflow-y-auto">
+                    <h3 className="mb-2 text-base font-bold text-ink">Which invoice did this pay?</h3>
+                    <div className="-me-2 max-h-80 space-y-2 overflow-y-auto pe-2">
                         {receivables.length > 0 ? receivables.map(item => {
                             const isSelected = selectedReceivable?.id === item.id;
                             const isSuggested = Math.abs(transactionAmount - item.amountDue) < 0.05;
                             return (
-                                <button type="button" key={`${item.type}-${item.id}`} aria-pressed={isSelected} onClick={() => setSelectedReceivable(item)} className={`block w-full text-left p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-brand-900/70 border-brand-600' : 'bg-gray-700 border-gray-600 hover:border-gray-500'} ${isSuggested && !isSelected ? 'border-yellow-500' : ''}`}>
-                                    <div className="flex justify-between items-center">
-                                        <p className="font-semibold text-white">{item.customerName}</p>
-                                        <p className="font-bold text-white">{formatCurrency(item.amountDue)}</p>
+                                <button type="button" key={`${item.type}-${item.id}`} aria-pressed={isSelected} onClick={() => setSelectedReceivable(item)}
+                                    className={`block min-h-[56px] w-full rounded-control border p-3 text-start transition-colors duration-quick ease-out ${isSelected ? 'border-accent bg-accent-soft' : isSuggested ? 'border-warning bg-surface hover:bg-surface-2' : 'border-line-strong bg-surface hover:bg-surface-2'}`}>
+                                    <div className="flex items-baseline justify-between gap-3">
+                                        <p className="min-w-0 truncate font-semibold text-ink">{item.customerName}</p>
+                                        <p className="num flex-none font-bold text-ink">{formatCurrency(item.amountDue)}</p>
                                     </div>
-                                    <div className="flex justify-between items-center text-xs text-gray-400 mt-1">
-                                        <span>{item.details}</span>
-                                        <span>{formatDate(item.date)}</span>
+                                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm text-ink-3">
+                                        <span className="min-w-0 truncate">{item.details}</span>
+                                        <span className="flex items-center gap-2">
+                                            {isSuggested && <Badge variant="warning" size="sm" dot>Same amount</Badge>}
+                                            <span className="num">{formatDate(item.date)}</span>
+                                        </span>
                                     </div>
                                 </button>
                             );
                         }) : (
-                            <p className="text-center text-gray-400 py-6">No outstanding invoices found.</p>
+                            <p className="py-6 text-center text-ink-3">No unpaid invoices to match. Choose a category instead, or make a new invoice.</p>
                         )}
                     </div>
                 </div>
             </div>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 grid grid-cols-2 gap-3 bg-gray-800">
-                <div className="space-y-2">
-                    <button type="button" onClick={() => setView('categorize')} className="w-full px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
-                        Categorize Manually
-                    </button>
-                    <button type="button" onClick={handleCreateNewInvoice} className="w-full px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
-                        New Misc. Invoice
-                    </button>
-                </div>
-                <button onClick={handleReconcile} disabled={!selectedReceivable || isSubmitting} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : 'Confirm Match'}
-                </button>
+            <footer className="grid flex-none grid-cols-1 gap-2 border-t border-line bg-surface p-4 sm:grid-cols-[1fr_1fr_auto]">
+                <Button type="button" variant="secondary" onClick={() => setView('categorize')}>Choose a category</Button>
+                <Button type="button" variant="secondary" onClick={handleCreateNewInvoice}>New invoice</Button>
+                <Button onClick={handleReconcile} disabled={!selectedReceivable} loading={isSubmitting}>Match to invoice</Button>
             </footer>
         </>
     );
 
     const renderCategorizeView = () => (
          <>
-            <div className="p-6">
-                <div className="bg-gray-900/50 p-4 rounded-lg mb-6">
-                    <div className="flex justify-between items-center"><p className="text-sm text-gray-400">{formatDate(transaction.date)}</p><p className="text-xl font-bold text-green-400">{formatCurrency(transaction.amount)}</p></div>
-                    <p className="text-white mt-1 truncate">{transaction.description}</p>
-                </div>
+            <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+                {lineSummary}
 
                 {/* Transfer between own accounts (e.g. moving money between bank accounts) — not income */}
-                <div className="mb-6">
-                    <button type="button" onClick={() => setIsTransfer(v => !v)} aria-pressed={isTransfer} className={`w-full flex items-center justify-between gap-3 p-3 rounded-lg border-2 text-left transition-colors ${isTransfer ? 'bg-brand-900/60 border-brand-500' : 'bg-gray-700/50 border-gray-600 hover:border-gray-500'}`}>
-                        <span>
-                            <span className="block text-sm font-semibold text-white">Transfer between own accounts</span>
-                            <span className="block text-xs text-gray-400">Money received from another of your own accounts — not income.</span>
-                        </span>
-                        <span className={`flex-shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${isTransfer ? 'bg-brand-500' : 'bg-gray-600'}`}>
-                            <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${isTransfer ? 'translate-x-5' : ''}`} />
-                        </span>
-                    </button>
+                <div className="rounded-card border border-line px-4 py-1">
+                    <Switch
+                        label="Transfer between own accounts"
+                        description="Money from another of your own accounts. Not income."
+                        checked={isTransfer}
+                        onChange={e => setIsTransfer(e.target.checked)}
+                    />
                 </div>
 
                 {isTransfer && (
-                    <div className="space-y-3 rounded-lg bg-gray-900/40 p-4 border border-gray-700">
-                        <p className="text-sm text-gray-300">
-                            Use this for money moved between your own accounts — e.g. cash coming back from your
-                            savings account, or moving funds between two business bank accounts. It isn't income,
-                            so it's excluded from your turnover and VAT totals. The money is still yours, just in a
+                    <div className="space-y-2 rounded-card border border-line bg-surface-2 p-4">
+                        <p className="text-sm leading-5 text-ink-2">
+                            Use this for money moved between your own accounts, such as cash coming back from your
+                            savings account, or moving funds between two business bank accounts. It is not income,
+                            so it stays out of your turnover and VAT totals. The money is still yours, just in a
                             different pot.
                         </p>
-                        <p className="text-xs text-gray-400 italic">
-                            A transfer <em>fee</em>, if any, should be reconciled separately as a bank charge.
+                        <p className="text-sm leading-5 text-ink-3">
+                            A transfer fee, if any, is reconciled on its own as a bank charge.
                         </p>
                     </div>
                 )}
 
                 {!isTransfer && (<>
                 <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Select Category</label>
-                    <div className="grid grid-cols-2 gap-3">
-                        {["Car Sale", "Part Sale", "Rent", 'Other'].map((cat) => (
-                             <button
-                                key={cat} type="button"
-                                onClick={() => { cat === 'Other' ? setIsOther(true) : setCategory(cat); if (cat !== 'Other') setIsOther(false); }}
-                                className={`py-3 px-4 text-sm font-semibold rounded-md transition-colors border-2 ${(isOther && cat === 'Other') || category === cat ? 'bg-brand-600 border-brand-500 text-white' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}
-                            >{cat}</button>
-                        ))}
+                    <p className="mb-2 text-sm font-semibold text-ink" id="income-category-label">Category</p>
+                    <div role="group" aria-labelledby="income-category-label" className="grid grid-cols-2 gap-2">
+                        {["Car Sale", "Part Sale", "Rent", 'Other'].map((cat) => {
+                            const on = (isOther && cat === 'Other') || (!isOther && category === cat);
+                            return (
+                                <button
+                                    key={cat} type="button" aria-pressed={on}
+                                    onClick={() => { cat === 'Other' ? setIsOther(true) : setCategory(cat); if (cat !== 'Other') setIsOther(false); }}
+                                    className={`min-h-[48px] rounded-control border px-4 text-sm font-semibold transition-colors duration-quick ease-out ${on ? 'border-accent bg-accent-soft text-accent-soft-ink' : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2'}`}
+                                >{cat}</button>
+                            );
+                        })}
                     </div>
                 </div>
 
                 {isOther && (
-                    <div className="mt-4">
-                        <label htmlFor="otherCategory" className="block text-sm font-medium text-gray-300">Custom Category</label>
-                        <input id="otherCategory" type="text" value={otherCategory} onChange={(e) => setOtherCategory(e.target.value)} placeholder="e.g., Refund" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"/>
-                    </div>
+                    <Input label="Category name" id="otherCategory" value={otherCategory} onChange={(e) => setOtherCategory(e.target.value)} placeholder="Refund" />
                 )}
 
-                <div className="mt-6">
-                    <div className="flex justify-between items-center mb-2">
-                        <label className="block text-sm font-medium text-gray-300">VAT</label>
-                        <span className="text-xs text-yellow-400 bg-yellow-900/50 px-2 py-1 rounded-md">Note: VAT on income is payable to HMRC.</span>
-                        <button onClick={() => setVatMode(vatMode === 'toggle' ? 'manual' : 'toggle')} className="text-xs font-semibold text-brand-400 hover:text-brand-300">{vatMode === 'toggle' ? 'Enter Manually' : 'Use Toggle'}</button>
+                <div>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-ink">VAT</p>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setVatMode(vatMode === 'toggle' ? 'manual' : 'toggle')}>{vatMode === 'toggle' ? 'Type the amount' : 'Pick a rate'}</Button>
                     </div>
                     {vatMode === 'toggle' ? (
-                        <div className="flex items-center space-x-2 rounded-lg bg-gray-700 p-1">
-                            <button type="button" onClick={() => setVatRate(0)} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${vatRate === 0 ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>0%</button>
-                            <button type="button" onClick={() => setVatRate(20)} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${vatRate === 20 ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>20%</button>
-                        </div>
+                        <Segmented
+                            full
+                            ariaLabel="VAT rate"
+                            value={vatRate === 20 ? '20' : vatRate === 0 ? '0' : ''}
+                            onChange={v => setVatRate(v === '20' ? 20 : 0)}
+                            options={[{ value: '0', label: '0%' }, { value: '20', label: '20%' }]}
+                        />
                     ) : (
-                        <div><CurrencyInput id="manualVat" value={manualVat} onChange={e => setManualVat(e.target.value)} placeholder="Enter VAT amount" /></div>
+                        <CurrencyInput id="manualVat" value={manualVat} onChange={e => setManualVat(e.target.value)} placeholder="VAT amount" />
                     )}
+                    <p className="mt-2 text-sm text-ink-3">VAT on income is paid to HMRC.</p>
                 </div>
                 </>)}
             </div>
-             <footer className="p-4 border-t border-gray-700 flex justify-end gap-3 sticky bottom-0 z-10 bg-gray-800">
-                <button type="button" onClick={() => setView('match')} className="px-4 py-3 text-sm font-bold text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Back to Matching</button>
-                <button onClick={handleUpdate} className="flex-1 px-4 py-3 text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 rounded-md">{isTransfer ? 'Confirm Transfer' : 'Confirm & Record Income'}</button>
+             <footer className="sticky bottom-0 z-sticky flex gap-2 border-t border-line bg-surface p-4">
+                <Button type="button" variant="secondary" onClick={() => setView('match')}>Back to matching</Button>
+                <Button onClick={handleUpdate} className="flex-1">{isTransfer ? 'Save transfer' : 'Save income'}</Button>
              </footer>
         </>
     );
 
     return (
-        <div className="w-full flex flex-col h-full max-h-[90vh]">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Allocate Income</h2>
-                <button type="button" onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
+        <div className="flex h-full max-h-[90vh] w-full flex-col">
+            <header className="flex items-center justify-between gap-3 border-b border-line py-2 pe-2 ps-4">
+                <h2 className="text-lg font-bold text-ink">Match money in</h2>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} />
             </header>
             {view === 'match' ? renderMatchView() : renderCategorizeView()}
         </div>

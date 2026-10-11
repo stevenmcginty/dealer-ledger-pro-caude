@@ -90,60 +90,60 @@ const AccountantReport = () => {
 
     return (
         <div className="space-y-6">
-            <div className="p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4">
+            <div className="p-4 bg-surface rounded-card flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4 flex-wrap">
                     <div>
-                        <label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label>
+                        <label htmlFor="start-date" className="block text-sm font-medium text-ink-3">Start Date</label>
                         <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/>
                     </div>
                     <div>
-                        <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
+                        <label htmlFor="end-date" className="block text-sm font-medium text-ink-3">End Date</label>
                         <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
                     </div>
                     <div className="self-end">
                         <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
                     </div>
                 </div>
-                <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                    <ArrowDownTrayIcon className="-ml-1 h-5 w-5" />
+                <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-hover">
+                    <ArrowDownTrayIcon className="-ms-1 h-5 w-5" />
                     Download Full Report
                 </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-gray-800 rounded-lg shadow p-6">
-                    <h3 className="text-xl font-bold text-white mb-4">Profit & Loss Statement</h3>
-                    <p className="text-sm text-gray-400 mb-6">For period {formatDate(startDate)} to {formatDate(endDate)}</p>
+                <div className="lg:col-span-2 bg-surface rounded-card border border-line p-6">
+                    <h3 className="text-xl font-bold text-ink mb-4">Profit & Loss Statement</h3>
+                    <p className="text-sm text-ink-3 mb-6">For period {formatDate(startDate)} to {formatDate(endDate)}</p>
 
                     <div className="space-y-4">
                         <div className="space-y-2">
-                             <div className="flex justify-between items-center"><span className="font-semibold text-white">Total Revenue</span><span className="font-bold text-lg text-white">{formatCurrency(reportData.totalRevenue)}</span></div>
-                             <div className="pl-4 flex justify-between items-center text-sm"><span className="text-gray-300">{isServiceBusiness ? 'Job Revenue' : 'Vehicle Sales'}</span><span>{formatCurrency(reportData.salesRevenue)}</span></div>
-                             <div className="pl-4 flex justify-between items-center text-sm"><span className="text-gray-300">Other Income</span><span>{formatCurrency(reportData.otherIncome)}</span></div>
+                             <div className="flex justify-between items-center"><span className="font-semibold text-ink">Total Revenue</span><span className="font-bold text-lg text-ink">{formatCurrency(reportData.totalRevenue)}</span></div>
+                             <div className="pl-4 flex justify-between items-center text-sm"><span className="text-ink-2">{isServiceBusiness ? 'Job Revenue' : 'Vehicle Sales'}</span><span>{formatCurrency(reportData.salesRevenue)}</span></div>
+                             <div className="pl-4 flex justify-between items-center text-sm"><span className="text-ink-2">Other Income</span><span>{formatCurrency(reportData.otherIncome)}</span></div>
                         </div>
-                         <div className="flex justify-between items-center pt-2 border-t border-gray-700"><span className="font-semibold text-white">Cost of Goods Sold</span><span className="text-white">({formatCurrency(reportData.cogs)})</span></div>
-                         <div className="flex justify-between items-center py-2 border-y-2 border-gray-600"><span className="font-bold text-lg text-white">Gross Profit</span><span className="font-bold text-lg text-white">{formatCurrency(reportData.grossProfit)}</span></div>
+                         <div className="flex justify-between items-center pt-2 border-t border-line"><span className="font-semibold text-ink">Cost of Goods Sold</span><span className="text-ink">({formatCurrency(reportData.cogs)})</span></div>
+                         <div className="flex justify-between items-center py-2 border-y-2 border-line-strong"><span className="font-bold text-lg text-ink">Gross Profit</span><span className="font-bold text-lg text-ink">{formatCurrency(reportData.grossProfit)}</span></div>
                          <div className="space-y-2 pt-2">
-                             <div className="flex justify-between items-center"><span className="font-semibold text-white">Total Expenses</span><span className="font-bold text-lg text-white">({formatCurrency(reportData.totalExpenses)})</span></div>
+                             <div className="flex justify-between items-center"><span className="font-semibold text-ink">Total Expenses</span><span className="font-bold text-lg text-ink">({formatCurrency(reportData.totalExpenses)})</span></div>
                               {Object.entries(reportData.expenses).sort(([, a]: [string, number], [, b]: [string, number]) => b - a).map(([category, amount]: [string, number]) => (
-                                 <div key={category} className="pl-4 flex justify-between items-center text-sm"><span className="text-gray-300">{category}</span><span>{formatCurrency(amount)}</span></div>
+                                 <div key={category} className="pl-4 flex justify-between items-center text-sm"><span className="text-ink-2">{category}</span><span>{formatCurrency(amount)}</span></div>
                              ))}
                         </div>
-                         <div className={`flex justify-between items-center p-4 rounded-lg mt-4 ${reportData.netProfit >= 0 ? 'bg-green-900/50' : 'bg-red-900/50'}`}>
-                            <span className="font-bold text-xl text-white">Net Profit</span>
-                            <span className={`font-bold text-xl ${reportData.netProfit >= 0 ? 'text-green-300' : 'text-red-400'}`}>{formatCurrency(reportData.netProfit)}</span>
+                         <div className={`flex justify-between items-center p-4 rounded-card mt-4 ${reportData.netProfit >= 0 ? 'bg-success-soft' : 'bg-danger-soft'}`}>
+                            <span className="font-bold text-xl text-ink">Net Profit</span>
+                            <span className={`font-bold text-xl ${reportData.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(reportData.netProfit)}</span>
                         </div>
                     </div>
                 </div>
 
                 {!isServiceBusiness && (
-                    <div className="bg-gray-800 rounded-lg shadow p-6">
-                        <h3 className="text-xl font-bold text-white mb-4">Stock Movement</h3>
+                    <div className="bg-surface rounded-card border border-line p-6">
+                        <h3 className="text-xl font-bold text-ink mb-4">Stock Movement</h3>
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Opening Stock</span><span>{formatCurrency(reportData.openingStockValue)}</span></div>
-                            <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Add: Purchases</span><span>{formatCurrency(reportData.purchasesDuringPeriod)}</span></div>
-                            <div className="flex justify-between items-center text-sm"><span className="text-gray-300">Less: COGS</span><span>({formatCurrency(reportData.stockCogs)})</span></div>
-                            <div className="flex justify-between items-center pt-2 mt-2 border-t-2 border-gray-600 font-bold"><span className="text-white text-lg">Closing Stock</span><span className="text-brand-400 text-lg">{formatCurrency(reportData.closingStockValue)}</span></div>
+                            <div className="flex justify-between items-center text-sm"><span className="text-ink-2">Opening Stock</span><span>{formatCurrency(reportData.openingStockValue)}</span></div>
+                            <div className="flex justify-between items-center text-sm"><span className="text-ink-2">Add: Purchases</span><span>{formatCurrency(reportData.purchasesDuringPeriod)}</span></div>
+                            <div className="flex justify-between items-center text-sm"><span className="text-ink-2">Less: COGS</span><span>({formatCurrency(reportData.stockCogs)})</span></div>
+                            <div className="flex justify-between items-center pt-2 mt-2 border-t-2 border-line-strong font-bold"><span className="text-ink text-lg">Closing Stock</span><span className="text-accent-text text-lg">{formatCurrency(reportData.closingStockValue)}</span></div>
                         </div>
                     </div>
                 )}

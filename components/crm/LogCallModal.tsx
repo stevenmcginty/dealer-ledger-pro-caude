@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Button, useToast } from '../ui';
-import { XMarkIcon, PhoneIcon } from '../icons';
+import { Button, Input, useToast } from '../ui';
+import { controlFrame, controlInput, cx } from '../ui/cx';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from './SheetParts';
 import { useData } from '../../hooks/useData';
 import { Lead } from '../../types';
 
@@ -11,12 +12,14 @@ interface LogCallModalProps {
 
 type CallOutcome = 'connected' | 'no_answer' | 'voicemail' | 'busy' | 'wrong_number';
 
-const CALL_OUTCOMES: { value: CallOutcome; label: string }[] = [
-    { value: 'connected', label: 'Connected' },
-    { value: 'no_answer', label: 'No Answer' },
-    { value: 'voicemail', label: 'Left Voicemail' },
-    { value: 'busy', label: 'Busy' },
-    { value: 'wrong_number', label: 'Wrong Number' },
+// `label` is written into the saved call entry ("Call: No Answer"), so it stays
+// as it always was; `display` is only what the button says.
+const CALL_OUTCOMES: { value: CallOutcome; label: string; display: string }[] = [
+    { value: 'connected', label: 'Connected', display: 'Connected' },
+    { value: 'no_answer', label: 'No Answer', display: 'No answer' },
+    { value: 'voicemail', label: 'Left Voicemail', display: 'Left voicemail' },
+    { value: 'busy', label: 'Busy', display: 'Busy' },
+    { value: 'wrong_number', label: 'Wrong Number', display: 'Wrong number' },
 ];
 
 const LogCallModal: React.FC<LogCallModalProps> = ({ lead, onClose }) => {
@@ -49,114 +52,91 @@ const LogCallModal: React.FC<LogCallModalProps> = ({ lead, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error logging call:', error);
-            toast.error("Could not log the call. Please try again.");
+            toast.error("Couldn't save the call. Check your signal and try again.");
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="flex flex-col w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg bg-amber-500/20">
-                        <PhoneIcon className="w-5 h-5 text-amber-400" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-white">Log Call</h2>
-                        <p className="text-xs text-gray-400">
-                            {lead.firstName} {lead.lastName}
-                            {lead.phone && ` - ${lead.phone}`}
-                        </p>
-                    </div>
-                </div>
-                <button
-                    onClick={onClose}
-                    className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                    <XMarkIcon className="w-5 h-5" />
-                </button>
-            </div>
-
-            {/* Body */}
-            <form onSubmit={handleSubmit}>
-                <div className="p-4 space-y-4">
-                    {/* Call Outcome */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
-                            Call Outcome
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                            {CALL_OUTCOMES.map(({ value, label }) => (
+        <SheetFrame as="form" onSubmit={handleSubmit}>
+            <SheetHeader
+                title="Log a call"
+                description={<>{lead.firstName} {lead.lastName}{lead.phone && <> · <span className="num">{lead.phone}</span></>}</>}
+                onClose={onClose}
+            />
+            <SheetBody className="space-y-5">
+                <fieldset>
+                    <legend className="mb-2 text-sm font-semibold leading-5 text-ink">How did it go?</legend>
+                    <div role="radiogroup" aria-label="Call outcome" className="grid grid-cols-2 gap-1.5">
+                        {CALL_OUTCOMES.map(({ value, display }) => {
+                            const on = outcome === value;
+                            return (
                                 <button
                                     key={value}
                                     type="button"
+                                    role="radio"
+                                    aria-checked={on}
                                     onClick={() => setOutcome(value)}
-                                    className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                                        outcome === value
-                                            ? 'border-brand-500 bg-brand-500/20 text-white'
-                                            : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-white hover:border-gray-600'
-                                    }`}
+                                    className={cx(
+                                        'flex min-h-[48px] items-center gap-2.5 rounded-control border px-3 text-start text-sm font-semibold transition-colors duration-quick ease-out',
+                                        on
+                                            ? 'border-accent bg-accent-soft text-accent-soft-ink'
+                                            : 'border-line bg-surface text-ink-2 hover:border-line-strong hover:bg-surface-2 hover:text-ink active:bg-surface-3',
+                                    )}
                                 >
-                                    {label}
+                                    <span aria-hidden="true" className={cx('grid h-[18px] w-[18px] flex-none place-items-center rounded-full border-2', on ? 'border-current' : 'border-line-strong')}>
+                                        {on && <span className="h-2 w-2 rounded-full bg-current" />}
+                                    </span>
+                                    {display}
                                 </button>
-                            ))}
-                        </div>
+                            );
+                        })}
                     </div>
+                </fieldset>
 
-                    {/* Duration (only show if connected) */}
-                    {outcome === 'connected' && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                                Duration (minutes)
-                            </label>
-                            <input
-                                type="number"
-                                value={duration}
-                                onChange={(e) => setDuration(e.target.value)}
-                                placeholder="e.g., 5"
-                                min="0"
-                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                            />
-                        </div>
-                    )}
+                {/* Duration only matters when they picked up */}
+                {outcome === 'connected' && (
+                    <Input
+                        id="call-duration"
+                        label="How long"
+                        type="number"
+                        inputMode="numeric"
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                        placeholder="5"
+                        min="0"
+                        trailing={<span className="text-sm">minutes</span>}
+                        className="num"
+                        wrapperClassName="max-w-[220px]"
+                    />
+                )}
 
-                    {/* Notes */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                            Notes (optional)
-                        </label>
+                <div>
+                    <label htmlFor="call-notes" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">
+                        What was said <span className="font-normal text-ink-3">(optional)</span>
+                    </label>
+                    <div className={controlFrame()}>
                         <textarea
+                            id="call-notes"
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            placeholder="What was discussed..."
+                            placeholder="Wants £500 off, has a part-ex…"
                             rows={3}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                            className={cx(controlInput, 'min-h-[96px] resize-none')}
                         />
                     </div>
                 </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="submit"
-                        variant="primary"
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? 'Saving...' : 'Log Call'}
-                    </Button>
-                </div>
-            </form>
-        </div>
+            </SheetBody>
+            <SheetFooter>
+                <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
+                    Cancel
+                </Button>
+                <Button type="submit" variant="primary" loading={isSubmitting}>
+                    Save call
+                </Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

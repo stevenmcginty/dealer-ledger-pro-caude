@@ -34,7 +34,7 @@ const PrintableMiscInvoice = ({ invoice, businessDetails, onClose, isPreview, on
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
-              <div id="printable-misc-invoice" className="p-10 bg-white w-full max-w-4xl mx-auto text-black font-sans text-xs print:shadow-none print:p-0">
+              <div id="printable-misc-invoice" className="p-10 bg-white w-full max-w-4xl mx-auto text-black font-paper text-xs print:shadow-none print:p-0">
                     <div className="flex justify-between items-start mb-4">
                         <h1 className="text-3xl font-bold uppercase text-black">INVOICE</h1>
                         <div className="text-right">

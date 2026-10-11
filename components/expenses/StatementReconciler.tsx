@@ -1,9 +1,11 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { StatementTransaction, Receipt, StatementTransactionUpdate, Vehicle, ExpenseCategory, PaymentMethod, Payment } from '../../types';
-import { BanknotesIcon, CreditCardIcon, CheckCircleIcon, SparklesIcon, EditIcon, UndoIcon, CarIcon, TagIcon, DocumentTextIcon, PlusIcon } from '../icons';
+import { BanknotesIcon, CreditCardIcon, CheckCircleIcon, SparklesIcon, EditIcon, UndoIcon, CarIcon, TagIcon, DocumentTextIcon, PlusIcon, ArrowPathIcon, CheckIcon, ChevronDownIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import Spinner from '../common/Spinner';
+import { Button, IconButton, Tabs, EmptyState, StatusChip, DataTable, THead, TBody, Th, Tr, Td } from '../ui';
+import { cx } from '../ui/cx';
+import { Money, Kbd, RowCheck } from './ledgerUi';
 import * as dataService from '../../services/dataService';
 import * as ai from '../../utils/ai';
 import { useData } from '../../hooks/useData';
@@ -20,10 +22,10 @@ type AiSuggestion = { category: string } | { match: { vehicle?: Vehicle, receipt
 // Income lines have no managed category list, so offer the common income types inline.
 // 'Transfer' is a synthetic entry handled specially (own-account move, excluded from reports).
 const INCOME_COMBO: Pick<ExpenseCategory, 'id' | 'name' | 'color'>[] = [
-    { id: '__inc_car', name: 'Car Sale', color: 'bg-green-600' },
-    { id: '__inc_part', name: 'Part Sale', color: 'bg-emerald-600' },
-    { id: '__inc_rent', name: 'Rent', color: 'bg-teal-600' },
-    { id: '__transfer__', name: 'Transfer', color: 'bg-sky-600' },
+    { id: '__inc_car', name: 'Car Sale', color: 'bg-success' },
+    { id: '__inc_part', name: 'Part Sale', color: 'bg-success' },
+    { id: '__inc_rent', name: 'Rent', color: 'bg-info' },
+    { id: '__transfer__', name: 'Transfer', color: 'bg-info' },
 ];
 
 interface StatementReconcilerProps {
@@ -72,7 +74,11 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
     } = useData();
     const { modal } = useUI();
 
-    const [showReconciled, setShowReconciled] = useState(false);
+    // Which queue is showing: lines to check, the ones we have a suggestion for, or the done ones.
+    const [queue, setQueue] = useState<'check' | 'suggested' | 'done'>('check');
+    const showReconciled = queue === 'done';
+    // Phone/tablet cards: lines opened to show the category, VAT and Match controls.
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [suggestingForTxId, setSuggestingForTxId] = useState<string | null>(null);
     // We keep aiSuggestions only for manual overrides/explicit requests
     const [manualAiSuggestions, setManualAiSuggestions] = useState<Map<string, AiSuggestion | null>>(new Map());
@@ -86,7 +92,8 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
 
     useEffect(() => {
         if (typeof window === 'undefined' || !window.matchMedia) return;
-        const mq = window.matchMedia('(min-width: 768px) and (pointer: fine)');
+        // Shortcuts work where the table shows (1280px and up, with a mouse).
+        const mq = window.matchMedia('(min-width: 1280px) and (pointer: fine)');
         const update = () => setHasFinePointer(mq.matches);
         update();
         mq.addEventListener('change', update);
@@ -111,7 +118,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
         return (
             <span className="inline-flex shrink-0 items-center gap-1">
                 <ReceiptThumb url={first.receiptUrl!} label={`${first.vendor} · ${formatDate(first.date)}`} size={size} />
-                {files.length > 1 && <span className="text-[10px] font-semibold text-gray-400" title={`${files.length} receipts attached`}>+{files.length - 1}</span>}
+                {files.length > 1 && <span className="text-xs font-semibold text-ink-3" title={`${files.length} receipts attached`}>+{files.length - 1}</span>}
             </span>
         );
     };
@@ -198,7 +205,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
     const expenseComboCategories = useMemo(() => {
         const base = expenseCategories.map(c => ({ id: c.id, name: c.name, color: c.color }));
         if (expenseCategories.some(c => c.name === 'Transfer')) return base;
-        return [...base, { id: '__transfer__', name: 'Transfer', color: 'bg-sky-600' }];
+        return [...base, { id: '__transfer__', name: 'Transfer', color: 'bg-info' }];
     }, [expenseCategories]);
 
     const getAutoSuggestion = (tx: StatementTransaction) => {
@@ -329,7 +336,14 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
 
     const unreconciledTxs = transactions.filter(tx => tx.status === 'Unreconciled');
     const reconciledTxs = transactions.filter(tx => tx.status === 'Reconciled');
-    const transactionsToShow = showReconciled ? reconciledTxs : unreconciledTxs;
+    // A line has a suggestion when an AI answer or the instant auto-suggestion can place it.
+    const hasSuggestion = (tx: StatementTransaction): boolean => {
+        const manual = manualAiSuggestions.get(tx.id);
+        if (manual && ('match' in manual || ('category' in manual && manual.category !== 'Error'))) return true;
+        return !!getAutoSuggestion(tx);
+    };
+    const suggestedTxs = unreconciledTxs.filter(hasSuggestion);
+    const transactionsToShow = showReconciled ? reconciledTxs : queue === 'suggested' ? suggestedTxs : unreconciledTxs;
 
     // The effective VAT rate to show on an unreconciled row (expense = predicted, income = user toggle).
     const getRowVatRate = (tx: StatementTransaction): number => {
@@ -417,8 +431,7 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
         },
     });
 
-    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const isChecked = e.target.checked;
+    const handleSelectAll = (isChecked: boolean) => {
         transactionsToShow.forEach(tx => {
             const isCurrentlySelected = selectedTxIds.includes(tx.id);
             if ((isChecked && !isCurrentlySelected) || (!isChecked && isCurrentlySelected)) {
@@ -431,71 +444,23 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
 
     const Icon = type === 'Bank' ? BanknotesIcon : CreditCardIcon;
 
-    const Toggle = () => (
-        <div className="flex items-center space-x-2 rounded-lg bg-gray-700/60 p-1 mb-4">
-            <button onClick={() => setShowReconciled(false)} className={`flex-1 justify-center gap-x-2 inline-flex items-center py-2 text-sm font-semibold rounded-md transition-colors ${!showReconciled ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>To Reconcile <span className="bg-yellow-400/20 text-yellow-300 text-xs font-bold px-2 py-0.5 rounded-full">{unreconciledTxs.length}</span></button>
-            <button onClick={() => setShowReconciled(true)} className={`flex-1 justify-center gap-x-2 inline-flex items-center py-2 text-sm font-semibold rounded-md transition-colors ${showReconciled ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Reconciled <span className="bg-green-400/20 text-green-300 text-xs font-bold px-2 py-0.5 rounded-full">{reconciledTxs.length}</span></button>
-        </div>
-    );
+    const toggleExpanded = (txId: string) => setExpandedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(txId)) next.delete(txId); else next.add(txId);
+        return next;
+    });
 
-    const Kbd = ({ children }: { children: React.ReactNode }) => (
-        <kbd className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-200 font-mono text-[10px] border border-gray-600">{children}</kbd>
-    );
+    type ResolvedSuggestion = { kind: 'transfer' | 'match' | 'category'; icon: React.ReactNode; text: string; subtext?: string; title?: string; handler: () => void };
 
-    const LegendBar = () => (
-        <div className="mb-3 text-[11px] text-gray-400 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 flex flex-wrap gap-x-4 gap-y-1.5 items-center">
-            <span><Kbd>↑</Kbd><Kbd>↓</Kbd> / <Kbd>J</Kbd><Kbd>K</Kbd> move</span>
-            <span><Kbd>Enter</Kbd> accept suggestion</span>
-            <span><Kbd>C</Kbd> categorise</span>
-            <span><Kbd>0</Kbd>/<Kbd>2</Kbd> VAT</span>
-            <span><Kbd>T</Kbd> transfer</span>
-            <span><Kbd>M</Kbd> match</span>
-            <span><Kbd>N</Kbd> add</span>
-            <span><Kbd>U</Kbd> undo</span>
-        </div>
-    );
-
-    const ActionBar = () => (
-        <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="text-xs text-gray-400 flex items-center gap-3">
-                <span>{unreconciledTxs.length} to reconcile</span>
-                {hasFinePointer && (
-                    <button onClick={() => setShowLegend(s => !s)} className="hidden md:inline-flex items-center gap-1 text-gray-400 hover:text-gray-200" title="Keyboard shortcuts">⌨ shortcuts</button>
-                )}
-            </div>
-            {accountId && (
-                <button onClick={() => setShowAddRow(s => !s)} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-gray-700 text-white hover:bg-gray-600">
-                    <PlusIcon className="h-4 w-4" /> Add transaction
-                </button>
-            )}
-        </div>
-    );
-
-    const EmptyState = () => (
-        <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-             {hasActiveFilters ? (
-                 <><Icon className="h-12 w-12 text-gray-500 mx-auto" /><h3 className="mt-4 text-lg font-medium text-white">No Transactions Match Filter</h3><p className="mt-1 text-sm text-gray-400">Try adjusting your search or date range.</p></>
-             ) : showReconciled ? (
-                 <><Icon className="h-12 w-12 text-gray-500 mx-auto" /><h3 className="mt-4 text-lg font-medium text-white">No Reconciled Transactions</h3><p className="mt-1 text-sm text-gray-400">Categorize transactions in {accountName} to see them here.</p></>
-             ) : ( unreconciledTxs.length === 0 && transactions.length > 0 ? (
-                <><CheckCircleIcon className="h-12 w-12 text-green-400 mx-auto" /><h3 className="mt-4 text-lg font-medium text-white">All Caught Up!</h3><p className="mt-1 text-sm text-gray-400">No transactions left to reconcile in {accountName}.</p></>
-                ) : (
-                <><Icon className="h-12 w-12 text-gray-500 mx-auto" /><h3 className="mt-4 text-lg font-medium text-white">No Transactions</h3><p className="mt-1 text-sm text-gray-400">Upload your statement for {accountName} to get started.</p></>
-                )
-             )}
-        </div>
-    );
-
-    // Renders the PURPLE suggestion button automatically
-    const SuggestionCell = ({ tx }: { tx: StatementTransaction }) => {
+    // What the line's suggestion is and what accepting it does. Same priority and the same
+    // commit paths as always: a manual AI answer first, then the instant auto-suggestion.
+    const resolveSuggestion = (tx: StatementTransaction): ResolvedSuggestion | null => {
         if (tx.status === 'Reconciled') return null;
 
-        // Check for Manual AI result first
         const manualAiResult = manualAiSuggestions.get(tx.id);
+        let activeSuggestion: any = null;
 
-        let activeSuggestion = null;
-
-        // Priority 1: Manual AI Result (if user clicked 'Suggest' previously)
+        // Priority 1: Manual AI Result (if user clicked 'Ask AI' previously)
         if (manualAiResult) {
             if ('match' in manualAiResult) activeSuggestion = { type: 'match', data: manualAiResult.match };
             else if ('category' in manualAiResult && manualAiResult.category !== 'Error') activeSuggestion = { type: 'category', category: manualAiResult.category };
@@ -507,97 +472,218 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
             if (auto) activeSuggestion = auto;
         }
 
-        // Render based on what we found
-        if (activeSuggestion) {
-            if (activeSuggestion.type === 'transfer') {
-                return (
-                    <button onClick={() => commitTransfer(tx)} title="Book both sides as a transfer between your own accounts (no VAT, not in the P&L)" className="w-full inline-flex items-center justify-center gap-x-2 text-xs font-semibold text-center px-3 py-2 rounded-md bg-sky-600 text-white hover:bg-sky-500 shadow-sm transition-all border border-sky-500 hover:border-sky-400">
-                        Transfer ↔ {(activeSuggestion as any).accountName}
-                    </button>
-                );
-            }
+        if (!activeSuggestion) return null;
 
-            if (activeSuggestion.type === 'match') {
-                const matchData = activeSuggestion.data as dataService.HeuristicSuggestion;
-                let text = 'Match Found';
-                let subtext = '';
-                let handler = () => {};
-                let icon = <SparklesIcon className="h-4 w-4" />;
-
-                // Income Matches
-                if (matchData.salesDocId) {
-                    const doc = salesDocs.find(d => d.id === matchData.salesDocId);
-                    const car = doc?.carDetails || vehicles.find(v => v.id === doc?.vehicleId);
-                    const name = doc?.customerName?.split(' ')[0] || 'Customer';
-                    const reg = car?.reg || doc?.invoiceNumber;
-
-                    text = `Match: ${reg}`;
-                    subtext = `${name} (${matchData.details || 'Payment'})`;
-
-                    icon = <DocumentTextIcon className="h-4 w-4" />;
-                    handler = () => handleAcceptIncomeSuggestion(tx, matchData);
-                } else if (matchData.jobInvoiceId) {
-                    const inv = jobInvoices.find(j => j.id === matchData.jobInvoiceId);
-                    const name = inv?.customerDetails?.name?.split(' ')[0] || 'Customer';
-                    text = `Match: Job ${inv?.invoiceNumber || ''}`;
-                    subtext = `${name} (${matchData.details || 'Payment'})`;
-                    icon = <DocumentTextIcon className="h-4 w-4" />;
-                    handler = () => handleAcceptIncomeSuggestion(tx, matchData);
-                } else if (matchData.miscInvoiceId) {
-                    const inv = miscInvoices.find(m => m.id === matchData.miscInvoiceId);
-                    const name = inv?.customerName?.split(' ')[0] || 'Customer';
-                    text = `Match: Inv ${inv?.invoiceNumber || ''}`;
-                    subtext = `${name} (${matchData.details || 'Payment'})`;
-                    icon = <DocumentTextIcon className="h-4 w-4" />;
-                    handler = () => handleAcceptIncomeSuggestion(tx, matchData);
-                }
-                // Expense Matches
-                else if (matchData.vehicleId) {
-                    const v = vehicles.find(veh => veh.id === matchData.vehicleId);
-                    text = `Match: ${v?.reg || 'Vehicle'}`;
-                    icon = <CarIcon className="h-4 w-4" />;
-                    handler = () => handleAcceptSuggestion(tx.id, { vehicleId: matchData.vehicleId, receiptIds: matchData.receiptIds });
-                } else if (matchData.receiptIds) {
-                    const rIds = matchData.receiptIds;
-                    text = rIds.length > 1 ? `Match: ${rIds.length} Receipts` : 'Match: Receipt';
-                    handler = () => handleAcceptSuggestion(tx.id, { receiptIds: rIds });
-                }
-
-                return (
-                    <button onClick={handler} className="w-full flex flex-col items-center justify-center text-center px-3 py-1.5 rounded-md bg-purple-600 text-white hover:bg-purple-500 shadow-sm transition-all border border-purple-500 hover:border-purple-400">
-                        <div className="flex items-center gap-1 text-xs font-semibold">
-                            {icon} {text}
-                        </div>
-                        {subtext && <div className="text-[10px] opacity-90">{subtext}</div>}
-                    </button>
-                );
-            }
-
-            if (activeSuggestion.type === 'category') {
-                const cat = (activeSuggestion as any).category;
-                const effectiveVatRate = getEffectiveVatRate(tx, cat);
-                return (
-                    <button onClick={() => handleAcceptCategorySuggestion(tx.id, cat, tx.amount, effectiveVatRate)} className="w-full inline-flex items-center justify-center gap-x-2 text-xs font-semibold text-center px-3 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-500 shadow-sm transition-all border border-purple-500 hover:border-purple-400">
-                        <TagIcon className="h-4 w-4" /> {cat}
-                    </button>
-                );
-            }
+        if (activeSuggestion.type === 'transfer') {
+            return {
+                kind: 'transfer',
+                icon: <ArrowPathIcon />,
+                text: `Transfer ↔ ${activeSuggestion.accountName}`,
+                subtext: 'Own accounts · no VAT',
+                title: 'Book both sides as a transfer between your own accounts (no VAT, not in the P&L)',
+                handler: () => commitTransfer(tx),
+            };
         }
 
-        // Fallback: Show small AI suggest icon if nothing found automatically
+        if (activeSuggestion.type === 'match') {
+            const matchData = activeSuggestion.data as dataService.HeuristicSuggestion;
+            let text = 'Match found';
+            let subtext = '';
+            let handler = () => {};
+            let icon: React.ReactNode = <SparklesIcon />;
+
+            // Income Matches
+            if (matchData.salesDocId) {
+                const doc = salesDocs.find(d => d.id === matchData.salesDocId);
+                const car = doc?.carDetails || vehicles.find(v => v.id === doc?.vehicleId);
+                const name = doc?.customerName?.split(' ')[0] || 'Customer';
+                const reg = car?.reg || doc?.invoiceNumber;
+
+                text = `Match: ${reg}`;
+                subtext = `${name} (${matchData.details || 'Payment'})`;
+
+                icon = <DocumentTextIcon />;
+                handler = () => handleAcceptIncomeSuggestion(tx, matchData);
+            } else if (matchData.jobInvoiceId) {
+                const inv = jobInvoices.find(j => j.id === matchData.jobInvoiceId);
+                const name = inv?.customerDetails?.name?.split(' ')[0] || 'Customer';
+                text = `Match: Job ${inv?.invoiceNumber || ''}`;
+                subtext = `${name} (${matchData.details || 'Payment'})`;
+                icon = <DocumentTextIcon />;
+                handler = () => handleAcceptIncomeSuggestion(tx, matchData);
+            } else if (matchData.miscInvoiceId) {
+                const inv = miscInvoices.find(m => m.id === matchData.miscInvoiceId);
+                const name = inv?.customerName?.split(' ')[0] || 'Customer';
+                text = `Match: Inv ${inv?.invoiceNumber || ''}`;
+                subtext = `${name} (${matchData.details || 'Payment'})`;
+                icon = <DocumentTextIcon />;
+                handler = () => handleAcceptIncomeSuggestion(tx, matchData);
+            }
+            // Expense Matches
+            else if (matchData.vehicleId) {
+                const v = vehicles.find(veh => veh.id === matchData.vehicleId);
+                text = `Match: ${v?.reg || 'Vehicle'}`;
+                icon = <CarIcon />;
+                handler = () => handleAcceptSuggestion(tx.id, { vehicleId: matchData.vehicleId, receiptIds: matchData.receiptIds });
+            } else if (matchData.receiptIds) {
+                const rIds = matchData.receiptIds;
+                text = rIds.length > 1 ? `Match: ${rIds.length} receipts` : 'Match: receipt';
+                handler = () => handleAcceptSuggestion(tx.id, { receiptIds: rIds });
+            }
+
+            return { kind: 'match', icon, text, subtext, handler };
+        }
+
+        if (activeSuggestion.type === 'category') {
+            const cat = activeSuggestion.category as string;
+            const effectiveVatRate = getEffectiveVatRate(tx, cat);
+            return {
+                kind: 'category',
+                icon: <TagIcon />,
+                text: cat,
+                subtext: tx.amount < 0 ? `${effectiveVatRate}% VAT` : undefined,
+                handler: () => handleAcceptCategorySuggestion(tx.id, cat, tx.amount, effectiveVatRate),
+            };
+        }
+        return null;
+    };
+
+    // The suggestion as one tap: what we think it is, then "Accept".
+    const SuggestionButton = ({ s }: { s: ResolvedSuggestion }) => (
+        <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); s.handler(); }}
+            title={s.title}
+            className="flex min-h-[48px] w-full items-center gap-2.5 rounded-control border border-accent bg-accent-soft py-1.5 pe-3 ps-3 text-start text-accent-soft-ink transition-[box-shadow,transform] duration-quick ease-out hover:shadow-[inset_0_0_0_1px_rgb(var(--c-accent))] active:scale-[.98] active:duration-press [&>svg]:h-5 [&>svg]:w-5 [&>svg]:flex-none"
+        >
+            {s.icon}
+            <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-sm font-semibold">{s.text}</span>
+                {s.subtext && <span className="mt-0.5 block truncate text-xs">{s.subtext}</span>}
+            </span>
+            <span className="inline-flex flex-none items-center gap-1 text-sm font-bold">
+                <CheckIcon className="h-4 w-4" /> Accept
+            </span>
+        </button>
+    );
+
+    const AskAiButton = ({ tx }: { tx: StatementTransaction }) => (
+        <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => { e.stopPropagation(); handleAiSmartSuggest(tx); }}
+            loading={suggestingForTxId === tx.id}
+            icon={<SparklesIcon />}
+            title="Ask AI for a suggestion"
+        >
+            Ask AI
+        </Button>
+    );
+
+    const VatToggle = ({ tx, rate }: { tx: StatementTransaction; rate: number }) => (
+        <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); toggleVatRate(tx, rate); }}
+            aria-pressed={rate === 20}
+            aria-label={`VAT ${rate}%. Switch to ${rate === 20 ? '0' : '20'}%`}
+            title="Toggle VAT rate (0% or 20%)"
+            className={cx(
+                'num inline-flex min-h-[40px] min-w-[60px] items-center justify-center rounded-control border px-2 text-sm font-semibold transition-colors duration-quick ease-out [@media(pointer:coarse)]:min-h-[48px]',
+                rate === 20
+                    ? 'border-info bg-info-soft text-info-ink'
+                    : 'border-line-strong bg-surface text-ink-3 hover:bg-surface-2 hover:text-ink',
+            )}
+        >
+            {rate}%
+        </button>
+    );
+
+    const MatchButton = ({ tx }: { tx: StatementTransaction }) => (
+        <Button
+            size="sm"
+            variant="secondary"
+            onClick={(e) => { e.stopPropagation(); onEdit(tx); }}
+            title="Match to a receipt, vehicle or invoice, or upload a receipt"
+        >
+            Match…
+        </Button>
+    );
+
+    const renderCombobox = (tx: StatementTransaction, register: boolean) => {
+        const isIncome = tx.amount > 0;
         return (
-            <button onClick={() => handleAiSmartSuggest(tx)} disabled={suggestingForTxId === tx.id} className="w-full inline-flex items-center justify-center gap-x-2 text-xs font-medium text-center px-3 py-2 rounded-md bg-gray-700 text-purple-400 hover:text-white hover:bg-purple-600/20 border border-transparent hover:border-purple-500/50 transition-all disabled:opacity-50" title="Ask AI for a suggestion">
-                {suggestingForTxId === tx.id ? <Spinner className="h-4 w-4" /> : <><SparklesIcon className="h-4 w-4" /> Ask AI</>}
-            </button>
+            <InlineCategoryCombobox
+                ref={register ? (h => { if (h) comboRefs.current.set(tx.id, h); else comboRefs.current.delete(tx.id); }) : undefined}
+                categories={isIncome ? INCOME_COMBO : expenseComboCategories}
+                recentFirst={isIncome ? [] : recentCategoryNames}
+                onSelect={name => handleRowCategorySelect(tx, name)}
+                onAddCategory={isIncome ? undefined : addExpenseCategory}
+                allowCustom={isIncome}
+                large
+                placeholder={isIncome ? 'Income type…' : 'Category…'}
+            />
         );
     };
 
-    return (
-        <div>
-            <Toggle />
+    const meta = (tx: StatementTransaction) => (
+        <>
+            <span className="num">{formatDate(tx.date, { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+            {tx.method ? <> · {tx.method}</> : null}
+        </>
+    );
 
-            {!showReconciled && <ActionBar />}
-            {!showReconciled && hasFinePointer && showLegend && <LegendBar />}
+    const emptyCopy = (): { title: string; description: string; done?: boolean } => {
+        if (hasActiveFilters) return { title: 'No lines match', description: 'Try other words, or pick a wider period.' };
+        if (showReconciled) return { title: 'Nothing ticked off yet', description: `Lines you tick off in ${accountName} show here.` };
+        if (queue === 'suggested' && unreconciledTxs.length > 0) return { title: 'No suggestions right now', description: 'Lines we can’t place stay in To check. Pick a category or tap Match.' };
+        if (unreconciledTxs.length === 0 && transactions.length > 0) return { title: 'All ticked off', description: `Every line in ${accountName} for this period is done.`, done: true };
+        return { title: 'No lines yet', description: `Upload a statement for ${accountName} to start.` };
+    };
+
+    const empty = emptyCopy();
+
+    return (
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <Tabs
+                    variant="pills"
+                    ariaLabel="Which lines"
+                    activeTab={queue}
+                    onChange={id => setQueue(id as 'check' | 'suggested' | 'done')}
+                    tabs={[
+                        { id: 'check', label: 'To check', count: unreconciledTxs.length },
+                        { id: 'suggested', label: 'Suggested', count: suggestedTxs.length },
+                        { id: 'done', label: 'Done', count: reconciledTxs.length },
+                    ]}
+                />
+                {!showReconciled && (
+                    <div className="flex items-center gap-1">
+                        {hasFinePointer && (
+                            <Button size="sm" variant="ghost" aria-pressed={showLegend} onClick={() => setShowLegend(s => !s)} title="Keyboard shortcuts (?)">
+                                Shortcuts
+                            </Button>
+                        )}
+                        {accountId && (
+                            <Button size="sm" variant="secondary" icon={<PlusIcon />} aria-expanded={showAddRow} onClick={() => setShowAddRow(s => !s)}>
+                                Add transaction
+                            </Button>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {!showReconciled && hasFinePointer && showLegend && (
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-sm text-ink-2">
+                    <span className="inline-flex items-center gap-1"><Kbd>J</Kbd><Kbd>K</Kbd> move</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd> accept</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>C</Kbd> category</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>0</Kbd><Kbd>2</Kbd> VAT</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>T</Kbd> transfer</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>M</Kbd> match</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>N</Kbd> add</span>
+                    <span className="inline-flex items-center gap-1"><Kbd>U</Kbd> undo</span>
+                </div>
+            )}
             {!showReconciled && showAddRow && accountId && (
                 <AddTransactionRow
                     account={{ id: accountId, type, name: accountName }}
@@ -607,205 +693,176 @@ const StatementReconciler = ({ type, accountName, accountId, transactions, recei
                 />
             )}
 
-            {transactionsToShow.length === 0 ? <EmptyState /> : (
+            {transactionsToShow.length === 0 ? (
+                <EmptyState
+                    className="rounded-card border border-line bg-surface"
+                    icon={empty.done ? <CheckCircleIcon className="text-success" /> : <Icon />}
+                    title={empty.title}
+                    description={empty.description}
+                />
+            ) : (
                 <>
-                    <div className="hidden md:block overflow-x-auto bg-gray-800 rounded-lg shadow">
-                        <table className="min-w-full">
-                            <thead className="bg-gray-900/50">
+                    {/* Wide desktop: the ledger as a table. Below 1280 (sidebar open) it would not fit, so cards. */}
+                    <div className="hidden xl:block">
+                        <DataTable ariaLabel={`${accountName} lines`} minWidth={showReconciled ? 720 : 900} className="[&_table]:table-fixed">
+                            <THead>
                                 <tr>
                                     {isSelectionMode && (
-                                        <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pl-6 w-10">
-                                            <input
-                                                type="checkbox"
-                                                className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-400 bg-gray-700 text-brand-600 focus:ring-brand-500"
-                                                checked={isAllSelected}
-                                                onChange={handleSelectAll}
-                                                aria-label="Select all transactions"
-                                            />
-                                        </th>
+                                        <Th className="w-12 px-0" style={{ width: 48 }}>
+                                            <RowCheck checked={isAllSelected} onChange={handleSelectAll} label="Select all lines" />
+                                        </Th>
                                     )}
-                                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-white sm:pl-6 w-24">Date</th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Description</th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white w-20">Type</th>
-                                    <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white w-28">Amount</th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white w-44">Category</th>
-                                    <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white w-24">{showReconciled ? 'VAT' : 'VAT Rate'}</th>
-                                    {!showReconciled && <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-white w-48">Suggestion</th>}
-                                    <th scope="col" className="px-3 py-3.5 text-center text-sm font-semibold text-white w-28">Action</th>
+                                    <Th className="w-[92px]">Date</Th>
+                                    <Th>Description</Th>
+                                    <Th numeric className="w-[104px]">Amount</Th>
+                                    <Th className="w-[148px]">Category</Th>
+                                    <Th numeric className="w-[68px]">VAT</Th>
+                                    {!showReconciled && <Th className="w-[256px]">Suggestion</Th>}
+                                    <Th className={showReconciled ? 'w-[112px]' : 'w-[92px]'}><span className="sr-only">Actions</span></Th>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-700/50">
+                            </THead>
+                            <TBody>
                                 {transactionsToShow.map((tx, rowIndex) => {
                                     const isSelected = selectedTxIds.includes(tx.id);
                                     const isFocused = !showReconciled && rowIndex === focusedIndex;
-                                    const isIncome = tx.amount > 0;
                                     const rowVatRate = getRowVatRate(tx);
+                                    const s = !showReconciled ? resolveSuggestion(tx) : null;
 
                                     return (
-                                        <tr
+                                        <Tr
                                             key={tx.id}
-                                            ref={el => registerRow(rowIndex, el)}
+                                            selected={isSelected}
+                                            aria-current={isFocused ? 'true' : undefined}
                                             onClick={() => { if (keyboardEnabled) setFocusedIndex(rowIndex); }}
-                                            className={`${isSelected ? 'bg-brand-900/50' : 'even:bg-gray-800/50'} ${isFocused ? 'ring-2 ring-inset ring-brand-500' : ''}`}
+                                            className={cx(isFocused && '[&>td:first-child]:shadow-[inset_3px_0_0_rgb(var(--c-focus))] [&>td]:bg-surface-2')}
                                         >
                                             {isSelectionMode && (
-                                                <td className="relative py-4 pl-4 pr-3 sm:pl-6">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-400 bg-gray-700 text-brand-600 focus:ring-brand-500"
-                                                        checked={isSelected}
-                                                        onChange={(e) => onSelectionChange(tx.id, e.target.checked)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        aria-label={`Select transaction ${tx.description}`}
-                                                    />
-                                                </td>
+                                                <Td className="px-0">
+                                                    <RowCheck checked={isSelected} onChange={checked => onSelectionChange(tx.id, checked)} label={`Select ${tx.description}`} />
+                                                </Td>
                                             )}
-                                            <td className="whitespace-nowrap py-4 pl-4 pr-3 text-xs text-white sm:pl-6">{formatDate(tx.date, { day: '2-digit', month: 'short', year: '2-digit' })}</td>
-                                            <td className="px-3 py-2 text-sm text-gray-300 max-w-xs">
-                                                <div className="flex min-w-0 items-center gap-2.5">
+                                            <Td className="num text-ink-2">
+                                                {/* Registered for the keyboard queue: keeps the focused line in view. */}
+                                                <span ref={el => registerRow(rowIndex, el)}>{formatDate(tx.date, { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+                                            </Td>
+                                            <Td className="max-w-0 whitespace-normal py-2">
+                                                <span className="flex min-w-0 items-center gap-2.5">
                                                     {renderReceiptThumbs(tx.id, 'sm')}
-                                                    <span className="truncate" title={tx.description}>{tx.description}</span>
-                                                </div>
-                                            </td>
-                                            <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-400">{tx.method || '-'}</td>
-                                            <td className={`whitespace-nowrap px-3 py-4 text-sm text-right font-bold ${tx.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(tx.amount)}</td>
-
-                                            <td className="px-3 py-2 align-middle">
+                                                    <span className="min-w-0 leading-tight">
+                                                        <span className="block truncate font-semibold" title={tx.description}>{tx.description}</span>
+                                                        {tx.method && <span className="mt-0.5 block truncate text-xs text-ink-3">{tx.method}</span>}
+                                                    </span>
+                                                </span>
+                                            </Td>
+                                            <Td numeric className="font-semibold"><Money amount={tx.amount} signed tone /></Td>
+                                            <Td className="py-1.5">
                                                 {showReconciled ? (
-                                                    <span className="text-xs text-gray-300 truncate block max-w-[160px]">{tx.category}</span>
-                                                ) : (
-                                                    <InlineCategoryCombobox
-                                                        ref={h => { if (h) comboRefs.current.set(tx.id, h); else comboRefs.current.delete(tx.id); }}
-                                                        categories={isIncome ? INCOME_COMBO : expenseComboCategories}
-                                                        recentFirst={isIncome ? [] : recentCategoryNames}
-                                                        onSelect={name => handleRowCategorySelect(tx, name)}
-                                                        onAddCategory={isIncome ? undefined : addExpenseCategory}
-                                                        allowCustom={isIncome}
-                                                        large
-                                                    />
-                                                )}
-                                            </td>
-
-                                            <td className="whitespace-nowrap px-3 py-4 text-xs text-right text-gray-400 align-middle">
-                                                {!showReconciled ? (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); toggleVatRate(tx, rowVatRate); }}
-                                                        className={`inline-flex items-center justify-center px-2 py-1 rounded text-xs font-bold w-12 transition-colors ${
-                                                            rowVatRate === 20
-                                                            ? 'bg-blue-900 text-blue-300 ring-1 ring-blue-700 hover:bg-blue-800'
-                                                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white'
-                                                        }`}
-                                                        title="Toggle VAT rate (0% or 20%)"
-                                                    >
-                                                        {rowVatRate}%
-                                                    </button>
-                                                ) : (
-                                                    tx.vatAmount > 0 ? formatCurrency(tx.vatAmount) : '-'
-                                                )}
-                                            </td>
-
+                                                    <span className="block max-w-[170px] truncate text-ink-2">{tx.category}</span>
+                                                ) : renderCombobox(tx, true)}
+                                            </Td>
+                                            <Td numeric className="py-1.5">
+                                                {showReconciled
+                                                    ? (tx.vatAmount > 0 ? <Money amount={tx.vatAmount} className="text-ink-2" /> : <span className="text-ink-3">—</span>)
+                                                    : <VatToggle tx={tx} rate={rowVatRate} />}
+                                            </Td>
                                             {!showReconciled && (
-                                                <td className="px-3 py-4 text-center align-middle">
-                                                    <SuggestionCell tx={tx} />
-                                                </td>
+                                                <Td className="py-1.5">
+                                                    {s ? <SuggestionButton s={s} /> : <AskAiButton tx={tx} />}
+                                                </Td>
                                             )}
-
-                                            <td className="whitespace-nowrap px-3 py-4 text-center align-middle">
-                                                 {tx.status === 'Reconciled' ? (
-                                                    <div className="flex items-center justify-center gap-x-2">
-                                                        <button onClick={() => onEdit(tx)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Edit Transaction"><EditIcon className="h-4 w-4" /></button>
-                                                        <button onClick={() => onUndo(tx)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Undo Reconciliation"><UndoIcon className="h-4 w-4" /></button>
-                                                    </div>
+                                            <Td className="pe-2">
+                                                {tx.status === 'Reconciled' ? (
+                                                    <span className="flex items-center justify-end gap-1">
+                                                        <IconButton size="sm" label="Edit line" icon={<EditIcon />} onClick={() => onEdit(tx)} className="[&_svg]:h-5 [&_svg]:w-5" />
+                                                        <IconButton size="sm" label="Undo tick-off" icon={<UndoIcon />} onClick={() => onUndo(tx)} className="[&_svg]:h-5 [&_svg]:w-5" />
+                                                    </span>
                                                 ) : (
-                                                    <button onClick={(e) => { e.stopPropagation(); onEdit(tx); }} className="inline-flex items-center justify-center px-3 py-1.5 border border-gray-600 text-xs font-medium rounded text-gray-200 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 shadow-sm" title="Match to a receipt, vehicle or invoice, or upload a receipt">
-                                                        Match / Advanced
-                                                    </button>
+                                                    <span className="flex justify-end"><MatchButton tx={tx} /></span>
                                                 )}
-                                            </td>
-                                        </tr>
+                                            </Td>
+                                        </Tr>
                                     );
                                 })}
-                            </tbody>
-                        </table>
+                            </TBody>
+                        </DataTable>
                     </div>
 
-                    <div className="md:hidden space-y-3">
+                    {/* Phone: one card per line. Tablet and small desktop: two columns. */}
+                    <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 xl:hidden" aria-label={`${accountName} lines`}>
                         {transactionsToShow.map(tx => {
-                             const isIncome = tx.amount > 0;
-                             const isSelected = selectedTxIds.includes(tx.id);
-                             const rowVatRate = getRowVatRate(tx);
+                            const isSelected = selectedTxIds.includes(tx.id);
+                            const rowVatRate = getRowVatRate(tx);
+                            const s = resolveSuggestion(tx);
+                            const open = !s || expandedIds.has(tx.id);
 
-                             return (
-                             <div key={tx.id} className={`relative rounded-lg shadow-md transition-all ${isSelected ? 'bg-brand-900/50 ring-2 ring-brand-500' : 'bg-gray-800'}`}>
-                                 {isSelectionMode && (
-                                     <div className="absolute top-3 left-3 z-10">
-                                        <input
-                                            type="checkbox"
-                                            className="h-5 w-5 rounded border-gray-400 bg-gray-900 text-brand-600 focus:ring-brand-500"
-                                            checked={isSelected}
-                                            onChange={(e) => onSelectionChange(tx.id, e.target.checked)}
-                                            aria-label={`Select transaction ${tx.description}`}
-                                        />
-                                    </div>
-                                )}
-                                <div className={`p-4 space-y-2 ${isSelectionMode ? 'pl-10' : ''}`}>
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-1 min-w-0 pr-2 flex items-start gap-3">
-                                            {renderReceiptThumbs(tx.id, 'md')}
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-xs text-gray-400">{formatDate(tx.date)}</p>
-                                                <p className="text-sm text-white break-words mt-0.5">{tx.description}</p>
+                            return (
+                                <li
+                                    key={tx.id}
+                                    className={cx(
+                                        'flex min-w-0 flex-col rounded-card border transition-colors duration-quick ease-out',
+                                        isSelected ? 'border-accent bg-accent-soft' : 'border-line bg-surface',
+                                    )}
+                                >
+                                    <div className="flex gap-1 pe-3.5 ps-1 pt-1">
+                                        {isSelectionMode && (
+                                            <RowCheck checked={isSelected} onChange={checked => onSelectionChange(tx.id, checked)} label={`Select ${tx.description}`} />
+                                        )}
+                                        <div className={cx('min-w-0 flex-1 pb-1 pt-2.5', !isSelectionMode && 'ps-2.5')}>
+                                            <div className="flex items-baseline justify-between gap-3">
+                                                <p className="min-w-0 truncate text-sm text-ink-3">{meta(tx)}</p>
+                                                <Money amount={tx.amount} signed tone className="text-lg font-semibold leading-tight text-ink" />
+                                            </div>
+                                            <div className="mt-1 flex items-start gap-3">
+                                                <p className="min-w-0 flex-1 break-words text-base font-semibold leading-snug text-ink">{tx.description}</p>
+                                                {renderReceiptThumbs(tx.id, 'md')}
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <p className={`text-lg font-bold whitespace-nowrap ${isIncome ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(tx.amount)}</p>
-                                            {!showReconciled ? (
+                                    </div>
+
+                                    {tx.status === 'Unreconciled' ? (
+                                        <div className="mt-auto space-y-2 px-3.5 pb-3.5 pt-2">
+                                            {s ? <SuggestionButton s={s} /> : <p className="text-sm text-ink-3">No suggestion. What was it?</p>}
+                                            {open && (
+                                                <>
+                                                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                                                        {renderCombobox(tx, false)}
+                                                        <VatToggle tx={tx} rate={rowVatRate} />
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <MatchButton tx={tx} />
+                                                        {!s && <AskAiButton tx={tx} />}
+                                                    </div>
+                                                </>
+                                            )}
+                                            {s && (
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); toggleVatRate(tx, rowVatRate); }}
-                                                    className={`mt-1 inline-flex items-center justify-center px-2 py-0.5 rounded text-xs font-bold w-10 ${rowVatRate === 20 ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-400'}`}
+                                                    type="button"
+                                                    aria-expanded={open}
+                                                    onClick={() => toggleExpanded(tx.id)}
+                                                    className="inline-flex min-h-[48px] items-center gap-1 rounded-control text-sm font-semibold text-accent-text"
                                                 >
-                                                    {rowVatRate}%
+                                                    {open ? 'Fewer options' : 'Something else…'}
+                                                    <ChevronDownIcon className={cx('h-4 w-4 transition-transform duration-quick ease-out', open && 'rotate-180')} />
                                                 </button>
-                                            ) : (
-                                                tx.vatAmount > 0 && <p className="text-xs text-gray-500">VAT: {formatCurrency(tx.vatAmount)}</p>
                                             )}
                                         </div>
-                                    </div>
-                                    <div className="flex justify-between items-center pt-2 border-t border-gray-700/50">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tx.status === 'Reconciled' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}`}>{tx.status}</span>
-                                            <span className="text-xs text-gray-400">{tx.category}</span>
-                                        </div>
-                                    </div>
-
-                                    {tx.status === 'Unreconciled' && (
-                                        <div className="mt-3 space-y-2">
-                                            <SuggestionCell tx={tx} />
-                                            <InlineCategoryCombobox
-                                                categories={isIncome ? INCOME_COMBO : expenseComboCategories}
-                                                recentFirst={isIncome ? [] : recentCategoryNames}
-                                                onSelect={name => handleRowCategorySelect(tx, name)}
-                                                onAddCategory={isIncome ? undefined : addExpenseCategory}
-                                                allowCustom={isIncome}
-                                                large
-                                                placeholder="Categorise inline…"
-                                            />
-                                            <button onClick={(e) => { e.stopPropagation(); onEdit(tx); }} className="w-full flex items-center justify-center px-3 py-2 border border-gray-600 text-xs font-medium rounded text-gray-200 bg-gray-700 hover:bg-gray-600 shadow-sm">
-                                                Match / Advanced
-                                            </button>
+                                    ) : (
+                                        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-3.5 py-2">
+                                            <StatusChip status="sold">Done</StatusChip>
+                                            <span className="min-w-0 flex-1 truncate text-sm text-ink-2">
+                                                {tx.category}
+                                                {tx.vatAmount > 0 && <> · VAT <Money amount={tx.vatAmount} /></>}
+                                            </span>
+                                            <span className="flex items-center">
+                                                <Button size="sm" variant="ghost" icon={<EditIcon />} onClick={() => onEdit(tx)}>Edit</Button>
+                                                <Button size="sm" variant="ghost" icon={<UndoIcon />} onClick={() => onUndo(tx)}>Undo</Button>
+                                            </span>
                                         </div>
                                     )}
-
-                                    {tx.status === 'Reconciled' && (
-                                        <div className="flex justify-end gap-3 mt-2">
-                                            <button onClick={() => onEdit(tx)} className="text-gray-400 hover:text-white text-xs flex items-center gap-1"><EditIcon className="h-4 w-4" /> Edit</button>
-                                            <button onClick={() => onUndo(tx)} className="text-gray-400 hover:text-white text-xs flex items-center gap-1"><UndoIcon className="h-4 w-4" /> Undo</button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )})}
-                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
                 </>
             )}
         </div>

@@ -227,7 +227,11 @@ export interface Conversation {
     heldWords?: { text: string; at: number } | null;
     createdAt: number;
     updatedAt: number;
-    unread: number;
+    unread: number;                      // legacy shared count; the app reads inboundCount/readBy
+    /** Inbound customer messages ever received here. Only goes up; never reset. */
+    inboundCount?: number;
+    /** Per person (auth uid): the inboundCount they had seen when they last opened the thread. */
+    readBy?: Record<string, { count: number; at: number }>;
     emailThreadId?: string;              // Gmail threadId for replies
     emailSubject?: string;
     /**

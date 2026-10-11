@@ -1,120 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { BusinessDetails, DirectorSalary } from '../../types';
 import { useData } from '../../hooks/useData';
-import { useUI } from '../../hooks/useUI';
-import { db, auth } from '../../services/firebase';
-import * as dataService from '../../services/dataService';
 import UkDateInput from '../common/UkDateInput';
-import SessionInfoCard from './SessionInfoCard';
-import AppUpdateCard from './AppUpdateCard';
-import FirebaseHealthCheckCard from './FirebaseHealthCheckCard';
-import MotSweepCard from './MotSweepCard';
-import Spinner from '../common/Spinner';
-import { CONFIG } from '../../config';
+import Select from '../common/Select';
+import { Button, Checkbox, Field, Input, Segmented } from '../ui';
+import { CheckIcon, PlusIcon } from '../icons';
 import { parseYearEnd, daysInMonth } from '../../utils/accounting/yearEnd';
 import { readDirectorSalaries } from '../../utils/accounting/directorSalary';
+import { cx } from '../ui/cx';
+import { Panel, PanelSection, TextArea } from './SettingsKit';
 
 const YEAR_END_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const AdminProvisioning = () => {
-    const [newUserUid, setNewUserUid] = useState('');
-    const [newUserEmail, setNewUserEmail] = useState('');
-    const [status, setStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
-    const [message, setMessage] = useState('');
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const adminUser = auth.currentUser;
-        if (!adminUser || !newUserUid.trim() || !newUserEmail.trim()) {
-            setStatus('error');
-            setMessage('Admin user not found or fields are empty.');
-            return;
-        }
-
-        setStatus('running');
-        setMessage('Provisioning new account...');
-
-        try {
-            await dataService.provisionAccountForNewUser(adminUser, newUserUid.trim(), newUserEmail.trim());
-            setStatus('success');
-            setMessage(`Successfully created a new business account for ${newUserEmail}.`);
-            setNewUserUid('');
-            setNewUserEmail('');
-        } catch (error: any) {
-            console.error("Provisioning failed:", error);
-            setStatus('error');
-            setMessage(`Failed to provision account: ${error.message}`);
-        } finally {
-            setTimeout(() => setStatus('idle'), 5000);
-        }
-    };
-
-    return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h2 className="text-lg font-semibold text-white">Admin: User Provisioning</h2>
-            <p className="text-sm text-gray-400 mt-1">Create a new, separate business account for a user you have already created in Firebase Authentication.</p>
-            
-            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-                <div>
-                    <label htmlFor="newUserUid" className="block text-sm font-medium text-gray-300">New User's UID</label>
-                    <input 
-                        id="newUserUid" 
-                        type="text" 
-                        value={newUserUid}
-                        onChange={e => setNewUserUid(e.target.value)}
-                        placeholder="Paste UID from Firebase Console"
-                        required 
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white font-mono" />
-                </div>
-                <div>
-                    <label htmlFor="newUserEmail" className="block text-sm font-medium text-gray-300">New User's Email</label>
-                    <input 
-                        id="newUserEmail" 
-                        type="email"
-                        value={newUserEmail}
-                        onChange={e => setNewUserEmail(e.target.value)}
-                        placeholder="user@example.com"
-                        required 
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
-                </div>
-                <div className="flex justify-end">
-                    <button type="submit" disabled={status === 'running'} className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {status === 'running' ? <Spinner /> : 'Provision New Business'}
-                    </button>
-                </div>
-            </form>
-
-            {status !== 'idle' && (
-                <div className={`mt-4 p-3 text-sm rounded-md ${status === 'success' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>
-                    {message}
-                </div>
-            )}
-        </div>
-    );
-};
-
+const OPERATING_MODES: { value: BusinessDetails['operatingMode']; label: string }[] = [
+    { value: 'dealership', label: 'Dealership' },
+    { value: 'paint_shop', label: 'Paint shop' },
+    { value: 'mechanic', label: 'Mechanic' },
+];
 
 const BusinessDetailsPage = () => {
-    const { businessDetails, updateBusinessDetails, companyId } = useData();
-    const { openModal } = useUI();
+    const { businessDetails, updateBusinessDetails, theme } = useData();
     const [formData, setFormData] = useState<BusinessDetails>({
         name: '', address: '', phone: '', email: '', vatNumber: '', companyNumber: '', bankDetails: '', invoiceTerms: '', theme: 'blue', vatStartDate: '', operatingMode: 'dealership', isVatRegistered: false, mtdVatExportEnabled: false
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saveSuccess, setSaveSuccess] = useState(false);
-
-    const currentUserEmail = auth.currentUser?.email;
-    const adminEmail = CONFIG.ADMIN_EMAIL;
-    const isAdmin = currentUserEmail === adminEmail;
-
-    const themes = [
-        { name: 'Blue', value: 'blue', color: 'bg-blue-500' },
-        { name: 'Green', value: 'green', color: 'bg-green-500' },
-        { name: 'Red', value: 'red', color: 'bg-red-500' },
-        { name: 'Purple', value: 'purple', color: 'bg-purple-500' },
-        { name: 'Pink', value: 'pink', color: 'bg-pink-500' },
-        { name: 'Yellow', value: 'yellow', color: 'bg-yellow-500' },
-    ];
 
     useEffect(() => {
         if (businessDetails) {
@@ -150,202 +60,179 @@ const BusinessDetailsPage = () => {
         setSaveSuccess(false);
         const { directorSalaries: _draft, ...rest } = formData;
         const cleanSalaries = readDirectorSalaries(salaries);
-        await updateBusinessDetails({ ...rest, ...(cleanSalaries.length ? { directorSalaries: cleanSalaries } : {}), yearEnd: formData.yearEnd || yearEndValue(yearEnd.month, yearEnd.day) });
+        // The brand colour is set in Settings > Appearance and saved on its own, so
+        // save the live value, never the form's copy (which may be stale).
+        await updateBusinessDetails({ ...rest, ...(cleanSalaries.length ? { directorSalaries: cleanSalaries } : {}), yearEnd: formData.yearEnd || yearEndValue(yearEnd.month, yearEnd.day), theme });
         setIsSaving(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
     };
 
+    const vatOff = !formData.isVatRegistered;
+
     return (
-        <div className="space-y-8 max-w-3xl mx-auto">
-            <form onSubmit={handleSubmit} className="bg-gray-800 p-6 rounded-lg shadow-lg space-y-6">
-                 <h2 className="text-lg font-semibold text-white">Business Details & Appearance</h2>
-                 <p className="text-sm text-gray-400 -mt-4">This information will appear on your sales invoices.</p>
-                 
-                 <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-300">Operating Mode</label>
-                    <div className="mt-2 flex items-center space-x-2 rounded-lg bg-gray-700 p-1">
-                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, operatingMode: 'dealership' }))} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${formData.operatingMode === 'dealership' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Dealership</button>
-                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, operatingMode: 'paint_shop' }))} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${formData.operatingMode === 'paint_shop' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Paint Shop</button>
-                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, operatingMode: 'mechanic' }))} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${formData.operatingMode === 'mechanic' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Mechanic</button>
-                    </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2">
-                        <label htmlFor="name" className="block text-sm font-medium text-gray-300">Company Name</label>
-                        <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                     <div className="md:col-span-2">
-                        <label htmlFor="address" className="block text-sm font-medium text-gray-300">Address</label>
-                        <textarea name="address" id="address" value={formData.address} onChange={handleChange} rows={4} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                     <div>
-                        <label htmlFor="phone" className="block text-sm font-medium text-gray-300">Phone Number</label>
-                        <input type="text" name="phone" id="phone" value={formData.phone || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                     <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-gray-300">Email Address</label>
-                        <input type="email" name="email" id="email" value={formData.email || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                    <div className="md:col-span-2 relative flex items-start">
-                        <div className="flex h-6 items-center">
-                            <input 
-                                id="isVatRegistered" 
-                                name="isVatRegistered" 
-                                type="checkbox" 
-                                checked={formData.isVatRegistered || false} 
-                                onChange={(e) => setFormData(prev => ({ ...prev, isVatRegistered: e.target.checked }))} 
-                                className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600"
+        <form onSubmit={handleSubmit}>
+            <Panel ariaLabel="Business details">
+                {/* ---- Company ---- */}
+                <PanelSection title="Company" description="Shown at the top of your sales invoices.">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                            <p id="operatingModeLabel" className="mb-1.5 text-sm font-semibold leading-5 text-ink">What the business does</p>
+                            <Segmented
+                                ariaLabel="What the business does"
+                                full
+                                options={OPERATING_MODES}
+                                value={formData.operatingMode}
+                                onChange={value => setFormData(prev => ({ ...prev, operatingMode: value }))}
                             />
                         </div>
-                        <div className="ml-3 text-sm leading-6">
-                            <label htmlFor="isVatRegistered" className="font-medium text-gray-300">Business is VAT Registered</label>
-                            <p className="text-gray-400">Enable this to activate VAT calculations across the app.</p>
-                        </div>
+                        <Input wrapperClassName="sm:col-span-2" label="Company name" type="text" name="name" id="name" value={formData.name} onChange={handleChange} autoComplete="organization" />
+                        <Field className="sm:col-span-2" label="Address" htmlFor="address">
+                            <TextArea name="address" id="address" value={formData.address} onChange={handleChange} rows={4} />
+                        </Field>
+                        <Input label="Phone number" type="tel" name="phone" id="phone" value={formData.phone || ''} onChange={handleChange} className="num" />
+                        <Input label="Email address" type="email" name="email" id="email" value={formData.email || ''} onChange={handleChange} />
+                        <Input label="Company number" type="text" name="companyNumber" id="companyNumber" value={formData.companyNumber || ''} onChange={handleChange} className="num" />
                     </div>
-                      <div className={formData.isVatRegistered ? '' : 'opacity-50'}>
-                        <label htmlFor="vatNumber" className="block text-sm font-medium text-gray-300">VAT Number</label>
-                        <input type="text" name="vatNumber" id="vatNumber" value={formData.vatNumber || ''} onChange={handleChange} disabled={!formData.isVatRegistered} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white disabled:bg-gray-700/50 disabled:cursor-not-allowed" />
+                </PanelSection>
+
+                {/* ---- VAT ---- */}
+                <PanelSection title="VAT" description="Turn this on and the app works out VAT on sales, expenses and the VAT return.">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+                        <Checkbox
+                            className="sm:col-span-2"
+                            id="isVatRegistered"
+                            name="isVatRegistered"
+                            label="The business is VAT registered"
+                            checked={formData.isVatRegistered || false}
+                            onChange={(e) => setFormData(prev => ({ ...prev, isVatRegistered: e.target.checked }))}
+                        />
+                        <Input label="VAT number" type="text" name="vatNumber" id="vatNumber" value={formData.vatNumber || ''} onChange={handleChange} disabled={vatOff} className="num" />
+                        <Field
+                            className={cx(vatOff && 'opacity-60')}
+                            label="VAT quarter start"
+                            htmlFor="vatStartDate"
+                            hint="The first day of any of your VAT quarters. For Feb–Apr quarters, pick a 1 February."
+                        >
+                            <UkDateInput id="vatStartDate" name="vatStartDate" value={formData.vatStartDate || ''} onChange={handleChange} />
+                        </Field>
+                        <Checkbox
+                            className="sm:col-span-2"
+                            id="mtdVatExportEnabled"
+                            name="mtdVatExportEnabled"
+                            label="MTD bridging export"
+                            description="Adds an MTD spreadsheet export to the VAT page, for bridging software."
+                            checked={formData.mtdVatExportEnabled || false}
+                            onChange={(e) => setFormData(prev => ({ ...prev, mtdVatExportEnabled: e.target.checked }))}
+                            disabled={vatOff}
+                        />
                     </div>
-                     <div>
-                        <label htmlFor="companyNumber" className="block text-sm font-medium text-gray-300">Company Number</label>
-                        <input type="text" name="companyNumber" id="companyNumber" value={formData.companyNumber || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                    <div>
-                        <label htmlFor="yearEndDay" className="block text-sm font-medium text-gray-300">Accounting year end</label>
-                        <div className="mt-1 flex gap-2">
-                            <select id="yearEndDay" aria-label="Year end day" value={yearEnd.day} onChange={e => setYearEnd(yearEnd.month, Number(e.target.value))} className="block w-20 bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white">
-                                {Array.from({ length: daysInMonth(2024, yearEnd.month) }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                            <select id="yearEndMonth" aria-label="Year end month" value={yearEnd.month} onChange={e => setYearEnd(Number(e.target.value), yearEnd.day)} className="block flex-1 bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white">
-                                {YEAR_END_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-                            </select>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">The last day of your company's financial year. Used for the accountant's year reports and the corporation tax estimate.</p>
-                    </div>
-                    <div>
-                        <label htmlFor="associatedCompanies" className="block text-sm font-medium text-gray-300">Associated companies</label>
-                        <input type="number" min={0} step={1} id="associatedCompanies" value={formData.associatedCompanies ?? 0} onChange={e => setFormData(prev => ({ ...prev, associatedCompanies: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                        <p className="text-xs text-gray-400 mt-1">Other companies under the same control. Leave at 0 if there are none.</p>
-                    </div>
-                    <div className="md:col-span-2">
-                        <p className="block text-sm font-medium text-gray-300">Director's salary (from payroll)</p>
-                        <p className="text-xs text-gray-400 mt-1">The gross monthly salary the accountant runs through the payroll. The accountant's P&L then counts it as wages each month, and shows what the business still owes the director if it was not all paid. Leave empty if there is no director's salary.</p>
-                        <div className="mt-2 space-y-3">
-                            {salaries.map((s, i) => (
-                                <div key={i} className="grid grid-cols-1 gap-2 rounded-md bg-gray-700/40 p-3 sm:grid-cols-[minmax(0,1fr)_8rem] lg:grid-cols-[minmax(0,1fr)_8rem_auto_auto_auto] lg:items-end">
-                                    <div>
-                                        <label htmlFor={`salaryName${i}`} className="block text-xs text-gray-400">Director's name</label>
-                                        <input id={`salaryName${i}`} type="text" value={s.name} onChange={e => setSalary(i, { name: e.target.value })} placeholder="As on the bank lines" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                                    </div>
-                                    <div>
-                                        <label htmlFor={`salaryGross${i}`} className="block text-xs text-gray-400">Gross / month (£)</label>
-                                        <input id={`salaryGross${i}`} type="number" min={0} step="0.01" value={s.monthlyGross || ''} onChange={e => setSalary(i, { monthlyGross: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white text-right tabular-nums" />
-                                    </div>
-                                    <div>
-                                        <label htmlFor={`salaryFrom${i}`} className="block text-xs text-gray-400">From</label>
-                                        <UkDateInput id={`salaryFrom${i}`} value={s.from || ''} onChange={e => setSalary(i, { from: e.target.value })} className="mt-1" />
-                                    </div>
-                                    <div>
-                                        <label htmlFor={`salaryTo${i}`} className="block text-xs text-gray-400">To (optional)</label>
-                                        <UkDateInput id={`salaryTo${i}`} value={s.to || ''} onChange={e => setSalary(i, { to: e.target.value })} className="mt-1" />
-                                    </div>
-                                    <button type="button" onClick={() => removeSalary(i)} className="justify-self-start rounded-md px-3 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white">Remove</button>
+                </PanelSection>
+
+                {/* ---- Year end and payroll ---- */}
+                <PanelSection title="Year end and payroll" description="Used by the accountant’s year reports and the corporation tax estimate.">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
+                        <Field label="Accounting year end" htmlFor="yearEndDay" hint="The last day of the company’s financial year.">
+                            {() => (
+                                <div className="flex gap-2">
+                                    <Select id="yearEndDay" aria-label="Year end day" value={yearEnd.day} onChange={e => setYearEnd(yearEnd.month, Number(e.target.value))} wrapperClassName="w-24 flex-none" className="num">
+                                        {Array.from({ length: daysInMonth(2024, yearEnd.month) }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
+                                    </Select>
+                                    <Select id="yearEndMonth" aria-label="Year end month" value={yearEnd.month} onChange={e => setYearEnd(Number(e.target.value), yearEnd.day)} wrapperClassName="flex-1">
+                                        {YEAR_END_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                                    </Select>
                                 </div>
-                            ))}
-                            <button type="button" onClick={addSalary} className="rounded-md bg-gray-700 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600 hover:text-white">+ Add director's salary</button>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-1">Salary paid from the bank is a wages line with the director's surname in the description. Save Changes to keep it.</p>
-                    </div>
-                    <div className={`md:col-span-2 ${formData.isVatRegistered ? '' : 'opacity-50'}`}>
-                        <label htmlFor="vatStartDate" className="block text-sm font-medium text-gray-300">VAT Quarter Start Date</label>
-                        <UkDateInput id="vatStartDate" name="vatStartDate" value={formData.vatStartDate || ''} onChange={handleChange} className="mt-1" />
-                        <p className="text-xs text-gray-400 mt-1">Set the first day of any of your VAT quarters to get correct date ranges in the VAT Summary. E.g., if your quarters are Feb-Apr, May-Jul etc., set this to a Feb 1st.</p>
-                    </div>
-                    <div className={`md:col-span-2 relative flex items-start ${formData.isVatRegistered ? '' : 'opacity-50'}`}>
-                        <div className="flex h-6 items-center">
-                            <input
-                                id="mtdVatExportEnabled"
-                                name="mtdVatExportEnabled"
-                                type="checkbox"
-                                checked={formData.mtdVatExportEnabled || false}
-                                onChange={(e) => setFormData(prev => ({ ...prev, mtdVatExportEnabled: e.target.checked }))}
-                                disabled={!formData.isVatRegistered}
-                                className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600 disabled:cursor-not-allowed"
-                            />
-                        </div>
-                        <div className="ml-3 text-sm leading-6">
-                            <label htmlFor="mtdVatExportEnabled" className="font-medium text-gray-300">Enable MTD VAT bridging export</label>
-                            <p className="text-gray-400">Adds an MTD spreadsheet export to the VAT page for bridging software submissions.</p>
-                        </div>
-                    </div>
-                    <div className="md:col-span-2">
-                        <label htmlFor="bankDetails" className="block text-sm font-medium text-gray-300">Bank Details</label>
-                        <textarea name="bankDetails" id="bankDetails" value={formData.bankDetails || ''} onChange={handleChange} rows={3} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                    <div className="md:col-span-2">
-                        <label htmlFor="invoiceTerms" className="block text-sm font-medium text-gray-300">Invoice Terms & Conditions</label>
-                        <textarea name="invoiceTerms" id="invoiceTerms" value={formData.invoiceTerms || ''} onChange={handleChange} rows={4} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                    </div>
-                    <div className="md:col-span-2">
-                        <label htmlFor="termsPage" className="block text-sm font-medium text-gray-300">Terms page (printed as page 2 of invoices, proformas and deposit slips)</label>
-                        <textarea name="termsPage" id="termsPage" value={formData.termsPage || ''} onChange={handleChange} rows={8} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 text-white" />
-                        <p className="text-xs text-gray-400 mt-1">Page 2 is added only when you tick "Add terms page" on the invoice.</p>
-                    </div>
-                    <div className="md:col-span-2 relative flex items-start">
-                        <div className="flex h-6 items-center">
-                            <input
-                                id="cancellationForm"
-                                name="cancellationForm"
-                                type="checkbox"
-                                checked={formData.cancellationForm || false}
-                                onChange={handleChange}
-                                className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600"
-                            />
-                        </div>
-                        <div className="ml-3 text-sm leading-6">
-                            <label htmlFor="cancellationForm" className="font-medium text-gray-300">Add a cancellation form to page 2 (distance and doorstep sales)</label>
-                        </div>
-                    </div>
-                 </div>
+                            )}
+                        </Field>
+                        <Input
+                            label="Associated companies"
+                            hint="Other companies under the same control. 0 if none."
+                            type="number"
+                            min={0}
+                            step={1}
+                            id="associatedCompanies"
+                            inputMode="numeric"
+                            value={formData.associatedCompanies ?? 0}
+                            onChange={e => setFormData(prev => ({ ...prev, associatedCompanies: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                            className="num"
+                        />
 
-                 <div>
-                    <label className="block text-sm font-medium text-gray-300">Theme Colour</label>
-                    <fieldset className="mt-2">
-                        <legend className="sr-only">Choose a theme color</legend>
-                        <div className="flex items-center space-x-3">
-                           {themes.map(theme => (
-                                <label key={theme.value} className="-m-0.5 relative p-0.5 rounded-full flex items-center justify-center cursor-pointer focus:outline-none">
-                                    <input type="radio" name="theme" value={theme.value} checked={formData.theme === theme.value} onChange={e => setFormData(prev => ({ ...prev, theme: e.target.value }))} className="sr-only" />
-                                    <span aria-hidden="true" className={`h-8 w-8 ${theme.color} border border-black border-opacity-10 rounded-full`}></span>
-                                    {formData.theme === theme.value && <span className="absolute inset-0 rounded-full ring-2 ring-offset-2 ring-offset-gray-800 ring-white" aria-hidden="true"></span>}
-                                </label>
-                           ))}
+                        <div className="sm:col-span-2">
+                            <p className="text-sm font-semibold leading-5 text-ink">Director’s salary <span className="font-normal text-ink-3">(from payroll)</span></p>
+                            <p className="mt-1 max-w-[62ch] text-sm leading-5 text-ink-3">
+                                The gross monthly salary the accountant runs through payroll. The P&amp;L counts it as wages each month and shows what the business still owes the director. Leave empty if there isn’t one.
+                            </p>
+                            {salaries.length > 0 && (
+                                <ul className="m-0 mt-3 list-none space-y-3 p-0">
+                                    {salaries.map((s, i) => (
+                                        <li key={i} className="rounded-control border border-line bg-bg p-3">
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_10rem] lg:grid-cols-[minmax(0,1fr)_9rem_10.5rem_10.5rem]">
+                                                <Input id={`salaryName${i}`} label="Director’s name" type="text" value={s.name} onChange={e => setSalary(i, { name: e.target.value })} placeholder="As on the bank lines" />
+                                                <Input
+                                                    id={`salaryGross${i}`}
+                                                    label="Gross a month"
+                                                    type="number"
+                                                    min={0}
+                                                    step="0.01"
+                                                    inputMode="decimal"
+                                                    affix="£"
+                                                    value={s.monthlyGross || ''}
+                                                    onChange={e => setSalary(i, { monthlyGross: Math.max(0, Number(e.target.value) || 0) })}
+                                                    className="num text-end"
+                                                />
+                                                <Field label="From" htmlFor={`salaryFrom${i}`}>
+                                                    <UkDateInput id={`salaryFrom${i}`} value={s.from || ''} onChange={e => setSalary(i, { from: e.target.value })} />
+                                                </Field>
+                                                <Field label="To" optional htmlFor={`salaryTo${i}`}>
+                                                    <UkDateInput id={`salaryTo${i}`} value={s.to || ''} onChange={e => setSalary(i, { to: e.target.value })} />
+                                                </Field>
+                                            </div>
+                                            <div className="mt-2 flex justify-end">
+                                                <Button type="button" variant="ghost" size="sm" onClick={() => removeSalary(i)}>Remove</Button>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <Button type="button" variant="secondary" size="sm" icon={<PlusIcon />} onClick={addSalary} className="mt-3">Add director’s salary</Button>
+                            <p className="mt-2 text-sm leading-5 text-ink-3">Salary paid from the bank is a wages line with the director’s surname in it.</p>
                         </div>
-                    </fieldset>
+                    </div>
+                </PanelSection>
+
+                {/* ---- Invoices ---- */}
+                <PanelSection title="Invoices" description="Printed on every sales invoice, proforma and deposit slip.">
+                    <div className="space-y-5">
+                        <Field label="Bank details" htmlFor="bankDetails">
+                            <TextArea name="bankDetails" id="bankDetails" value={formData.bankDetails || ''} onChange={handleChange} rows={3} />
+                        </Field>
+                        <Field label="Invoice terms and conditions" htmlFor="invoiceTerms">
+                            <TextArea name="invoiceTerms" id="invoiceTerms" value={formData.invoiceTerms || ''} onChange={handleChange} rows={4} />
+                        </Field>
+                        <Field label="Terms page" htmlFor="termsPage" hint="Printed as page 2 only when you tick “Add terms page” on the invoice.">
+                            <TextArea name="termsPage" id="termsPage" value={formData.termsPage || ''} onChange={handleChange} rows={8} />
+                        </Field>
+                        <Checkbox
+                            id="cancellationForm"
+                            name="cancellationForm"
+                            label="Add a cancellation form to page 2"
+                            description="For distance and doorstep sales."
+                            checked={formData.cancellationForm || false}
+                            onChange={handleChange}
+                        />
+                    </div>
+                </PanelSection>
+
+                <div className="flex flex-col-reverse items-stretch gap-3 p-4 sm:flex-row sm:items-center sm:justify-end sm:p-5">
+                    {saveSuccess && (
+                        <p role="status" className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-success">
+                            <CheckIcon className="h-5 w-5" /> Saved
+                        </p>
+                    )}
+                    <Button type="submit" loading={isSaving} className="w-full sm:w-auto">Save business details</Button>
                 </div>
-                <div className="flex justify-end pt-4">
-                    <button type="submit" disabled={isSaving} className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {isSaving ? 'Saving...' : (saveSuccess ? 'Saved!' : 'Save Changes')}
-                    </button>
-                </div>
-            </form>
-
-            {isAdmin && <AdminProvisioning />}
-
-            <MotSweepCard />
-
-            <AppUpdateCard />
-
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-lg font-semibold text-white">Firebase Diagnostics</h2>
-                <div className="mt-4 space-y-6">
-                    <SessionInfoCard />
-                    <FirebaseHealthCheckCard />
-                </div>
-            </div>
-        </div>
+            </Panel>
+        </form>
     );
 };
 

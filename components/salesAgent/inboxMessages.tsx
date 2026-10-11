@@ -4,9 +4,9 @@ import {
     EnvelopeIcon,
     ExclamationTriangleIcon,
     PaperClipIcon,
+    SparklesIcon,
     TrashIcon,
     UsersIcon,
-    WhatsAppIcon,
 } from '../icons';
 import {
     AgentMessage,
@@ -19,9 +19,17 @@ import {
 } from '../../services/salesAgentService';
 import { isLongEmailBody, looksLikeEmailBody, looksLikeForwardedEmail, splitQuotedEmail } from '../../utils/emailQuote';
 import { friendlyWhatsAppMediaName } from '../../utils/whatsappMedia';
+import { WhatsAppMark } from './inbox/parts';
+
+/*
+ * One message in an open thread. Chat reads like a messaging app: the
+ * customer on the start side in --bubble-in, the desk on the end side in
+ * --bubble-out, a small "You" / Dave label over the desk's bubbles, times in
+ * mono. Email arrives as a flat card on a hairline.
+ */
 
 const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
-    <svg viewBox="0 0 12 12" className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+    <svg viewBox="0 0 12 12" className={`h-3 w-3 flex-shrink-0 transition-transform duration-quick ease-out ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
         <path d="M2 4.5 6 8.5 10 4.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
@@ -29,22 +37,22 @@ const Chevron: React.FC<{ open: boolean }> = ({ open }) => (
 const ChannelChip: React.FC<{ channel: Channel }> = ({ channel }) => {
     if (channel === 'whatsapp') {
         return (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-400">
-                <WhatsAppIcon className="h-3 w-3" />
+            <span className="inline-flex items-center gap-1 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-2">
+                <WhatsAppMark brand className="h-3.5 w-3.5" />
                 WhatsApp
             </span>
         );
     }
     if (channel === 'email') {
         return (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-sky-400">
-                <EnvelopeIcon className="h-3 w-3" />
+            <span className="inline-flex items-center gap-1 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-2">
+                <EnvelopeIcon className="h-3.5 w-3.5" />
                 Email
             </span>
         );
     }
     return (
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-300">SMS</span>
+        <span className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-2">SMS</span>
     );
 };
 
@@ -61,20 +69,20 @@ const DeliveryTicks: React.FC<{ message: AgentMessage }> = ({ message }) => {
     if (!state) return null;
     if (state === 'pending') {
         return (
-            <svg viewBox="0 0 16 16" className="inline h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.4" aria-label="Sending" role="img">
+            <svg viewBox="0 0 16 16" className="inline h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" aria-label="Sending" role="img">
                 <circle cx="8" cy="8" r="5.6" />
                 <path d="M8 5v3.2l2.1 1.3" strokeLinecap="round" />
             </svg>
         );
     }
     if (state === 'failed') {
-        return <ExclamationTriangleIcon className="inline h-3 w-3 text-red-300" aria-label="Not delivered" />;
+        return <ExclamationTriangleIcon className="inline h-3.5 w-3.5 text-danger" title="Not delivered" />;
     }
     const label = state === 'read' ? 'Read' : state === 'delivered' ? 'Delivered' : 'Sent';
     return (
         <svg
             viewBox="0 0 18 12"
-            className={`inline h-3 w-[18px] ${state === 'read' ? 'text-sky-400' : ''}`}
+            className={`inline h-3 w-[18px] ${state === 'read' ? 'text-info' : ''}`}
             fill="none"
             stroke="currentColor"
             strokeWidth="1.7"
@@ -89,6 +97,9 @@ const DeliveryTicks: React.FC<{ message: AgentMessage }> = ({ message }) => {
     );
 };
 
+/** A quiet centred note in the thread (bounce, instruction, unsupported). */
+const noteClass = 'max-w-[90%] rounded-control bg-surface-2 px-3 py-2 text-center text-sm leading-5 text-ink-2';
+
 const BounceNote: React.FC<{
     bounce: string;
     at: number;
@@ -99,20 +110,25 @@ const BounceNote: React.FC<{
     const [open, setOpen] = useState(false);
     return (
         <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-            <div className="max-w-[90%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-gray-400">
-                <span className="font-medium text-red-300/90">Email bounced</span>
-                <span className="mx-1.5 opacity-50">·</span>
-                <span className="opacity-70">{formatAgentTime(at)}</span>
+            <div className={noteClass}>
+                <span className="font-semibold text-danger">Email bounced</span>
+                <span className="mx-1.5 text-ink-3" aria-hidden>·</span>
+                <span className="text-xs tabular-nums text-ink-3">{formatAgentTime(at)}</span>
                 <div className="mt-0.5">
-                    <button type="button" onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-white">
+                    <button
+                        type="button"
+                        onClick={() => setOpen(o => !o)}
+                        aria-expanded={open}
+                        className="inline-flex min-h-[32px] items-center gap-1 text-xs font-semibold text-ink-2 hover:text-ink"
+                    >
                         Bounce details
                         <Chevron open={open} />
                     </button>
-                    {open && <p className="mt-1 whitespace-pre-wrap break-words text-left font-mono text-[10.5px] leading-relaxed text-gray-400">{bounce}</p>}
+                    {open && <p className="mt-1 whitespace-pre-wrap break-words text-start font-mono text-xs leading-relaxed text-ink-3">{bounce}</p>}
                 </div>
             </div>
             <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
-                <TrashIcon className="h-3.5 w-3.5" />
+                <TrashIcon className="h-4 w-4" />
             </IconBtn>
         </div>
     );
@@ -122,12 +138,12 @@ const QuotedBlock: React.FC<{ quoted: string; from?: string; defaultOpen?: boole
     const [open, setOpen] = useState(!!defaultOpen);
     const long = isLongEmailBody(quoted);
     return (
-        <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/25">
+        <div className="mt-2 overflow-hidden rounded-control border border-line">
             <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
                 aria-expanded={open}
-                className="flex min-h-[44px] w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11.5px] font-medium text-gray-300 hover:text-white sm:min-h-[36px]"
+                className="flex min-h-[44px] w-full items-center gap-2 px-3 text-start text-xs font-semibold text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink focus-visible:[outline-offset:-3px] sm:min-h-[36px]"
             >
                 <Chevron open={open} />
                 <span className="min-w-0 flex-1 truncate">
@@ -135,7 +151,7 @@ const QuotedBlock: React.FC<{ quoted: string; from?: string; defaultOpen?: boole
                 </span>
             </button>
             {open && (
-                <p className={`whitespace-pre-wrap break-words border-t border-white/10 px-2.5 py-2 text-[12px] leading-relaxed text-gray-300 ${long ? 'max-h-64 overflow-y-auto' : ''}`}>
+                <p className={`whitespace-pre-wrap break-words border-t border-line px-3 py-2 text-sm leading-relaxed text-ink-2 ${long ? 'max-h-64 overflow-y-auto' : ''}`}>
                     {quoted}
                 </p>
             )}
@@ -156,7 +172,7 @@ const LongBody: React.FC<{ text: string; className?: string }> = ({ text, classN
             <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
-                className="mt-1 text-[11px] font-medium text-sky-300 hover:text-white"
+                className="mt-1 min-h-[32px] text-sm font-semibold text-accent-text hover:underline"
             >
                 {open ? 'Show less' : 'Show more'}
             </button>
@@ -172,9 +188,9 @@ const ImageMedia: React.FC<{ url: string; label: string }> = ({ url, label }) =>
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="mb-1 inline-flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2 text-sm"
+                className="mb-1 inline-flex min-h-[44px] items-center gap-2 rounded-control bg-surface px-3 text-sm font-semibold text-ink"
             >
-                <CameraIcon className="h-4 w-4" />
+                <CameraIcon className="h-5 w-5" />
                 {label}: tap to open
             </a>
         );
@@ -186,7 +202,7 @@ const ImageMedia: React.FC<{ url: string; label: string }> = ({ url, label }) =>
                 alt={label}
                 referrerPolicy="no-referrer"
                 onError={() => setFailed(true)}
-                className="max-h-64 max-w-full rounded-lg object-cover"
+                className="max-h-64 max-w-full rounded-control object-cover"
             />
         </a>
     );
@@ -200,16 +216,16 @@ const MediaBlock: React.FC<{ message: AgentMessage }> = ({ message }) => {
         <>
             {media.kind === 'image' && <ImageMedia url={media.url} label={label} />}
             {media.kind === 'video' && (
-                <video src={media.url} controls className="mb-1 max-h-64 w-full rounded-lg bg-black" />
+                <video src={media.url} controls className="mb-1 max-h-64 w-full rounded-control bg-scrim" />
             )}
             {media.kind === 'document' && (
                 <a
                     href={media.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mb-1 inline-flex items-center gap-2 rounded-lg bg-black/25 px-3 py-2 text-sm underline"
+                    className="mb-1 inline-flex min-h-[44px] items-center gap-2 rounded-control bg-surface px-3 text-sm font-semibold text-ink underline underline-offset-2"
                 >
-                    <PaperClipIcon className="h-4 w-4" />
+                    <PaperClipIcon className="h-5 w-5" />
                     {label}
                 </a>
             )}
@@ -229,12 +245,24 @@ const IconBtn: React.FC<{
         onClick={onClick}
         aria-label={label}
         title={label}
-        className={`h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-opacity sm:h-7 sm:w-7 ${
-            danger ? 'text-gray-400 hover:text-red-400' : 'text-gray-400 hover:text-amber-300'
-        } ${selected ? 'flex opacity-100' : 'hidden pointer-events-none opacity-0 sm:flex sm:group-hover:pointer-events-auto sm:group-hover:opacity-100'}`}
+        className={`h-12 w-12 flex-shrink-0 place-items-center rounded-control text-ink-3 transition-[opacity,color,background-color] duration-quick ease-out hover:bg-surface-2 sm:h-8 sm:w-8 ${
+            danger ? 'hover:text-danger' : 'hover:text-ink'
+        } ${selected ? 'grid opacity-100' : 'hidden pointer-events-none opacity-0 sm:grid sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:focus-visible:pointer-events-auto sm:focus-visible:opacity-100'}`}
     >
         {children}
     </button>
+);
+
+/** "You" or Dave over the desk's own messages. */
+const SenderLabel: React.FC<{ fromOwner: boolean; agentName: string }> = ({ fromOwner, agentName }) => (
+    fromOwner ? (
+        <p className="mb-1 text-end text-xs font-semibold text-ink-2">You</p>
+    ) : (
+        <p className="mb-1 flex items-center justify-end gap-1 text-xs font-semibold text-accent-text">
+            <SparklesIcon className="h-3.5 w-3.5" />
+            {agentName}
+        </p>
+    )
 );
 
 interface ThreadMessageProps {
@@ -265,51 +293,43 @@ export const EmailCard: React.FC<ThreadMessageProps> = ({
 
     return (
         <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`} onClick={onToggleSelect}>
-            <div className="flex w-full max-w-[40rem] items-start gap-1">
+            <div className={`flex w-full max-w-[40rem] items-start gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
                 <article
-                    className={`min-w-0 flex-1 overflow-hidden rounded-xl border shadow-sm ${
-                        mine
-                            ? fromOwner
-                                ? 'border-emerald-400/15 bg-emerald-950/50'
-                                : 'border-sky-400/15 bg-sky-950/40'
-                            : 'border-white/[0.08] bg-gray-900'
+                    className={`min-w-0 flex-1 overflow-hidden rounded-card border ${
+                        mine ? 'border-line bg-bubble-out' : 'border-line bg-surface'
                     }`}
                 >
-                    <header className="flex items-start gap-3 border-b border-white/[0.06] px-3.5 py-2.5">
+                    <header className="flex items-start gap-3 border-b border-line px-4 py-2.5">
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                                 <ChannelChip channel="email" />
-                                <span className="truncate text-[13px] font-semibold text-white">{who}</span>
+                                <span className={`truncate text-sm font-semibold ${mine && !fromOwner ? 'text-accent-text' : 'text-ink'}`}>{who}</span>
                             </div>
                             {mine && deskEmail && (
-                                <p className="mt-0.5 truncate text-[11px] text-gray-400">From {deskEmail}</p>
+                                <p className="mt-0.5 truncate text-xs text-ink-3">From {deskEmail}</p>
                             )}
                             {showAddress && (
-                                <p className="mt-0.5 truncate text-[11px] text-gray-400">{message.fromAddress}</p>
+                                <p className="mt-0.5 truncate text-xs text-ink-3">{message.fromAddress}</p>
                             )}
                             {message.subject && (
-                                <p className="mt-1 truncate text-[12.5px] font-medium text-gray-200">{message.subject}</p>
+                                <p className="mt-1 truncate text-sm font-semibold text-ink">{message.subject}</p>
                             )}
                         </div>
-                        <time className="flex-shrink-0 pt-0.5 text-[11px] text-gray-400">
+                        <time className="flex flex-shrink-0 items-center gap-1 pt-0.5 font-mono text-xs text-ink-3">
                             {formatAgentTime(message.createdAt)}
-                            {mine && (
-                                <span className="ml-1 inline-flex align-middle">
-                                    <DeliveryTicks message={message} />
-                                </span>
-                            )}
+                            {mine && <DeliveryTicks message={message} />}
                         </time>
                     </header>
-                    <div className="px-3.5 py-3">
+                    <div className="px-4 py-3">
                         <MediaBlock message={message} />
                         {emptyNew ? (
-                            <p className="text-[12px] italic text-gray-400">Replied — no new text.</p>
+                            <p className="text-sm italic text-ink-3">Replied — no new text.</p>
                         ) : split.body && split.body !== '[photo]' && split.body !== '[video]' && split.body !== '[document]' ? (
-                            <LongBody text={split.body} className="text-[14.5px] leading-relaxed text-gray-100" />
+                            <LongBody text={split.body} className="text-base leading-relaxed text-ink" />
                         ) : null}
                         {split.quoted && <QuotedBlock quoted={split.quoted} from={split.quotedFrom} />}
                         {mine && message.delivery === 'failed' && (
-                            <p className="mt-2 text-[11px] font-medium text-red-300">
+                            <p className="mt-2 text-sm font-semibold text-danger">
                                 Not delivered{message.deliveryError ? ` — ${message.deliveryError}` : ''}
                             </p>
                         )}
@@ -317,11 +337,11 @@ export const EmailCard: React.FC<ThreadMessageProps> = ({
                 </article>
                 {onDetach && (
                     <IconBtn label="This email is someone else" onClick={e => { e.stopPropagation(); onDetach(); }} selected={selected}>
-                        <UsersIcon className="h-3.5 w-3.5" />
+                        <UsersIcon className="h-4 w-4" />
                     </IconBtn>
                 )}
                 <IconBtn label="Delete this email" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
-                    <TrashIcon className="h-3.5 w-3.5" />
+                    <TrashIcon className="h-4 w-4" />
                 </IconBtn>
             </div>
         </div>
@@ -343,41 +363,35 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
     const quoted = forwarded ? split.quoted : null;
     const emailShaped = !forwarded && looksLikeEmailBody(body);
 
-    const bubble = !mine
-        ? 'rounded-tl-md bg-gray-800 text-gray-100 ring-1 ring-inset ring-white/[0.04]'
-        : fromOwner
-            ? 'rounded-tr-md bg-emerald-800/80 text-white'
-            : 'rounded-tr-md bg-teal-900/90 text-teal-50 ring-1 ring-inset ring-teal-400/10';
+    const bubble = mine
+        ? 'rounded-ee-[4px] bg-bubble-out text-ink'
+        : 'rounded-es-[4px] bg-bubble-in text-ink';
 
     return (
         <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`} onClick={onToggleSelect}>
-            <div className="max-w-[78%] sm:max-w-[70%]">
-                {mine && (
-                    <p className={`mb-0.5 text-right text-[11px] font-medium ${fromOwner ? 'text-emerald-300' : 'text-amber-300'}`}>
-                        {fromOwner ? 'You' : agentName}
-                    </p>
-                )}
+            <div className="max-w-[84%] sm:max-w-[70%]">
+                {mine && <SenderLabel fromOwner={fromOwner} agentName={agentName} />}
                 <div className={`flex items-end gap-1 ${mine ? 'flex-row-reverse' : ''}`}>
-                    <div className={`relative rounded-2xl px-3.5 py-2 shadow-sm ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
+                    <div className={`relative rounded-[16px] px-3 py-2.5 ${bubble} ${message.customerReaction ? 'mb-3' : ''}`}>
                         <MediaBlock message={message} />
                         {body && body !== '[photo]' && body !== '[video]' && body !== '[document]' && (
                             emailShaped
-                                ? <LongBody text={body} className="text-[14.5px] leading-relaxed" />
-                                : <p className="whitespace-pre-wrap break-words text-[14.5px] leading-relaxed">{body}</p>
+                                ? <LongBody text={body} className="text-base leading-[1.4]" />
+                                : <p className="whitespace-pre-wrap break-words text-base leading-[1.4]">{body}</p>
                         )}
                         {quoted && <QuotedBlock quoted={quoted} from={split.quotedFrom} defaultOpen={!body.trim()} />}
-                        <p className={`mt-1 flex items-center gap-1 text-[10px] ${mine ? 'justify-end text-white/60' : 'text-gray-400'}`}>
+                        <p className={`mt-1 flex items-center gap-1 font-mono text-xs text-ink-3 ${mine ? 'justify-end' : ''}`}>
                             {formatAgentTime(message.createdAt)}
                             {mine && <DeliveryTicks message={message} />}
                         </p>
                         {mine && message.delivery === 'failed' && (
-                            <p className="mt-0.5 text-right text-[10px] font-medium text-red-300">
+                            <p className="mt-0.5 text-end text-sm font-semibold text-danger">
                                 Not delivered{message.deliveryError ? ` — ${message.deliveryError}` : ''}
                             </p>
                         )}
                         {message.customerReaction && (
                             <span
-                                className={`absolute -bottom-3 ${mine ? 'left-2' : 'right-2'} rounded-full bg-gray-800 px-1.5 py-0.5 text-[15px] leading-none shadow ring-2 ring-gray-950`}
+                                className={`absolute -bottom-3 ${mine ? 'start-2' : 'end-2'} rounded-full bg-surface px-1.5 py-0.5 text-base leading-none ring-2 ring-bg`}
                                 title={`Reacted ${message.customerReaction}`}
                             >
                                 {message.customerReaction}
@@ -385,7 +399,7 @@ export const ChatBubble: React.FC<ThreadMessageProps> = ({
                         )}
                     </div>
                     <IconBtn label="Delete this message" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
-                        <TrashIcon className="h-3.5 w-3.5" />
+                        <TrashIcon className="h-4 w-4" />
                     </IconBtn>
                 </div>
             </div>
@@ -413,11 +427,11 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
     if (instruction) {
         return (
             <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-gray-400">
-                    <span className="font-medium text-gray-200">You told {agentName}:</span> {instruction}
+                <p className={noteClass}>
+                    <span className="font-semibold text-ink">You told {agentName}:</span> {instruction}
                 </p>
                 <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
-                    <TrashIcon className="h-3.5 w-3.5" />
+                    <TrashIcon className="h-4 w-4" />
                 </IconBtn>
             </div>
         );
@@ -426,11 +440,11 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
     if ((message.text || '').trim() === '[unsupported]' && !message.media) {
         return (
             <div className="group flex items-center justify-center gap-2" onClick={onToggleSelect}>
-                <p className="max-w-[85%] rounded-lg bg-black/25 px-3 py-1.5 text-center text-[11px] leading-relaxed text-gray-400">
+                <p className={noteClass}>
                     WhatsApp did not pass this one. Often a photo album or a view-once.
                 </p>
                 <IconBtn label="Delete this note" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
-                    <TrashIcon className="h-3.5 w-3.5" />
+                    <TrashIcon className="h-4 w-4" />
                 </IconBtn>
             </div>
         );
@@ -441,16 +455,16 @@ export const ThreadMessage: React.FC<ThreadMessageProps> = (props) => {
         return (
             <div className="group flex justify-start" onClick={onToggleSelect}>
                 <div className="flex items-end gap-1">
-                    <div className="rounded-2xl rounded-tl-md bg-gray-800 px-2.5 py-1.5 shadow-sm">
+                    <div className="rounded-[16px] rounded-es-[4px] bg-bubble-in px-3 py-2">
                         {emoji ? (
-                            <p className="text-[22px] leading-none" aria-label={`Reacted ${emoji}`}>{emoji}</p>
+                            <p className="text-[1.375rem] leading-none" aria-label={`Reacted ${emoji}`}>{emoji}</p>
                         ) : (
-                            <p className="text-[13px] text-gray-100">Reacted</p>
+                            <p className="text-sm text-ink">Reacted</p>
                         )}
-                        <p className="mt-1 text-[10px] text-gray-400">{formatAgentTime(message.createdAt)}</p>
+                        <p className="mt-1 font-mono text-xs text-ink-3">{formatAgentTime(message.createdAt)}</p>
                     </div>
                     <IconBtn label="Delete this reaction" danger onClick={e => { e.stopPropagation(); onDelete(); }} selected={selected}>
-                        <TrashIcon className="h-3.5 w-3.5" />
+                        <TrashIcon className="h-4 w-4" />
                     </IconBtn>
                 </div>
             </div>

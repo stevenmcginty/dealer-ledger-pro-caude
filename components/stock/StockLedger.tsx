@@ -1,11 +1,19 @@
 
 import React, { useState, useMemo } from 'react';
 import { Vehicle, SalesDocument } from '../../types';
-import { CarIcon, PlusIcon, DocumentTextIcon, EllipsisVerticalIcon, ChevronUpDownIcon } from '../icons';
+import { CarIcon, FunnelIcon, ArrowDownTrayIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import Spinner from '../common/Spinner';
 import { useUI } from '../../hooks/useUI';
 import { useWindowSize } from '../../hooks/useWindowSize';
+import Modal from '../common/Modal';
+import UkDateInput from '../common/UkDateInput';
+import {
+    Button, EmptyState, Field, List, ListRow, Plate, Search, Segmented, SkeletonList, StatusChip,
+    DataTable, THead, TBody, Th, Tr, Td,
+} from '../ui';
+import type { SortDir } from '../ui';
+import { cx } from '../ui/cx';
+import { PageHead, VehicleStatusChip, motWarning, wholePounds } from './parts';
 
 interface StockLedgerProps {
     vehicles: Vehicle[];
@@ -14,145 +22,95 @@ interface StockLedgerProps {
 
 type EnrichedVehicle = Vehicle & { daysInStock: number; saleDate: string | null };
 
-interface VehicleRowProps {
-    vehicle: EnrichedVehicle;
-    showSoldDate: boolean;
-    onActionsClick: () => void;
-}
-const VehicleRow: React.FC<VehicleRowProps> = ({ vehicle, showSoldDate, onActionsClick }) => {
-    const isSor = vehicle.ownershipType === 'Sale or Return';
-    const statusColorClasses = {
-        'Available': 'bg-green-800 text-green-200',
-        'Deposit Paid': 'bg-cyan-800 text-cyan-200',
-        'Sold': 'bg-red-800 text-red-200',
-    };
-    const status = vehicle.status || 'Available';
+type SortKey = 'reg' | 'make' | 'daysInStock' | 'saleDate';
+type SortDirection = 'ascending' | 'descending';
 
-    const v5cLinks = vehicle.v5cUrls || (vehicle.v5cUrl ? [vehicle.v5cUrl] : []);
-    
+/** Cars that have sat this long get their day count in amber. */
+const SLOW_DAYS = 60;
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`;
+
+/** Chips on the end of a stock row: MOT warning first (it needs doing), then sale state, then SOR. */
+const RowChips: React.FC<{ vehicle: EnrichedVehicle }> = ({ vehicle }) => {
+    const mot = motWarning(vehicle);
     return (
-        <tr className="group even:bg-gray-800/50 hover:bg-gray-700/50">
-            <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm sm:pl-6">
-                <div className="flex items-center gap-2">
-                    <div>
-                        <div className="font-medium text-white">{vehicle.reg || 'N/A'}</div>
-                        <div className="text-gray-400 text-xs mt-1">Stock #{vehicle.stockNumber}</div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        {v5cLinks.map((url, index) => (
-                             <a key={index} href={url} target="_blank" rel="noopener noreferrer" title={`View V5C page ${index + 1}`} className="p-1 rounded-full hover:bg-gray-600">
-                                <DocumentTextIcon className="h-4 w-4 text-blue-300" />
-                             </a>
-                        ))}
-                    </div>
-                </div>
-            </td>
-             <td className="px-3 py-4 text-sm text-gray-300">
-                 <div>
-                    <div className="font-medium text-white">{vehicle.make} {vehicle.model}</div>
-                    <div className="text-gray-400 text-xs mt-1 font-mono uppercase">{vehicle.vin || 'N/A'}</div>
-                </div>
-            </td>
-            <td className="px-3 py-4 text-sm text-gray-300">
-                <div>
-                    <div className="font-medium text-white">{vehicle.year}</div>
-                    <div className="text-gray-400 text-xs mt-1">{vehicle.mileage ? vehicle.mileage.toLocaleString() + ' miles' : 'N/A'}</div>
-                    {vehicle.firstRegistered && <div className="text-gray-400 text-xs mt-1">1st Reg: {formatDate(vehicle.firstRegistered)}</div>}
-                </div>
-            </td>
-            <td className="px-3 py-4 text-sm text-gray-300">
-                 <div>
-                    <div className="font-medium text-white">{formatCurrency(vehicle.purchasePrice)}</div>
-                    <div className="text-gray-400 text-xs mt-1">{formatDate(vehicle.purchaseDate)}</div>
-                </div>
-            </td>
-            {showSoldDate && (
-                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-300">
-                    {vehicle.saleDate ? formatDate(vehicle.saleDate) : <span className="text-gray-500">—</span>}
-                </td>
+        <span className="ms-auto flex flex-none items-center gap-1.5">
+            {mot && <StatusChip status="due">{mot}</StatusChip>}
+            <VehicleStatusChip status={vehicle.status} />
+            {vehicle.ownershipType === 'Sale or Return' && <StatusChip status="neutral">SOR</StatusChip>}
+        </span>
+    );
+};
+
+/** The asking price when there is one; otherwise what it cost, marked as such. */
+const RowPrice: React.FC<{ vehicle: Vehicle }> = ({ vehicle }) =>
+    vehicle.advertisedPrice ? (
+        <>{wholePounds(vehicle.advertisedPrice)}</>
+    ) : (
+        <span className="text-ink-3">
+            {wholePounds(vehicle.purchasePrice)}<span className="ms-1 font-sans text-xs font-semibold">cost</span>
+        </span>
+    );
+
+const DaysText: React.FC<{ vehicle: EnrichedVehicle }> = ({ vehicle }) => (
+    <span className={vehicle.status !== 'Sold' && vehicle.daysInStock >= SLOW_DAYS ? 'font-semibold text-warning' : undefined}>
+        {plural(vehicle.daysInStock, 'day')}
+    </span>
+);
+
+/** One filter pill with a 48px hit area around a 36px pill. */
+const FilterChip: React.FC<{
+    selected?: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+    count?: number;
+    marked?: boolean;
+    ariaLabel?: string;
+}> = ({ selected, disabled, onClick, children, count, marked, ariaLabel }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-pressed={selected}
+        aria-label={ariaLabel}
+        className="group/chip flex min-h-[48px] flex-none items-center disabled:cursor-not-allowed"
+    >
+        <span
+            className={cx(
+                'relative inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold',
+                'transition-[background-color,border-color,color,transform] duration-quick ease-out group-active/chip:scale-[.97]',
+                selected
+                    ? 'border-ink bg-ink text-surface'
+                    : 'border-line-strong bg-surface text-ink-2 group-hover/chip:bg-surface-2 group-hover/chip:text-ink',
+                disabled && 'opacity-50',
             )}
-            <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-300">
-                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusColorClasses[status]}`}>{status}</span>
-                {isSor && <span className="ml-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-purple-800 text-purple-200">SOR</span>}
-            </td>
-            <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-gray-300">{vehicle.daysInStock}</td>
-            <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                <button onClick={onActionsClick} className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Actions">
-                    <EllipsisVerticalIcon className="h-5 w-5" />
-                </button>
-            </td>
-        </tr>
-    );
-};
+        >
+            {children}
+            {count !== undefined && <span className={cx('num font-semibold', selected ? 'text-surface' : 'text-ink-3')}>{count}</span>}
+            {marked && <span aria-hidden="true" className="absolute -end-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg bg-accent" />}
+        </span>
+    </button>
+);
 
-interface VehicleCardProps {
-    vehicle: EnrichedVehicle;
-    showSoldDate: boolean;
-    onActionsClick: () => void;
-}
-const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, showSoldDate, onActionsClick }) => {
-    const isSor = vehicle.ownershipType === 'Sale or Return';
-    const statusColorClasses = {
-        'Available': 'bg-green-800 text-green-200',
-        'Deposit Paid': 'bg-cyan-800 text-cyan-200',
-        'Sold': 'bg-red-800 text-red-200',
-    };
-    const status = vehicle.status || 'Available';
-    const v5cLinks = vehicle.v5cUrls || (vehicle.v5cUrl ? [vehicle.v5cUrl] : []);
-
-    return (
-        <div className="bg-gray-800 rounded-lg shadow-md p-4 space-y-3">
-            <div className="flex justify-between items-start">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <p className="text-lg font-bold text-white uppercase">{vehicle.reg || 'N/A'}</p>
-                        <div className="flex items-center gap-1">
-                            {v5cLinks.map((url, index) => (
-                                 <a key={index} href={url} target="_blank" rel="noopener noreferrer" title={`View V5C page ${index + 1}`} className="p-1 rounded-full hover:bg-gray-600">
-                                    <DocumentTextIcon className="h-4 w-4 text-blue-300" />
-                                 </a>
-                            ))}
-                        </div>
-                    </div>
-                    <p className="text-sm text-gray-300">{vehicle.make} {vehicle.model}</p>
-                </div>
-                <div className="flex items-start gap-1">
-                    <div className="text-right">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusColorClasses[status]}`}>{status}</span>
-                        {isSor && <span className="mt-1 block text-right text-xs font-medium text-purple-300">SOR</span>}
-                    </div>
-                    <button onClick={onActionsClick} className="p-1 rounded-full text-gray-400 hover:bg-gray-700" title="Actions">
-                        <EllipsisVerticalIcon className="h-5 w-5" />
-                    </button>
-                </div>
-            </div>
-
-            <div className="text-sm space-y-1 text-gray-400">
-                <div className="flex justify-between"><span>Stock #</span><span className="font-mono text-white">{vehicle.stockNumber}</span></div>
-                <div className="flex justify-between"><span>Year/Mileage</span><span className="text-white">{vehicle.year} / {vehicle.mileage ? vehicle.mileage.toLocaleString() : 'N/A'} mi</span></div>
-                <div className="flex justify-between"><span>Purchase Price</span><span className="font-semibold text-white">{formatCurrency(vehicle.purchasePrice)}</span></div>
-                <div className="flex justify-between"><span>Purchase Date</span><span className="text-white">{formatDate(vehicle.purchaseDate)}</span></div>
-                {showSoldDate && (
-                    <div className="flex justify-between"><span>Sold Date</span><span className="text-white">{vehicle.saleDate ? formatDate(vehicle.saleDate) : '—'}</span></div>
-                )}
-                <div className="flex justify-between"><span>Days in Stock</span><span className="font-semibold text-white">{vehicle.daysInStock}</span></div>
-            </div>
-        </div>
-    );
-};
+const SORT_OPTIONS: Array<{ value: string; label: string; key: SortKey; direction: SortDirection }> = [
+    { value: 'days-desc', label: 'Longest in', key: 'daysInStock', direction: 'descending' },
+    { value: 'days-asc', label: 'Newest in', key: 'daysInStock', direction: 'ascending' },
+    { value: 'make-asc', label: 'Make', key: 'make', direction: 'ascending' },
+    { value: 'reg-asc', label: 'Reg', key: 'reg', direction: 'ascending' },
+];
 
 export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
-    const { openModal } = useUI();
+    const { openModal, openVehicle } = useUI();
     const [statusFilter, setStatusFilter] = useState('Current Stock');
     const [searchTerm, setSearchTerm] = useState('');
     const [snapshotDate, setSnapshotDate] = useState(''); // empty = today (live view)
-    
-    type SortKey = 'reg' | 'make' | 'daysInStock' | 'saleDate';
-    type SortDirection = 'ascending' | 'descending';
+    const [isFilterSheetOpen, setFilterSheetOpen] = useState(false);
 
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'daysInStock', direction: 'descending' });
     const { width } = useWindowSize();
-    const isMobile = width !== undefined && width < 768;
+    // The table needs the desktop width; below it the stock book is a list.
+    const isTable = width !== undefined && width >= 1024;
 
     const requestSort = (key: SortKey) => {
         let direction: SortDirection = 'ascending';
@@ -186,16 +144,16 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         const calculateDaysInStock = (vehicle: Vehicle): number => {
             const purchaseDate = new Date(vehicle.purchaseDate);
             if (isNaN(purchaseDate.getTime())) return 0;
-    
+
             let endDate = new Date(viewDate);
-    
+
             if (vehicle.status === 'Sold') {
                 const saleDate = getSaleDate(vehicle.id);
                 if (saleDate && saleDate <= viewDate) {
                     endDate = saleDate;
                 }
             }
-    
+
             const diffTime = Math.max(0, endDate.getTime() - purchaseDate.getTime());
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             return diffDays;
@@ -214,7 +172,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
                 return true;
             });
         }
-        
+
         let enriched = baseVehicles.map(v => ({
             ...v,
             daysInStock: calculateDaysInStock(v),
@@ -236,7 +194,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         // Search filter
         if (searchTerm.trim() !== '') {
             const lowercasedTerm = searchTerm.toLowerCase();
-            filtered = filtered.filter(v => 
+            filtered = filtered.filter(v =>
                 String(v.reg || '').toLowerCase().includes(lowercasedTerm) ||
                 String(v.make || '').toLowerCase().includes(lowercasedTerm) ||
                 String(v.model || '').toLowerCase().includes(lowercasedTerm) ||
@@ -285,6 +243,16 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         return processedVehicles.reduce((sum, v) => sum + (v.purchasePrice || 0), 0);
     }, [processedVehicles]);
 
+    // Live counts for the filter chips (what each tab would show, before search).
+    const counts = useMemo(() => {
+        const list = vehicles || [];
+        return {
+            'Current Stock': list.filter(v => v.status !== 'Sold').length,
+            'Deposit Paid': list.filter(v => v.status === 'Deposit Paid').length,
+            'Sold Stock': list.filter(v => v.status === 'Sold').length,
+        } as Record<string, number>;
+    }, [vehicles]);
+
     // Show the sold date only on the live 'Sold Stock' tab (never in a historical snapshot).
     const showSoldDate = statusFilter === 'Sold Stock' && !snapshotDate;
 
@@ -329,7 +297,7 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
             .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
             .join('\n');
 
-        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         const dateLabel = snapshotDate || new Date().toISOString().split('T')[0];
@@ -339,207 +307,278 @@ export const StockLedger = ({ vehicles, salesDocs }: StockLedgerProps) => {
         URL.revokeObjectURL(url);
     };
 
-    if (!vehicles) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
+    if (!vehicles) return <SkeletonList rows={5} label="Loading stock" />;
 
-    const handleActionsClick = (vehicle: Vehicle) => {
-        const depositDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Deposit Slip');
-        const salesDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Sales Invoice');
-        const proformaDoc = salesDocs.find(doc => doc.vehicleId === vehicle.id && doc.documentType === 'Proforma Invoice');
-        openModal('vehicleActions', { vehicle, depositDoc, salesDoc, proformaDoc });
+    const selectTab = (tab: string) => {
+        setStatusFilter(tab);
+        if (tab === 'Sold Stock') {
+            setSortConfig({ key: 'saleDate', direction: 'descending' });
+        } else {
+            setSortConfig(prev => prev.key === 'saleDate' ? { key: 'daysInStock', direction: 'descending' } : prev);
+        }
     };
 
-    const EmptyState = () => (
-        <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-            <CarIcon className="h-12 w-12 text-gray-500 mx-auto" />
-            <h3 className="mt-4 text-lg font-medium text-white">No Vehicles Found</h3>
-            <p className="mt-1 text-sm text-gray-400">{searchTerm ? 'Try adjusting your search or filter.' : 'Add your first vehicle to get started.'}</p>
-            {!searchTerm && (
-                <div className="mt-6">
-                    <button onClick={() => openModal('vehicle')} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                        <PlusIcon className="-ml-0.5 h-5 w-5" /> Add Vehicle
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-    
-    const tabs = ['Current Stock', 'Deposit Paid', 'Sold Stock'];
+    const tabs: Array<{ value: string; label: string }> = [
+        { value: 'Current Stock', label: 'In stock' },
+        { value: 'Deposit Paid', label: 'Reserved' },
+        { value: 'Sold Stock', label: 'Sold' },
+    ];
 
-    const getSortIndicator = (key: SortKey) => {
-        const isSorted = sortConfig.key === key;
+    const sortValue = SORT_OPTIONS.find(o => o.key === sortConfig.key && o.direction === sortConfig.direction)?.value ?? '';
+    const isDefaultSort = sortConfig.key === (statusFilter === 'Sold Stock' ? 'saleDate' : 'daysInStock') && sortConfig.direction === 'descending';
+    const filtersMarked = !!snapshotDate || !isDefaultSort;
+    const snapshotLabel = snapshotDate ? formatDate(snapshotDate, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+    const thSort = (key: SortKey): SortDir => (sortConfig.key === key ? sortConfig.direction : 'none');
+
+    const groupLabel = (label: string, n: number) => `${label} · ${plural(n, 'car')}`;
+
+    const renderRow = (vehicle: EnrichedVehicle) => (
+        <ListRow
+            key={vehicle.id}
+            onClick={() => openVehicle(vehicle.id)}
+            chevron={false}
+            top={
+                <>
+                    <Plate reg={vehicle.reg || '—'} size="sm" />
+                    <span className="num text-sm font-semibold text-ink-3">#{vehicle.stockNumber || '—'}</span>
+                    <RowChips vehicle={vehicle} />
+                </>
+            }
+            title={`${vehicle.make} ${vehicle.model}`.trim() || 'Unnamed car'}
+            amount={<RowPrice vehicle={vehicle} />}
+            meta={
+                <>
+                    {[vehicle.year, vehicle.mileage ? `${vehicle.mileage.toLocaleString('en-GB')} mi` : null].filter(Boolean).join(' · ')}
+                    {(vehicle.year || vehicle.mileage) ? ' · ' : ''}
+                    {showSoldDate
+                        ? <>Sold {vehicle.saleDate ? formatDate(vehicle.saleDate) : '—'}</>
+                        : <DaysText vehicle={vehicle} />}
+                </>
+            }
+        />
+    );
+
+    const renderTableRow = (vehicle: EnrichedVehicle) => {
+        const name = `${vehicle.make} ${vehicle.model}`.trim() || 'Unnamed car';
         return (
-            <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-20 group-hover:opacity-70'}`}>
-                {isSorted && sortConfig.direction === 'descending' ? <ChevronUpDownIcon className="h-4 w-4 transform rotate-180" /> : <ChevronUpDownIcon className="h-4 w-4" />}
-            </span>
+            <Tr key={vehicle.id} onClick={() => openVehicle(vehicle.id)} className="cursor-pointer">
+                <Td className="w-0 ps-4"><Plate reg={vehicle.reg || '—'} size="sm" /></Td>
+                <Td className="max-w-[22rem]">
+                    <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); openVehicle(vehicle.id); }}
+                        className="block max-w-full truncate rounded-chip text-start text-base font-semibold leading-tight text-ink hover:underline"
+                    >
+                        {name}
+                    </button>
+                    <span className="mt-0.5 block truncate text-sm text-ink-3">
+                        <span className="num">#{vehicle.stockNumber || '—'}</span>
+                        {vehicle.year ? ` · ${vehicle.year}` : ''}
+                        {vehicle.fuelType ? ` · ${vehicle.fuelType}` : ''}
+                    </span>
+                </Td>
+                <Td numeric className="text-ink-2">{vehicle.mileage ? vehicle.mileage.toLocaleString('en-GB') : '—'}</Td>
+                <Td numeric><DaysText vehicle={vehicle} /></Td>
+                <Td numeric>
+                    {formatCurrency(vehicle.purchasePrice)}
+                    <span className="block font-sans text-xs text-ink-3">{formatDate(vehicle.purchaseDate)}</span>
+                </Td>
+                <Td numeric>{vehicle.advertisedPrice ? formatCurrency(vehicle.advertisedPrice) : <span className="text-ink-3">—</span>}</Td>
+                {showSoldDate && <Td numeric className="text-ink-2">{vehicle.saleDate ? formatDate(vehicle.saleDate) : '—'}</Td>}
+                <Td className="pe-4"><span className="flex justify-end"><RowChips vehicle={vehicle} /></span></Td>
+            </Tr>
         );
     };
 
+    const colCount = showSoldDate ? 8 : 7;
+
     return (
-        <div className="space-y-6">
-            {/* Date snapshot picker */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex items-center gap-2">
-                    <label htmlFor="snapshot-date" className="text-sm font-medium text-gray-400 whitespace-nowrap">View date:</label>
-                    <input
-                        type="date"
-                        id="snapshot-date"
-                        value={snapshotDate}
-                        max={new Date().toISOString().split('T')[0]}
-                        onChange={(e) => setSnapshotDate(e.target.value)}
-                        className="rounded-md border-0 bg-gray-700 py-1.5 px-3 text-white ring-1 ring-inset ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-brand-500 text-sm"
-                    />
-                    {snapshotDate && (
-                        <button
-                            onClick={() => setSnapshotDate('')}
-                            className="text-xs text-brand-400 hover:text-brand-300 whitespace-nowrap"
+        <div className="space-y-4 pb-6">
+            <PageHead
+                facts={
+                    <>
+                        {plural(processedVehicles.length, 'car')}
+                        {' · '}
+                        <span className="num font-semibold text-ink-2">{formatCurrency(totalPurchasePrice)}</span> at cost
+                    </>
+                }
+            />
+
+            <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:gap-3">
+                <Search
+                    value={searchTerm}
+                    onChange={setSearchTerm}
+                    label="Search stock"
+                    placeholder="Reg, make, model or stock no."
+                    className="w-full lg:max-w-sm"
+                />
+                <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:px-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label="Show">
+                    {tabs.map(tab => (
+                        <FilterChip
+                            key={tab.value}
+                            selected={!snapshotDate && statusFilter === tab.value}
+                            disabled={!!snapshotDate}
+                            onClick={() => selectTab(tab.value)}
+                            count={counts[tab.value]}
                         >
-                            ✕ Back to live
-                        </button>
+                            {tab.label}
+                        </FilterChip>
+                    ))}
+                    <span aria-hidden="true" className="mx-0.5 h-6 w-px flex-none bg-line" />
+                    <FilterChip
+                        onClick={() => setFilterSheetOpen(true)}
+                        marked={filtersMarked}
+                        ariaLabel={filtersMarked ? 'Sort, date and export (changed)' : 'Sort, date and export'}
+                    >
+                        <FunnelIcon className="h-4 w-4" />
+                        More
+                    </FilterChip>
+                </div>
+            </div>
+
+            {snapshotDate && (
+                <div className="flex items-center justify-between gap-3 rounded-control border border-warning bg-warning-soft py-1.5 pe-1.5 ps-3.5 text-warning-ink">
+                    <p className="text-sm font-semibold">Stock as it stood on <span className="num">{snapshotLabel}</span></p>
+                    <Button size="sm" variant="secondary" onClick={() => setSnapshotDate('')}>Back to today</Button>
+                </div>
+            )}
+
+            {processedVehicles.length === 0 ? (
+                <div className="rounded-card border border-line bg-surface">
+                    {searchTerm ? (
+                        <EmptyState
+                            icon={<CarIcon />}
+                            title={`No cars match “${searchTerm}”`}
+                            description="Search looks at the reg, make, model, stock number and VIN."
+                            actionLabel="Clear search"
+                            onAction={() => setSearchTerm('')}
+                        />
+                    ) : vehicles.length === 0 ? (
+                        <EmptyState
+                            icon={<CarIcon />}
+                            title="No cars yet"
+                            description="Every car you buy lands here with its costs, prep and paperwork."
+                            actionLabel="Add car"
+                            onAction={() => openModal('vehicle')}
+                        />
+                    ) : (
+                        <EmptyState
+                            icon={<CarIcon />}
+                            title={statusFilter === 'Deposit Paid' ? 'No cars reserved' : statusFilter === 'Sold Stock' ? 'Nothing sold yet' : 'No cars in stock'}
+                            description={snapshotDate ? `Nothing was in stock on ${snapshotLabel}.` : 'Cars move here as their status changes.'}
+                        />
                     )}
                 </div>
-                {snapshotDate && (
-                    <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded">
-                        📅 Viewing stock as of {new Date(snapshotDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </span>
-                )}
-                <div className="sm:ml-auto">
-                    <button
-                        onClick={handleExportCSV}
-                        disabled={processedVehicles.length === 0}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-200 ring-1 ring-inset ring-gray-600 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                        Export CSV
-                    </button>
+            ) : !isTable ? (
+                <div className="space-y-4">
+                    {groupedVehicles ? (
+                        groupedVehicles.map(group => (
+                            <section key={group.label} aria-label={group.label} className="space-y-2">
+                                <h2 className="px-1 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">{groupLabel(group.label, group.vehicles.length)}</h2>
+                                <List>{group.vehicles.map(renderRow)}</List>
+                            </section>
+                        ))
+                    ) : (
+                        <List ariaLabel="Cars">{processedVehicles.map(renderRow)}</List>
+                    )}
                 </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                 <div className="flex-1">
-                    <div className="border-b border-gray-700">
-                        <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
-                            {tabs.map((tab) => (
-                                <button
-                                    key={tab}
-                                    onClick={() => {
-                                        setStatusFilter(tab);
-                                        if (tab === 'Sold Stock') {
-                                            setSortConfig({ key: 'saleDate', direction: 'descending' });
-                                        } else {
-                                            setSortConfig(prev => prev.key === 'saleDate' ? { key: 'daysInStock', direction: 'descending' } : prev);
-                                        }
-                                    }}
-                                    disabled={!!snapshotDate}
-                                    className={`${snapshotDate ? 'border-transparent text-gray-600 cursor-not-allowed' : tab === statusFilter ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} group inline-flex items-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium`}
-                                >
-                                    <span>{tab}</span>
-                                </button>
-                            ))}
-                        </nav>
-                    </div>
-                </div>
-                <div className="relative sm:max-w-xs w-full">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                         <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
-                    </div>
-                    <input
-                        type="search"
-                        name="search"
-                        id="search"
-                        className="block w-full rounded-md border-0 bg-gray-700 py-2 pl-10 pr-3 text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-500 sm:text-sm"
-                        placeholder="Search stock..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-            </div>
-
-            {processedVehicles.length === 0 ? <EmptyState /> : (
-                isMobile ? (
-                    <div className="space-y-4">
+            ) : (
+                <DataTable ariaLabel="Stock book" minWidth={900}>
+                    <THead>
+                        <tr>
+                            <Th sort={thSort('reg')} onSort={() => requestSort('reg')} className="ps-4">Reg</Th>
+                            <Th sort={thSort('make')} onSort={() => requestSort('make')}>Car</Th>
+                            <Th numeric>Miles</Th>
+                            <Th numeric sort={thSort('daysInStock')} onSort={() => requestSort('daysInStock')}>Days</Th>
+                            <Th numeric>Bought</Th>
+                            <Th numeric>Asking</Th>
+                            {showSoldDate && <Th numeric sort={thSort('saleDate')} onSort={() => requestSort('saleDate')}>Sold</Th>}
+                            <Th numeric className="pe-4">Status</Th>
+                        </tr>
+                    </THead>
+                    <TBody>
                         {groupedVehicles ? (
                             groupedVehicles.map(group => (
-                                <div key={group.label} className="space-y-4">
-                                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 px-1">
-                                        {group.label} · {group.vehicles.length} vehicle{group.vehicles.length !== 1 ? 's' : ''}
-                                    </div>
-                                    {group.vehicles.map(vehicle => (
-                                        <VehicleCard key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
-                                    ))}
-                                </div>
+                                <React.Fragment key={group.label}>
+                                    <tr>
+                                        <td colSpan={colCount} className="border-b border-line bg-surface-2 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">
+                                            {groupLabel(group.label, group.vehicles.length)}
+                                        </td>
+                                    </tr>
+                                    {group.vehicles.map(renderTableRow)}
+                                </React.Fragment>
                             ))
                         ) : (
-                            processedVehicles.map(vehicle => (
-                                <VehicleCard key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
-                            ))
+                            processedVehicles.map(renderTableRow)
                         )}
-                        <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-400">{processedVehicles.length} vehicle{processedVehicles.length !== 1 ? 's' : ''}</span>
-                                <span className="font-semibold text-white">Total: {formatCurrency(totalPurchasePrice)}</span>
-                            </div>
+                    </TBody>
+                    <tfoot>
+                        <tr>
+                            <td colSpan={4} className="border-t border-line-strong bg-surface-2 px-4 py-3 text-sm font-semibold text-ink-2">
+                                {plural(processedVehicles.length, 'car')}
+                            </td>
+                            <td className="num border-t border-line-strong bg-surface-2 px-2.5 py-3 text-end text-sm font-semibold text-ink">{formatCurrency(totalPurchasePrice)}</td>
+                            <td colSpan={colCount - 5} className="border-t border-line-strong bg-surface-2" />
+                        </tr>
+                    </tfoot>
+                </DataTable>
+            )}
+
+            {isFilterSheetOpen && (
+                <Modal
+                    onClose={() => setFilterSheetOpen(false)}
+                    size="sm"
+                    title="Sort and view"
+                    footer={<Button block onClick={() => setFilterSheetOpen(false)}>Show {plural(processedVehicles.length, 'car')}</Button>}
+                >
+                    <div className="space-y-5">
+                        {!showSoldDate && (
+                            <Field label="Sort by">
+                                <Segmented
+                                    ariaLabel="Sort by"
+                                    full
+                                    value={sortValue}
+                                    onChange={v => {
+                                        const opt = SORT_OPTIONS.find(o => o.value === v);
+                                        if (opt) setSortConfig({ key: opt.key, direction: opt.direction });
+                                    }}
+                                    options={SORT_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+                                />
+                            </Field>
+                        )}
+                        <Field
+                            label="Stock on a past date"
+                            htmlFor="snapshot-date"
+                            hint="Shows what was on the books at the end of that day. Leave empty for today."
+                        >
+                            <UkDateInput
+                                id="snapshot-date"
+                                name="snapshot-date"
+                                value={snapshotDate}
+                                onChange={e => {
+                                    // Same limit the old date picker had (max = today): no future snapshots.
+                                    const today = new Date().toISOString().split('T')[0];
+                                    setSnapshotDate(e.target.value && e.target.value > today ? today : e.target.value);
+                                }}
+                            />
+                        </Field>
+                        {snapshotDate && (
+                            <Button variant="ghost" size="sm" onClick={() => setSnapshotDate('')}>Back to today</Button>
+                        )}
+                        <div className="border-t border-line pt-4">
+                            <Button
+                                variant="secondary"
+                                block
+                                icon={<ArrowDownTrayIcon />}
+                                onClick={handleExportCSV}
+                                disabled={processedVehicles.length === 0}
+                            >
+                                Export {plural(processedVehicles.length, 'car')} as CSV
+                            </Button>
                         </div>
                     </div>
-                ) : (
-                    <div className="overflow-x-auto bg-gray-800 rounded-lg shadow">
-                        <table className="min-w-full divide-y divide-gray-700">
-                            <thead className="bg-gray-900/50">
-                                <tr>
-                                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-white sm:pl-6">
-                                        <button onClick={() => requestSort('reg')} className="group inline-flex items-center gap-1">Registration {getSortIndicator('reg')}</button>
-                                    </th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">
-                                        <button onClick={() => requestSort('make')} className="group inline-flex items-center gap-1">Vehicle {getSortIndicator('make')}</button>
-                                    </th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Details</th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Purchase</th>
-                                    {showSoldDate && (
-                                        <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">
-                                            <button onClick={() => requestSort('saleDate')} className="group inline-flex items-center gap-1">Sold {getSortIndicator('saleDate')}</button>
-                                        </th>
-                                    )}
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Status</th>
-                                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">
-                                        <button onClick={() => requestSort('daysInStock')} className="group inline-flex items-center gap-1">Days in Stock {getSortIndicator('daysInStock')}</button>
-                                    </th>
-                                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6"><span className="sr-only">Actions</span></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-700/50">
-                                {groupedVehicles ? (
-                                    groupedVehicles.map(group => (
-                                        <React.Fragment key={group.label}>
-                                            <tr>
-                                                <td colSpan={8} className="bg-gray-900/70 text-xs font-semibold uppercase tracking-wide text-gray-400 px-4 py-2">
-                                                    {group.label} · {group.vehicles.length} vehicle{group.vehicles.length !== 1 ? 's' : ''}
-                                                </td>
-                                            </tr>
-                                            {group.vehicles.map(vehicle => (
-                                                <VehicleRow key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
-                                            ))}
-                                        </React.Fragment>
-                                    ))
-                                ) : (
-                                    processedVehicles.map(vehicle => (
-                                        <VehicleRow key={vehicle.id} vehicle={vehicle} showSoldDate={showSoldDate} onActionsClick={() => handleActionsClick(vehicle)} />
-                                    ))
-                                )}
-                            </tbody>
-                            <tfoot className="bg-gray-900/80 border-t-2 border-gray-600">
-                                <tr>
-                                    <td className="py-3.5 pl-4 pr-3 text-sm font-semibold text-white sm:pl-6">{processedVehicles.length} vehicle{processedVehicles.length !== 1 ? 's' : ''}</td>
-                                    <td className="px-3 py-3.5"></td>
-                                    <td className="px-3 py-3.5"></td>
-                                    <td className="px-3 py-3.5 text-sm font-semibold text-white">{formatCurrency(totalPurchasePrice)}</td>
-                                    {showSoldDate && <td className="px-3 py-3.5"></td>}
-                                    <td className="px-3 py-3.5"></td>
-                                    <td className="px-3 py-3.5"></td>
-                                    <td className="px-3 py-3.5"></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                )
+                </Modal>
             )}
         </div>
     );

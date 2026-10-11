@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Receipt, Supplier } from '../../types';
 import { BanknotesIcon, ChevronDownIcon, CheckCircleIcon } from '../icons';
-import { formatCurrency, formatDate } from '../../utils/helpers';
+import { formatDate } from '../../utils/helpers';
 import { useUI } from '../../hooks/useUI';
 import ReceiptThumb from '../common/ReceiptThumb';
+import { Button, EmptyState } from '../ui';
+import { LedgerSummary, Money } from './ledgerUi';
 
 interface PayableMonth {
     monthKey: string; // "YYYY-MM"
@@ -78,94 +80,106 @@ const PayablesManager = ({ receipts, suppliers, hasActiveFilters }: PayablesMana
         });
     };
 
-    const EmptyState = () => (
-        <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-            <BanknotesIcon className="h-12 w-12 text-gray-500 mx-auto" />
-            <h3 className="mt-4 text-lg font-medium text-white">{hasActiveFilters ? 'No Payables Match Filter' : 'No Payables Found'}</h3>
-            <p className="mt-1 text-sm text-gray-400">
-                {hasActiveFilters
-                    ? 'Try adjusting your search or date range.'
-                    : 'When you add an expense and mark it as "On Supplier Account", it will appear here until it\'s paid.'
-                }
-            </p>
-        </div>
-    );
-
     if (payablesBySupplier.length === 0) {
-        return <EmptyState />;
+        return (
+            <EmptyState
+                className="rounded-card border border-line bg-surface"
+                icon={<BanknotesIcon />}
+                title={hasActiveFilters ? 'No bills match' : 'Nothing to pay'}
+                description={hasActiveFilters
+                    ? 'Try other words, or pick a wider period.'
+                    : 'Expenses you put “On account” wait here until you pay the supplier.'}
+            />
+        );
     }
 
+    const totalOwed = payablesBySupplier.reduce((s, sup) => s + sup.totalOwed, 0);
+
     return (
-        <div className="space-y-4">
-            <p className="text-sm text-gray-400">This is a summary of all unpaid invoices from suppliers you have an account with, grouped by supplier. Reconcile a payment from your bank statement to a supplier to mark these as paid, or manually mark a month's worth of invoices as paid.</p>
-            <div className="bg-gray-800 rounded-lg shadow-md">
-                <ul role="list" className="divide-y divide-gray-700">
-                    {payablesBySupplier.map((supplier) => {
-                        const supplierKey = `supplier-${supplier.supplierName}`;
-                        const isSupplierExpanded = !!expandedItems[supplierKey];
-                        return (
-                            <li key={supplierKey}>
-                                <div className="px-4 py-4 sm:px-6 hover:bg-gray-700/50 transition duration-150 ease-in-out flex items-center justify-between cursor-pointer" onClick={() => toggleItem(supplierKey)}>
-                                    <div className="flex-1">
-                                        <p className="text-xl font-bold text-white">{supplier.supplierName}</p>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <p className="text-2xl font-semibold text-orange-400">{formatCurrency(supplier.totalOwed)}</p>
-                                        <ChevronDownIcon className={`h-6 w-6 text-gray-400 transition-transform ${isSupplierExpanded ? 'rotate-180' : ''}`} />
-                                    </div>
-                                </div>
-                                {isSupplierExpanded && (
-                                    <div className="px-4 pb-4 sm:px-6 border-t border-gray-700/50 animate-in fade-in-0 duration-300">
-                                        <ul className="mt-2 space-y-2">
-                                            {supplier.months.map(month => {
-                                                const monthKey = `month-${supplier.supplierName}-${month.monthKey}`;
-                                                const isMonthExpanded = !!expandedItems[monthKey];
-                                                return (
-                                                    <li key={monthKey} className="bg-gray-900/50 rounded-lg">
-                                                        <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-900" onClick={() => toggleItem(monthKey)}>
-                                                            <div className="flex-1">
-                                                                <p className="text-base font-semibold text-white">{month.monthName}</p>
-                                                                <p className="text-xs text-gray-400">{month.invoiceCount} unpaid invoices</p>
-                                                            </div>
-                                                            <div className="flex items-center gap-4">
-                                                                <p className="text-lg font-semibold text-orange-300">{formatCurrency(month.totalOwed)}</p>
-                                                                <button
-                                                                    onClick={(e) => handleMarkMonthPaid(e, supplier.supplierName, month)}
-                                                                    className="p-2 text-gray-400 hover:text-green-400"
-                                                                    title={`Mark all invoices for ${month.monthName} as paid`}
-                                                                >
-                                                                    <CheckCircleIcon className="h-5 w-5" />
-                                                                </button>
-                                                                 <ChevronDownIcon className={`h-5 w-5 text-gray-400 transition-transform ${isMonthExpanded ? 'rotate-180' : ''}`} />
-                                                            </div>
-                                                        </div>
-                                                        {isMonthExpanded && (
-                                                            <div className="p-3 border-t border-gray-700/50 animate-in fade-in-0 duration-200">
-                                                                <ul className="space-y-1">
-                                                                    {month.receipts.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(r => (
-                                                                        <li key={r.id} className="flex justify-between items-center gap-3 p-1.5 rounded-md">
-                                                                            {r.receiptUrl && <ReceiptThumb url={r.receiptUrl} label={`${r.vendor} · ${formatDate(r.date)}`} size="sm" />}
-                                                                            <div className="flex-1 min-w-0">
-                                                                                <p className="text-sm text-gray-200 truncate">{r.category}</p>
-                                                                                <p className="text-xs text-gray-500">{formatDate(r.date)}</p>
-                                                                            </div>
-                                                                            <p className="text-sm text-gray-200 ml-4">{formatCurrency(r.amount)}</p>
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            </div>
-                                                        )}
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
-                                    </div>
-                                )}
-                            </li>
-                        );
-                    })}
-                </ul>
-            </div>
+        <div className="space-y-3">
+            <LedgerSummary
+                left={<><span className="num font-semibold text-ink">{payablesBySupplier.length}</span> supplier{payablesBySupplier.length !== 1 ? 's' : ''} on account</>}
+                right={<span>Owed <Money amount={totalOwed} className="font-semibold text-ink" /></span>}
+            />
+            <p className="max-w-[60ch] text-sm text-ink-3">
+                Bills clear when you match the payment on the Bank screen. You can also mark a whole month paid.
+            </p>
+            <ul role="list" className="m-0 list-none overflow-hidden rounded-card border border-line bg-surface p-0">
+                {payablesBySupplier.map((supplier) => {
+                    const supplierKey = `supplier-${supplier.supplierName}`;
+                    const isSupplierExpanded = !!expandedItems[supplierKey];
+                    const billCount = supplier.months.reduce((n, m) => n + m.invoiceCount, 0);
+                    return (
+                        <li key={supplierKey} className="border-b border-line last:border-b-0">
+                            <button
+                                type="button"
+                                aria-expanded={isSupplierExpanded}
+                                onClick={() => toggleItem(supplierKey)}
+                                className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
+                            >
+                                <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+                                    <span className="truncate text-base font-semibold leading-[1.3] text-ink">{supplier.supplierName}</span>
+                                    <span className="text-sm leading-[1.3] text-ink-3">
+                                        <span className="num">{billCount}</span> unpaid bill{billCount !== 1 ? 's' : ''} · <span className="num">{supplier.months.length}</span> month{supplier.months.length !== 1 ? 's' : ''}
+                                    </span>
+                                </span>
+                                <Money amount={supplier.totalOwed} className="text-lg font-semibold text-ink" />
+                                <ChevronDownIcon className={`h-5 w-5 flex-none text-ink-3 transition-transform duration-quick ease-out ${isSupplierExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isSupplierExpanded && (
+                                <ul className="m-0 list-none border-t border-line bg-surface-2 p-0">
+                                    {supplier.months.map(month => {
+                                        const monthKey = `month-${supplier.supplierName}-${month.monthKey}`;
+                                        const isMonthExpanded = !!expandedItems[monthKey];
+                                        return (
+                                            <li key={monthKey} className="border-b border-line last:border-b-0">
+                                                <div className="flex items-center gap-2 pe-3 ps-4">
+                                                    <button
+                                                        type="button"
+                                                        aria-expanded={isMonthExpanded}
+                                                        onClick={() => toggleItem(monthKey)}
+                                                        className="flex min-h-[56px] min-w-0 flex-1 items-center gap-3 py-2 text-start"
+                                                    >
+                                                        <ChevronDownIcon className={`h-4 w-4 flex-none text-ink-3 transition-transform duration-quick ease-out ${isMonthExpanded ? '' : '-rotate-90 rtl:rotate-90'}`} />
+                                                        <span className="flex min-w-0 flex-1 flex-col">
+                                                            <span className="truncate text-sm font-semibold text-ink">{month.monthName}</span>
+                                                            <span className="text-sm text-ink-3"><span className="num">{month.invoiceCount}</span> unpaid</span>
+                                                        </span>
+                                                        <Money amount={month.totalOwed} className="text-base font-semibold text-ink" />
+                                                    </button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        icon={<CheckCircleIcon />}
+                                                        onClick={(e) => handleMarkMonthPaid(e, supplier.supplierName, month)}
+                                                        title={`Mark all bills for ${month.monthName} as paid`}
+                                                    >
+                                                        Mark paid
+                                                    </Button>
+                                                </div>
+                                                {isMonthExpanded && (
+                                                    <ul className="m-0 list-none border-t border-line bg-surface p-0">
+                                                        {month.receipts.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(r => (
+                                                            <li key={r.id} className="flex min-h-[52px] items-center gap-3 border-b border-line py-2 pe-4 ps-11 last:border-b-0">
+                                                                {r.receiptUrl && <ReceiptThumb url={r.receiptUrl} label={`${r.vendor} · ${formatDate(r.date)}`} size="sm" />}
+                                                                <span className="flex min-w-0 flex-1 flex-col">
+                                                                    <span className="truncate text-sm text-ink">{r.category}</span>
+                                                                    <span className="num text-sm text-ink-3">{formatDate(r.date)}</span>
+                                                                </span>
+                                                                <Money amount={r.amount} className="text-sm text-ink" />
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
         </div>
     );
 };

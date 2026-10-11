@@ -6,11 +6,12 @@ import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import { SalesDocument, Vehicle, NewVehicle, VehicleUpdate, NewReceipt, ReceiptUpdate, NewSalesDocument, SalesDocumentUpdate, StatementTransaction, StatementTransactionUpdate, NewWorkSheet, NewMiscInvoice, Receipt, MiscInvoiceUpdate, WorkSheet, JobInvoice, NewJobInvoice, JobInvoiceUpdate, WorkSheetUpdate, InternalJob, NewInternalJob, InternalJobUpdate, PDI, NewPDI, PDIUpdate } from '../../types';
 import * as dataService from '../../services/dataService';
-import { useToast } from '../ui';
+import { Button, useToast } from '../ui';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 
 // Import Modal/Editor Components
 import Modal from './Modal';
+import ConfirmDialog from './ConfirmDialog';
 import VehicleEditor from '../stock/VehicleEditor';
 import ExpenseEditor from '../expenses/ExpenseEditor';
 import DocumentCreator from '../sales/DocumentCreator';
@@ -74,14 +75,15 @@ const DeleteJobInvoiceConfirmModal = ({ invoice }: { invoice: JobInvoice }) => {
     }
 
     return (
-        <div className="p-6 text-center">
-            <h3 className="mt-4 text-lg font-semibold text-white">Delete Invoice</h3>
-            <p className="mt-2 text-sm text-gray-400">Are you sure you want to delete invoice #{invoice.invoiceNumber}?</p>
-            <div className="mt-6 flex justify-center gap-4">
-                <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md">Cancel</button>
-                <button onClick={handleConfirm} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md">Delete</button>
-            </div>
-        </div>
+        <ConfirmDialog
+            title={<>Delete invoice <span className="font-mono tabular-nums">#{invoice.invoiceNumber}</span>?</>}
+            keepLabel="Keep invoice"
+            confirmLabel="Delete invoice"
+            onKeep={closeModal}
+            onConfirm={handleConfirm}
+        >
+            <p>The invoice goes for good. You can’t undo this.</p>
+        </ConfirmDialog>
     );
 };
 
@@ -247,7 +249,15 @@ const ModalManager = () => {
                     : data.vehicles.find(v => v.id === docToEdit.vehicleId);
 
                 if (!vehicleForDoc) {
-                    return <div className="p-6 text-center"><h3 className="text-lg font-semibold text-white">Error</h3><p className="mt-2 text-sm text-gray-400">Could not find vehicle for this document.</p><div className="mt-6"><button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">Close</button></div></div>;
+                    return (
+                        <div className="px-5 pb-5 pt-2 sm:pt-5">
+                            <h2 data-modal-title className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Car not found</h2>
+                            <p className="mt-2 text-base leading-6 text-ink-2">Couldn’t find the car for this document, so it can’t be edited here.</p>
+                            <div className="mt-5 flex [&>*]:flex-1 sm:justify-end sm:[&>*]:flex-none">
+                                <Button type="button" variant="secondary" onClick={closeModal} data-autofocus>Close</Button>
+                            </div>
+                        </div>
+                    );
                 }
                 return <DocumentCreator companyId={companyId} onSubmit={handleSalesDocSubmit} onCancel={closeModal} editingDocument={docToEdit} vehicle={vehicleForDoc} documentType={docToEdit.documentType} priorDeposit={null} financeCompanies={data.financeCompanies} businessDetails={data.businessDetails} />;
             }
@@ -426,6 +436,24 @@ const ModalManager = () => {
             case 'vehicleActions':
             case 'invoicePicker':
                 return 'sm';
+            // Confirm dialogs: one question, two buttons.
+            case 'deleteWorkSheetConfirm':
+            case 'deletePdiConfirm':
+            case 'deleteInternalJobConfirm':
+            case 'deleteMiscInvoiceConfirm':
+            case 'deleteJobInvoiceConfirm':
+            case 'bulkDeleteConfirm':
+            case 'confirmClearData':
+            case 'undoSaleConfirm':
+            case 'undoDepositConfirm':
+            case 'forceUndoSaleConfirm':
+            case 'deleteTodoConfirm':
+            case 'archivePrepConfirm':
+            case 'unarchivePrepConfirm':
+            case 'markMonthPaidConfirm':
+            case 'resequenceConfirm':
+            case 'deleteUploadConfirm':
+                return 'md';
             case 'todo':
             case 'customerManager':
             case 'archiveDrawer':

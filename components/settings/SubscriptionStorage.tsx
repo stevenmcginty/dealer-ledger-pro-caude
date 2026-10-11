@@ -123,11 +123,11 @@ const SubscriptionStorage: React.FC = () => {
 
     if (storageInfo.isLoading) {
         return (
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <div className="bg-surface rounded-xl p-6 border border-line">
                 <div className="animate-pulse space-y-4">
-                    <div className="h-4 bg-gray-700 rounded w-1/3"></div>
-                    <div className="h-8 bg-gray-700 rounded"></div>
-                    <div className="h-4 bg-gray-700 rounded w-1/2"></div>
+                    <div className="h-4 bg-surface-2 rounded w-1/3"></div>
+                    <div className="h-8 bg-surface-2 rounded"></div>
+                    <div className="h-4 bg-surface-2 rounded w-1/2"></div>
                 </div>
             </div>
         );
@@ -136,25 +136,25 @@ const SubscriptionStorage: React.FC = () => {
     return (
         <div className="space-y-6">
             {/* Current Plan */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <div className="bg-surface rounded-xl p-6 border border-line">
                 <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 rounded-lg bg-brand-500/20">
-                        <CreditCardIcon className="w-5 h-5 text-brand-400" />
+                    <div className="p-2 rounded-lg bg-accent-soft">
+                        <CreditCardIcon className="w-5 h-5 text-accent-soft-ink" />
                     </div>
-                    <h3 className="text-lg font-semibold text-white">Current Plan</h3>
+                    <h3 className="text-lg font-semibold text-ink">Current Plan</h3>
                 </div>
 
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-2xl font-bold text-white">{storageInfo.planName}</p>
-                        <p className="text-sm text-gray-400 mt-1">
+                        <p className="text-2xl font-bold text-ink">{storageInfo.planName}</p>
+                        <p className="text-sm text-ink-3 mt-1">
                             {storageInfo.limitBytes > 0
                                 ? `${formatBytes(storageInfo.limitBytes)} storage included`
                                 : 'No storage limit set'}
                         </p>
                     </div>
                     {storageInfo.planName !== 'No Plan' && (
-                        <div className="flex items-center gap-2 text-green-400">
+                        <div className="flex items-center gap-2 text-success">
                             <CheckCircleIcon className="w-5 h-5" />
                             <span className="text-sm font-medium">Active</span>
                         </div>
@@ -163,32 +163,32 @@ const SubscriptionStorage: React.FC = () => {
             </div>
 
             {/* Storage Usage */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-4">Storage Usage</h3>
+            <div className="bg-surface rounded-xl p-6 border border-line">
+                <h3 className="text-lg font-semibold text-ink mb-4">Storage Usage</h3>
 
                 {storageInfo.error ? (
-                    <div className="text-red-400 text-sm">{storageInfo.error}</div>
+                    <div className="text-danger text-sm">{storageInfo.error}</div>
                 ) : (
                     <>
                         {/* Progress Bar */}
                         <div className="mb-4">
                             <div className="flex justify-between text-sm mb-2">
-                                <span className="text-gray-400">Used</span>
-                                <span className={`font-medium ${isOverLimit ? 'text-red-400' : isNearLimit ? 'text-amber-400' : 'text-white'}`}>
+                                <span className="text-ink-3">Used</span>
+                                <span className={`font-medium ${isOverLimit ? 'text-danger' : isNearLimit ? 'text-warning' : 'text-ink'}`}>
                                     {formatBytes(storageInfo.totalBytes)}
                                     {storageInfo.limitBytes > 0 && ` / ${formatBytes(storageInfo.limitBytes)}`}
                                 </span>
                             </div>
-                            <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-3 bg-surface-2 rounded-full overflow-hidden">
                                 <div
                                     className={`h-full rounded-full transition-all duration-500 ${
-                                        isOverLimit ? 'bg-red-500' : isNearLimit ? 'bg-amber-500' : 'bg-brand-500'
+                                        isOverLimit ? 'bg-danger' : isNearLimit ? 'bg-warning' : 'bg-accent'
                                     }`}
                                     style={{ width: `${storageInfo.limitBytes > 0 ? usagePercent : 0}%` }}
                                 />
                             </div>
                             {storageInfo.limitBytes > 0 && (
-                                <p className="text-xs text-gray-500 mt-1 text-right">
+                                <p className="text-xs text-ink-3 mt-1 text-right">
                                     {usagePercent.toFixed(1)}% used
                                 </p>
                             )}
@@ -196,34 +196,34 @@ const SubscriptionStorage: React.FC = () => {
 
                         {/* Warning */}
                         {isNearLimit && !isOverLimit && (
-                            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 mb-4">
-                                <ExclamationTriangleIcon className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                                <p className="text-sm text-amber-300">
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-warning-soft border border-warning/30 mb-4">
+                                <ExclamationTriangleIcon className="w-5 h-5 text-warning-ink flex-shrink-0" />
+                                <p className="text-sm text-warning-ink">
                                     You're approaching your storage limit. Consider upgrading your plan.
                                 </p>
                             </div>
                         )}
 
                         {isOverLimit && (
-                            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 mb-4">
-                                <ExclamationTriangleIcon className="w-5 h-5 text-red-400 flex-shrink-0" />
-                                <p className="text-sm text-red-300">
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-danger-soft border border-danger/30 mb-4">
+                                <ExclamationTriangleIcon className="w-5 h-5 text-danger-ink flex-shrink-0" />
+                                <p className="text-sm text-danger-ink">
                                     You've exceeded your storage limit. Please upgrade your plan or remove some data.
                                 </p>
                             </div>
                         )}
 
                         {/* Breakdown */}
-                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-700">
+                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-line">
                             <div>
-                                <p className="text-xs text-gray-500 mb-1">Database</p>
-                                <p className="text-lg font-semibold text-white">{formatBytes(storageInfo.databaseBytes)}</p>
-                                <p className="text-xs text-gray-500">Vehicle records, transactions, etc.</p>
+                                <p className="text-xs text-ink-3 mb-1">Database</p>
+                                <p className="text-lg font-semibold text-ink">{formatBytes(storageInfo.databaseBytes)}</p>
+                                <p className="text-xs text-ink-3">Vehicle records, transactions, etc.</p>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500 mb-1">File Storage</p>
-                                <p className="text-lg font-semibold text-white">{formatBytes(storageInfo.storageBytes)}</p>
-                                <p className="text-xs text-gray-500">Images, documents, receipts</p>
+                                <p className="text-xs text-ink-3 mb-1">File Storage</p>
+                                <p className="text-lg font-semibold text-ink">{formatBytes(storageInfo.storageBytes)}</p>
+                                <p className="text-xs text-ink-3">Images, documents, receipts</p>
                             </div>
                         </div>
                     </>
@@ -231,9 +231,9 @@ const SubscriptionStorage: React.FC = () => {
             </div>
 
             {/* Tips */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                <h4 className="text-sm font-medium text-gray-300 mb-2">Storage Tips</h4>
-                <ul className="text-xs text-gray-500 space-y-1">
+            <div className="bg-surface/50 rounded-xl p-4 border border-line">
+                <h4 className="text-sm font-medium text-ink-2 mb-2">Storage Tips</h4>
+                <ul className="text-xs text-ink-3 space-y-1">
                     <li>• Compress images before uploading to save space</li>
                     <li>• Archive old vehicle records you no longer need</li>
                     <li>• Delete duplicate or unused documents from the filing cabinet</li>

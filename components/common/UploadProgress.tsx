@@ -1,7 +1,7 @@
 
 
 import React from 'react';
-import { XMarkIcon, CheckCircleIcon } from '../icons';
+import { CheckCircleIcon, XMarkIcon } from '../icons';
 import Spinner from './Spinner';
 
 export interface UploadProgressData {
@@ -23,17 +23,17 @@ interface UploadProgressProps {
 const Step = ({ title, status, details }: { title: string, status: 'pending' | 'active' | 'complete', details?: string }) => {
     const Icon = () => {
         switch (status) {
-            case 'active': return <Spinner className="h-5 w-5 text-brand-blue-400" />;
-            case 'complete': return <CheckCircleIcon className="h-5 w-5 text-green-400" />;
-            default: return <div className="h-5 w-5 flex items-center justify-center"><div className="h-2 w-2 bg-gray-500 rounded-full"></div></div>;
+            case 'active': return <Spinner className="h-5 w-5 text-accent-text" />;
+            case 'complete': return <CheckCircleIcon className="h-5 w-5 text-success" />;
+            default: return <div className="h-5 w-5 flex items-center justify-center"><div className="h-2 w-2 bg-ink-3 rounded-full"></div></div>;
         }
     };
     return (
-        <div className="flex items-start space-x-3">
+        <div className="flex items-start gap-3">
             <div className="flex-shrink-0 pt-1"><Icon /></div>
             <div>
-                <p className={`font-semibold ${status === 'pending' ? 'text-gray-400' : 'text-white'}`}>{title}</p>
-                {details && <p className="text-sm text-gray-400">{details}</p>}
+                <p className={`font-semibold ${status === 'pending' ? 'text-ink-3' : 'text-ink'}`}>{title}</p>
+                {details && <p className="text-sm text-ink-3">{details}</p>}
             </div>
         </div>
     );
@@ -62,10 +62,10 @@ const UploadProgress = ({ progress, onClose }: UploadProgressProps) => {
 
     return (
         <div className="w-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Importing Statement</h2>
+            <header className="p-4 border-b border-line flex items-center justify-between">
+                <h2 className="text-lg font-bold text-ink">Importing Statement</h2>
                 {(progress.step === 'complete' || progress.step === 'error') && (
-                    <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white">
+                    <button onClick={onClose} className="grid h-12 w-12 place-items-center rounded-control text-ink-2 transition-colors duration-quick hover:bg-surface-2 hover:text-ink">
                         <XMarkIcon className="h-6 w-6" /><span className="sr-only">Close</span>
                     </button>
                 )}
@@ -80,18 +80,18 @@ const UploadProgress = ({ progress, onClose }: UploadProgressProps) => {
                        <Step title="Save to Ledger" status={getStepStatus(4)} details={currentStepIndex >= 4 ? getStepDetails('saving') : undefined} />
                     </div>
                 ) : (
-                    <div className="text-center">
-                        <h3 className="text-xl font-bold text-red-400">Import Failed</h3>
-                        <p className="mt-2 text-gray-300">{progress.error}</p>
+                    <div>
+                        <h3 className="text-xl font-bold text-danger-ink">Import failed</h3>
+                        <p className="mt-2 text-ink-2">{progress.error}</p>
                     </div>
                 )}
 
                 {progress.step === 'complete' && (
-                     <div className="mt-6 text-center bg-green-900/50 border border-green-700 rounded-lg p-4">
-                        <CheckCircleIcon className="h-10 w-10 text-green-400 mx-auto mb-2" />
-                        <h3 className="text-xl font-bold text-white">Import Successful!</h3>
-                        <p className="mt-1 text-gray-300">{progress.newCount} new transactions have been added to your ledger.</p>
-                        <button onClick={onClose} className="mt-4 px-4 py-2 text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 rounded-md">
+                     <div className="mt-6 rounded-card border border-success bg-success-soft p-4">
+                        <CheckCircleIcon className="mb-2 h-8 w-8 text-success-ink" />
+                        <h3 className="text-xl font-bold text-success-ink">Statement imported</h3>
+                        <p className="mt-1 text-ink-2">{progress.newCount} new transactions have been added to your ledger.</p>
+                        <button onClick={onClose} className="mt-4 min-h-[48px] rounded-control bg-accent px-5 text-base font-semibold text-on-accent transition-colors duration-quick hover:bg-accent-hover active:bg-accent-press">
                             View Statement
                         </button>
                     </div>

@@ -1,0 +1,4 @@
+/* Dev-only stylesheet for /ui-gallery.html: the app's tokens and base styles,
+   built with a Tailwind config that also scans dev/**. */
+@import "../styles.css";
+@config "./tailwind.gallery.config.js";

@@ -1,15 +1,24 @@
 import React from 'react';
 import VatSummary from '../components/reporting/VatSummary';
 import { useData } from '../hooks/useData';
+import { useUI } from '../hooks/useUI';
+import { EmptyState } from '../components/ui';
+import { CalculatorIcon } from '../components/icons';
 
 const VatPage = () => {
     const { isVatRegistered } = useData();
+    const { setView } = useUI();
 
     if (!isVatRegistered) {
         return (
-            <div className="text-center p-8 bg-gray-800 rounded-lg">
-                <h2 className="text-xl font-bold text-white">VAT Summary Not Available</h2>
-                <p className="mt-2 text-gray-400">Your business is not marked as VAT registered. You can change this in the 'Business Details' section of the Settings page.</p>
+            <div className="rounded-card border border-line bg-surface">
+                <EmptyState
+                    icon={<CalculatorIcon />}
+                    title="VAT is turned off for this business"
+                    description="The VAT return shows here once the business is marked as VAT registered in Settings, under Business details."
+                    actionLabel="Open Settings"
+                    onAction={() => setView('settings')}
+                />
             </div>
         );
     }

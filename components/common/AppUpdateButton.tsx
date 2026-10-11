@@ -5,6 +5,10 @@ import { ArrowPathIcon } from '../icons';
 import Spinner from './Spinner';
 
 type AppUpdateButtonProps = {
+    /**
+     * header: a 48 px icon button. nav: a sidebar item. menu: a row in the More list.
+     * A new build also shows the UpdateBanner, so this is mostly "check now".
+     */
     variant?: 'header' | 'nav' | 'menu';
 };
 
@@ -28,36 +32,46 @@ const AppUpdateButton = ({ variant = 'header' }: AppUpdateButtonProps) => {
                 disabled={busy}
                 title={label}
                 aria-label={label}
-                className={`relative inline-flex items-center gap-1.5 rounded-full transition-colors disabled:opacity-50 ${
-                    ready
-                        ? 'bg-emerald-600 text-white hover:bg-emerald-500 px-2.5 py-2'
-                        : 'p-2 text-gray-300 hover:bg-gray-700 hover:text-white'
+                className={`relative grid h-12 w-12 place-items-center rounded-control transition-colors duration-quick ease-out disabled:opacity-50 ${
+                    ready ? 'bg-accent text-on-accent hover:bg-accent-hover' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
                 }`}
             >
-                {busy ? <Spinner className="h-5 w-5" /> : <ArrowPathIcon className="h-5 w-5" />}
-                {ready && !busy && <span className="hidden md:inline text-xs font-semibold pr-1">Update</span>}
-                {ready && !busy && (
-                    <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-emerald-300 ring-2 ring-gray-900" />
-                )}
+                {busy ? <Spinner className="h-5 w-5" /> : <ArrowPathIcon className="h-6 w-6" />}
             </button>
         );
     }
 
-    const className =
-        variant === 'menu'
-            ? `w-full flex items-center p-3 text-sm font-medium rounded-xl transition-all ${
-                  ready ? 'bg-emerald-600/80 text-white' : 'text-gray-300 hover:bg-white/10'
-              }`
-            : `flex items-center w-full p-2 text-base font-normal rounded-lg transition-all duration-200 group ${
-                  ready ? 'bg-emerald-600 text-white shadow-lg' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              }`;
+    if (variant === 'menu') {
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                disabled={busy}
+                aria-busy={busy || undefined}
+                className={`flex min-h-[56px] w-full items-center gap-3 border-b border-line px-4 text-start transition-colors duration-quick ease-out focus-visible:outline-offset-[-3px] ${
+                    ready ? 'bg-accent-soft text-accent-soft-ink' : 'text-ink hover:bg-surface-2 active:bg-surface-3'
+                }`}
+            >
+                {busy
+                    ? <Spinner className="h-6 w-6 flex-none" />
+                    : <ArrowPathIcon className={`h-6 w-6 flex-none ${ready ? '' : 'text-ink-2'}`} />}
+                <span className="min-w-0 flex-1 truncate text-base font-semibold">{label}</span>
+            </button>
+        );
+    }
 
     return (
-        <button type="button" onClick={onClick} disabled={busy} className={className} aria-label={label}>
-            {busy
-                ? <Spinner className="h-5 w-5" />
-                : <ArrowPathIcon className={variant === 'menu' ? 'h-5 w-5' : 'w-6 h-6'} />}
-            <span className="ml-3 flex-1 whitespace-nowrap text-left">{label}</span>
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={busy}
+            aria-busy={busy || undefined}
+            className={`flex min-h-[40px] w-full items-center gap-3 rounded-control px-2.5 text-start text-sm font-semibold transition-colors duration-quick ease-out focus-visible:outline-offset-[-1px] ${
+                ready ? 'bg-accent-soft text-accent-soft-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink active:bg-surface-3'
+            }`}
+        >
+            {busy ? <Spinner className="h-5 w-5 flex-none" /> : <ArrowPathIcon className="h-5 w-5 flex-none" />}
+            <span className="min-w-0 flex-1 truncate">{label}</span>
         </button>
     );
 };

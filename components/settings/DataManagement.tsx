@@ -4,10 +4,11 @@ import JSZip from 'jszip';
 import * as dataService from '../../services/dataService';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { ArrowDownTrayIcon, ArrowUpTrayIcon, CheckCircleIcon, ExclamationTriangleIcon, TrashIcon } from '../icons';
+import { ArrowDownTrayIcon, ArrowUpTrayIcon, CheckCircleIcon, DocumentTextIcon, ExclamationTriangleIcon, TrashIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import { formatDate } from '../../utils/helpers';
-import { UploadBatch } from '../../types';
+import { Button, EmptyState, IconButton } from '../ui';
+import { Panel, PanelSection, ProgressBar, dangerQuiet } from './SettingsKit';
 
 interface ProgressState {
     step: 'idle' | 'preparing' | 'fetching_files' | 'zipping' | 'deleting' | 'restoring' | 'complete' | 'error';
@@ -38,9 +39,9 @@ const DataManagement = () => {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            setProgress({ step: 'complete', message: 'Data backup downloaded successfully.' });
+            setProgress({ step: 'complete', message: 'Backup downloaded.' });
         } catch (error: any) {
-            setProgress({ step: 'error', message: error.message || 'Failed to generate backup.' });
+            setProgress({ step: 'error', message: error.message || "Couldn't make the backup." });
         } finally {
             setTimeout(() => setProgress({ step: 'idle', message: '' }), 4000);
         }
@@ -50,7 +51,7 @@ const DataManagement = () => {
         const file = event.target.files?.[0];
         if (!file || !companyId) return;
         
-        if (!window.confirm("Are you sure you want to restore from this backup? This will completely overwrite all your current data and cannot be undone.")) {
+        if (!window.confirm("Restore from this backup? It replaces all the data in this ledger. You can't undo this.")) {
             if(restoreInputRef.current) restoreInputRef.current.value = "";
             return;
         }
@@ -60,7 +61,7 @@ const DataManagement = () => {
             const text = await file.text();
             const data = JSON.parse(text);
             await dataService.restoreDataFromBackup(companyId, data);
-            setProgress({ step: 'complete', message: 'Restore complete! The page will now reload.' });
+            setProgress({ step: 'complete', message: 'Restored. The app will reload in a moment.' });
             setTimeout(() => window.location.reload(), 2000);
         } catch (error: any) {
              setProgress({ step: 'error', message: error.message || 'Invalid backup file or restore failed.' });
@@ -100,7 +101,7 @@ const DataManagement = () => {
         link.click();
         document.body.removeChild(link);
     
-        setProgress({ step: 'complete', message: 'File archive downloaded!' });
+        setProgress({ step: 'complete', message: 'Files downloaded.' });
         setTimeout(() => setProgress({ step: 'idle', message: '' }), 3000);
     };
     
@@ -110,9 +111,9 @@ const DataManagement = () => {
         setProgress({ step: 'preparing', message: 'Re-sequencing stock numbers...' });
         try {
             await resequenceStockNumbers();
-            setProgress({ step: 'complete', message: 'Stock numbers have been successfully re-sequenced.' });
+            setProgress({ step: 'complete', message: 'Stock numbers updated.' });
         } catch (error: any) {
-            setProgress({ step: 'error', message: error.message || 'Failed to re-sequence stock numbers.' });
+            setProgress({ step: 'error', message: error.message || "Couldn't update the stock numbers." });
         } finally {
             setTimeout(() => setProgress({ step: 'idle', message: '' }), 4000);
         }
@@ -123,14 +124,14 @@ const DataManagement = () => {
     };
 
     const handleDeleteCategory = async (category: 'receipts' | 'vehicles', label: string) => {
-        if (window.confirm(`DANGER: Are you sure you want to delete ALL ${label}? This includes all data records and associated files. This cannot be undone.`)) {
-            if (window.confirm(`Double check: Really delete all ${label}?`)) {
+        if (window.confirm(`Delete ALL ${label}? Every record and file goes. You can't undo this.`)) {
+            if (window.confirm(`Last check: delete all ${label} for good?`)) {
                 setProgress({ step: 'deleting', message: `Deleting all ${label}...` });
                 try {
                     await deleteDataAndFilesByCategories([category]);
-                    setProgress({ step: 'complete', message: `All ${label} have been deleted.` });
+                    setProgress({ step: 'complete', message: `All ${label} deleted.` });
                 } catch (error: any) {
-                    setProgress({ step: 'error', message: `Failed to delete ${label}: ${error.message}` });
+                    setProgress({ step: 'error', message: `Couldn't delete ${label}: ${error.message}` });
                 } finally {
                     setTimeout(() => setProgress({ step: 'idle', message: '' }), 4000);
                 }
@@ -138,110 +139,112 @@ const DataManagement = () => {
         }
     };
 
+    const showCount = progress.total !== undefined && progress.total > 0 && progress.current !== undefined;
+
     return (
-        <div className="space-y-8 max-w-3xl mx-auto">
+        <div className="space-y-6">
             {progress.step !== 'idle' && (
-                <div className="p-3 rounded-lg bg-gray-900/50">
-                     <div className="flex items-center gap-3">
-                        {isWorking && <Spinner className="h-5 w-5 text-brand-400"/>}
-                        {progress.step === 'complete' && <CheckCircleIcon className="h-5 w-5 text-green-400" />}
-                        {progress.step === 'error' && <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />}
-                        <div>
-                            <p className={`font-semibold ${progress.step === 'error' ? 'text-red-400' : 'text-white'}`}>{progress.message}</p>
-                            {progress.total && progress.total > 0 && progress.current !== undefined && <p className="text-xs text-gray-400">{progress.current} of {progress.total}</p>}
-                        </div>
+                <div
+                    role={progress.step === 'error' ? 'alert' : 'status'}
+                    className={`rounded-card border p-4 ${progress.step === 'error' ? 'border-danger bg-danger-soft text-danger-ink' : progress.step === 'complete' ? 'border-success bg-success-soft text-success-ink' : 'border-line bg-surface text-ink'}`}
+                >
+                    <div className="flex items-center gap-3">
+                        {isWorking && <Spinner className="h-5 w-5 flex-none text-accent-text" />}
+                        {progress.step === 'complete' && <CheckCircleIcon className="h-5 w-5 flex-none" />}
+                        {progress.step === 'error' && <ExclamationTriangleIcon className="h-5 w-5 flex-none" />}
+                        <p className="min-w-0 flex-1 font-semibold">{progress.message}</p>
+                        {showCount && <p className="num flex-none text-sm opacity-80">{progress.current} of {progress.total}</p>}
                     </div>
-                    {isWorking && progress.total && progress.total > 0 && progress.current !== undefined && (
-                        <div className="w-full bg-gray-700 rounded-full h-1.5 mt-2">
-                            <div className="bg-brand-500 h-1.5 rounded-full" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
+                    {isWorking && showCount && (
+                        <div className="mt-3">
+                            <ProgressBar value={(progress.current! / progress.total!) * 100} label={progress.message} />
                         </div>
                     )}
                 </div>
             )}
 
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                 <h2 className="text-lg font-semibold text-white">Upload History</h2>
-                 <p className="text-sm text-gray-400 mt-1">Manage your imported bank and credit card statements. You can undo an import to remove all its associated transactions.</p>
-                 <div className="mt-4">
-                    {uploadBatches.length > 0 ? (
-                        <ul className="space-y-2">
-                            {uploadBatches.map(batch => (
-                                <li key={batch.id} className="flex items-center justify-between p-3 bg-gray-900/50 rounded-md">
-                                    <div>
-                                        <p className="font-semibold text-white truncate" title={batch.filename}>{batch.filename}</p>
-                                        <p className="text-xs text-gray-400">{batch.transactionCount} transactions imported to '{batch.accountName}' on {formatDate(batch.uploadedAt)}</p>
-                                    </div>
-                                    <button onClick={() => openModal('deleteUploadConfirm', batch)} className="p-2 ml-4 rounded-full text-gray-400 hover:bg-red-800 hover:text-red-300 transition-colors" title="Delete this upload and its transactions">
-                                        <TrashIcon className="h-5 w-5" />
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <p className="text-sm text-gray-400 text-center py-4">No CSV uploads have been recorded yet.</p>
-                    )}
-                 </div>
-            </div>
+            <Panel ariaLabel="Statement uploads">
+                <PanelSection
+                    title="Statement uploads"
+                    description="Each bank or card statement you've imported. Undo an import to remove all its lines."
+                />
+                {uploadBatches.length > 0 ? (
+                    <ul className="m-0 list-none divide-y divide-line p-0">
+                        {uploadBatches.map(batch => (
+                            <li key={batch.id} className="flex items-center gap-3 py-2 pe-2 ps-4 sm:ps-5">
+                                <DocumentTextIcon className="h-5 w-5 flex-none text-ink-3" />
+                                <div className="min-w-0 flex-1 py-1">
+                                    <p className="truncate font-semibold text-ink" title={batch.filename}>{batch.filename}</p>
+                                    <p className="text-sm text-ink-3">
+                                        <span className="num text-ink-2">{batch.transactionCount}</span> lines into {batch.accountName} · <span className="num">{formatDate(batch.uploadedAt)}</span>
+                                    </p>
+                                </div>
+                                <IconButton
+                                    label={`Undo the import of ${batch.filename}`}
+                                    icon={<TrashIcon />}
+                                    onClick={() => openModal('deleteUploadConfirm', batch)}
+                                />
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <EmptyState
+                        icon={<DocumentTextIcon />}
+                        title="No statements imported yet"
+                        description="Statements you upload on the Bank page are listed here, so you can undo one if it went to the wrong account."
+                    />
+                )}
+            </Panel>
 
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-lg font-semibold text-white">Data Tools</h2>
-                <div className="mt-4 border-t border-gray-700 pt-4">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h3 className="font-medium text-white">Re-sequence Stock Numbers</h3>
-                            <p className="text-sm text-gray-400 mt-1">Re-assigns numerical stock numbers to vehicles based on purchase date, starting from 1000.</p>
-                        </div>
-                        <button onClick={onResequenceClick} disabled={isWorking} className="inline-flex items-center gap-x-2 rounded-md bg-yellow-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500 disabled:opacity-50">
-                            Re-sequence Stock
+            <Panel ariaLabel="Backup and restore">
+                <PanelSection
+                    title="Back up"
+                    description="Download a copy of every record, or every uploaded receipt and invoice file."
+                >
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Button variant="secondary" icon={<ArrowDownTrayIcon />} onClick={handleDataBackup} disabled={isWorking}>
+                            Download data <span className="font-mono text-sm font-normal text-ink-3">.json</span>
+                        </Button>
+                        <Button variant="secondary" icon={<ArrowDownTrayIcon />} onClick={handleDownloadAllFiles} disabled={isWorking}>
+                            Download files <span className="font-mono text-sm font-normal text-ink-3">.zip</span>
+                        </Button>
+                    </div>
+                </PanelSection>
+                <PanelSection
+                    title="Restore"
+                    description="Replaces all the data in this ledger with a backup file. You can't undo this."
+                >
+                    <input type="file" accept=".json" ref={restoreInputRef} onChange={handleDataRestore} className="hidden" />
+                    <Button variant="secondary" icon={<ArrowUpTrayIcon />} onClick={() => restoreInputRef.current?.click()} disabled={isWorking} className="w-full sm:w-auto">
+                        Restore from a backup file
+                    </Button>
+                </PanelSection>
+            </Panel>
+
+            <Panel ariaLabel="Stock numbers">
+                <PanelSection
+                    title="Stock numbers"
+                    description="Re-numbers cars by purchase date, starting from 1000. Cars that already have a standard number keep it."
+                    action={<Button variant="secondary" onClick={onResequenceClick} disabled={isWorking}>Re-number stock</Button>}
+                />
+            </Panel>
+
+            <section aria-label="Delete everything" className="rounded-card border border-danger bg-surface">
+                <PanelSection
+                    tone="danger"
+                    title="Delete everything in a category"
+                    description="Every record and its files, all at once. You can't undo this; make a backup first."
+                >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <button type="button" onClick={() => handleDeleteCategory('receipts', 'Expenses & Receipts')} disabled={isWorking} className={dangerQuiet}>
+                            <TrashIcon /> Delete all expenses
+                        </button>
+                        <button type="button" onClick={() => handleDeleteCategory('vehicles', 'Vehicles')} disabled={isWorking} className={dangerQuiet}>
+                            <TrashIcon /> Delete all vehicles
                         </button>
                     </div>
-                </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-lg font-semibold text-white">Backup & Restore</h2>
-                <p className="text-sm text-gray-400 mt-1">Manage your database records and uploaded files.</p>
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <button onClick={handleDataBackup} disabled={isWorking} className="inline-flex w-full justify-center items-center gap-x-2 rounded-md bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50">
-                        <ArrowDownTrayIcon className="h-5 w-5" /> Download Data Backup (.json)
-                    </button>
-                    <button onClick={handleDownloadAllFiles} disabled={isWorking} className="inline-flex w-full justify-center items-center gap-x-2 rounded-md bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50">
-                        <ArrowDownTrayIcon className="h-5 w-5" /> Download All Files (.zip)
-                    </button>
-                </div>
-                 <div className="mt-4 border-t border-gray-700 pt-4">
-                    <input type="file" accept=".json" ref={restoreInputRef} onChange={handleDataRestore} className="hidden" />
-                    <button onClick={() => restoreInputRef.current?.click()} disabled={isWorking} className="inline-flex w-full justify-center items-center gap-x-2 rounded-md bg-gray-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-gray-500 disabled:opacity-50">
-                        <ArrowUpTrayIcon className="h-5 w-5" /> Restore From Backup File
-                    </button>
-                     <p className="text-xs text-gray-500 mt-2 text-center">Warning: Restoring from a backup will overwrite all existing data.</p>
-                </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-red-900/30">
-                <div className="flex items-center gap-3">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-red-500" />
-                    <h2 className="text-lg font-semibold text-red-400">Danger Zone</h2>
-                </div>
-                <p className="text-sm text-gray-400 mt-1 ml-9">Bulk delete entire categories of data. Use with extreme caution. This action cannot be undone.</p>
-                
-                <div className="mt-4 ml-9 flex flex-wrap gap-4">
-                    <button 
-                        onClick={() => handleDeleteCategory('receipts', 'Expenses & Receipts')} 
-                        disabled={isWorking} 
-                        className="inline-flex items-center gap-x-2 rounded-md bg-red-900/50 border border-red-800 px-4 py-2 text-sm font-semibold text-red-200 shadow-sm hover:bg-red-800 disabled:opacity-50"
-                    >
-                        <TrashIcon className="h-4 w-4" /> Delete All Expenses
-                    </button>
-                    <button 
-                        onClick={() => handleDeleteCategory('vehicles', 'Vehicles')} 
-                        disabled={isWorking} 
-                        className="inline-flex items-center gap-x-2 rounded-md bg-red-900/50 border border-red-800 px-4 py-2 text-sm font-semibold text-red-200 shadow-sm hover:bg-red-800 disabled:opacity-50"
-                    >
-                        <TrashIcon className="h-4 w-4" /> Delete All Vehicles
-                    </button>
-                </div>
-            </div>
+                </PanelSection>
+            </section>
         </div>
     );
 };

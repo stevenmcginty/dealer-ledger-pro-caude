@@ -1,6 +1,9 @@
 /**
  * Top of an open thread: who, which car, who is answering, which channel pane.
  * The car picker, details and options menu hang off it. State lives in the page.
+ *
+ * Layout: back · person · call · menu on one line; the car pinned under it as
+ * a plate with a Change link (the car picker); channel tabs last.
  */
 
 import React from 'react';
@@ -10,13 +13,12 @@ import {
     CarIcon,
     CheckCircleIcon,
     EllipsisVerticalIcon,
-    PencilIcon,
     PhoneIcon,
     SparklesIcon,
     TrashIcon,
     UsersIcon,
-    WhatsAppIcon,
 } from '../../icons';
+import { StatusChip } from '../../ui';
 import {
     STAGE_LABELS,
     type CarCorrection,
@@ -27,7 +29,7 @@ import type { CustomerGroup, ThreadChannel } from '../../../utils/agentInboxGrou
 import { displayUkPhone } from '../../../utils/agentInboxBounce';
 import { titleHasReg } from '../../../utils/carPickerSearch';
 import CarPicker, { RegPlate } from './CarPicker';
-import { Avatar, ChannelIcon, MenuItem, channelName } from './parts';
+import { Avatar, ChannelIcon, MenuItem, WhatsAppMark, channelName } from './parts';
 
 export interface ThreadHeaderProps {
     group: CustomerGroup;
@@ -60,10 +62,14 @@ export interface ThreadHeaderProps {
 }
 
 const MODE_TEXT = (mode: ConversationMode, agentName: string): { label: string; dot: string } => (
-    mode === 'agent' ? { label: `${agentName} is answering`, dot: 'bg-amber-400' }
-        : mode === 'human' ? { label: 'You are answering', dot: 'bg-gray-100' }
-            : { label: 'Paused — nothing sends', dot: 'bg-red-400' }
+    mode === 'agent' ? { label: `${agentName} is answering`, dot: 'bg-accent' }
+        : mode === 'human' ? { label: 'You are answering', dot: 'bg-ink-2' }
+            : { label: 'Paused — nothing sends', dot: 'bg-danger' }
 );
+
+/** Square 48px tap target (40 on desktop pointers) for the header's icon actions. */
+const iconAction =
+    'grid h-12 w-12 flex-shrink-0 place-items-center rounded-control text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink active:bg-surface-3 [&_svg]:h-6 [&_svg]:w-6';
 
 const ThreadHeader: React.FC<ThreadHeaderProps> = ({
     group,
@@ -99,39 +105,41 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
     const closeMenu = () => onMenuOpen(false);
 
     return (
-        <header className="relative z-20 border-b border-white/[0.06] bg-gray-900">
-            <div className="flex items-center gap-2 px-2 pt-2 sm:gap-3 sm:px-4 sm:pt-3">
+        <header className="relative z-nav border-b border-line bg-surface">
+            <div className="flex items-center gap-1 px-1 pt-1 sm:gap-2 sm:px-3 sm:pt-2">
                 <button
                     type="button"
                     onClick={onBack}
-                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 lg:hidden"
+                    className={`${iconAction} lg:hidden`}
                     aria-label="Back to the list"
                 >
-                    <ArrowLeftIcon className="h-5 w-5" />
+                    <ArrowLeftIcon />
                 </button>
-                <Avatar name={group.name} size="lg" />
-                <div className="min-w-0 flex-1">
+                <span className="inline-flex lg:ms-1">
+                    <Avatar name={group.name} />
+                </span>
+                <div className="min-w-0 flex-1 ps-1.5">
                     <div className="flex items-center gap-2">
-                        <h2 className="min-w-0 truncate text-[17px] font-semibold leading-tight tracking-tight text-white">{group.name}</h2>
+                        <h2 className="min-w-0 truncate text-lg font-bold leading-6 tracking-[-0.01em] text-ink">{group.name}</h2>
                         {conv.escalated && !bounced && (
                             <>
-                                <span className="h-2 w-2 flex-shrink-0 rounded-full bg-red-400 sm:hidden" role="img" aria-label="Escalated" />
-                                <span className="hidden flex-shrink-0 rounded-md bg-red-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-red-300 sm:inline">Escalated</span>
+                                <span className="h-2 w-2 flex-shrink-0 rounded-full bg-danger sm:hidden" role="img" aria-label="Escalated" />
+                                <StatusChip status="due" className="hidden sm:inline-flex">Escalated</StatusChip>
                             </>
                         )}
                         {group.shared && (
-                            <span className="hidden flex-shrink-0 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-gray-400 sm:inline">Other ledger</span>
+                            <StatusChip status="neutral" className="hidden sm:inline-flex">Other ledger</StatusChip>
                         )}
                     </div>
-                    <p className="mt-1 flex min-w-0 items-center gap-2 text-[12.5px] leading-tight text-gray-400">
+                    <p className="flex min-w-0 items-center gap-2 text-sm leading-5 text-ink-2">
                         <span className="inline-flex min-w-0 items-center gap-1.5">
-                            <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${mode.dot}`} aria-hidden />
+                            <span className={`h-2 w-2 flex-shrink-0 rounded-full ${mode.dot}`} aria-hidden />
                             <span className="truncate">{mode.label}</span>
                         </span>
                         {phone && (
                             <>
-                                <span className="hidden text-gray-600 sm:inline" aria-hidden>·</span>
-                                <a href={`tel:${phone}`} className="hidden flex-shrink-0 tabular-nums text-gray-300 hover:text-white hover:underline sm:inline">
+                                <span className="hidden text-ink-3 sm:inline" aria-hidden>·</span>
+                                <a href={`tel:${phone}`} className="num hidden flex-shrink-0 text-ink-2 hover:text-ink hover:underline sm:inline">
                                     {displayUkPhone(phone)}
                                 </a>
                             </>
@@ -142,9 +150,9 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
                     <a
                         href={`tel:${phone}`}
                         aria-label={`Call ${displayUkPhone(phone)}`}
-                        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 sm:hidden"
+                        className={`${iconAction} sm:hidden`}
                     >
-                        <PhoneIcon className="h-5 w-5" />
+                        <PhoneIcon />
                     </a>
                 )}
                 <button
@@ -153,41 +161,47 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     aria-label="Conversation options"
-                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                    className={`${iconAction} ${menuOpen ? 'bg-surface-2 text-ink' : ''}`}
                 >
-                    <EllipsisVerticalIcon className="h-5 w-5" />
+                    <EllipsisVerticalIcon />
                 </button>
             </div>
 
-            <div className="flex items-center gap-2 px-3 pb-1 pt-1.5 sm:px-4 sm:pb-2 sm:pt-2 lg:pl-[4.25rem]">
+            {/* The car, pinned under the person. Tapping it opens the car picker. */}
+            <div className="flex items-center gap-2 px-3 pb-2 pt-1 sm:px-4 lg:ps-[4.25rem]">
                 <button
                     type="button"
                     onClick={() => onCarFixOpen(!carFixOpen)}
                     aria-expanded={carFixOpen}
                     aria-haspopup="dialog"
                     title={car ? `${agentName} has this down as the ${car}. Tap to change it.` : `Tell ${agentName} which car this is about`}
-                    className="group inline-flex min-h-[44px] min-w-0 max-w-full items-center gap-2 sm:min-h-[34px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 text-left text-[13px] text-gray-100 transition-colors hover:border-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                    className="group -ms-1 flex min-h-[48px] min-w-0 flex-1 items-center gap-2.5 rounded-control px-1 text-start transition-colors duration-quick ease-out hover:bg-surface-2 sm:min-h-[40px] sm:flex-none sm:pe-3"
                 >
-                    <CarIcon className="h-4 w-4 flex-shrink-0 text-gray-400" />
-                    {car ? (
-                        <span className="truncate"><span className="text-gray-400">Car: </span><span className="font-medium">{car}</span></span>
+                    {car && reg ? (
+                        <RegPlate reg={reg} />
                     ) : (
-                        <span className="truncate text-gray-400">No car — tap to set</span>
+                        <span className="grid h-6 w-8 flex-shrink-0 place-items-center rounded-chip border border-line-strong text-ink-3" aria-hidden>
+                            <CarIcon className="h-4 w-4" />
+                        </span>
                     )}
-                    {car && reg && <RegPlate reg={reg} />}
+                    {car ? (
+                        <span className="min-w-0 truncate text-sm font-semibold text-ink">{car}</span>
+                    ) : (
+                        <span className="min-w-0 truncate text-sm text-ink-3">No car linked</span>
+                    )}
                     {car && conv.carSetByOwner ? (
-                        <span className="inline-flex flex-shrink-0 items-center gap-1 text-[11px] text-emerald-300" title="You set this car">
-                            <CheckCircleIcon className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">set by you</span>
+                        <span className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-success-ink" title="You set this car">
+                            <CheckCircleIcon className="h-4 w-4" />
+                            <span className="hidden sm:inline">Set by you</span>
                         </span>
                     ) : null}
-                    <PencilIcon className="h-3 w-3 flex-shrink-0 text-gray-500 opacity-60 transition-opacity group-hover:opacity-100" />
+                    <span className="ms-auto flex-shrink-0 ps-1 text-sm font-semibold text-accent-text group-hover:underline group-hover:underline-offset-2 sm:ms-1">
+                        {car ? 'Change' : 'Set car'}
+                    </span>
                 </button>
                 {paneChannels.length <= 1 && (
-                    <span className={`ml-auto inline-flex flex-shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                        pane === 'whatsapp' ? 'text-emerald-400' : 'text-sky-400'
-                    }`}>
-                        <ChannelIcon channel={pane} className="h-3.5 w-3.5" />
+                    <span className="ms-auto hidden flex-shrink-0 items-center gap-1.5 text-sm font-semibold text-ink-2 sm:inline-flex">
+                        <ChannelIcon channel={pane} brand className="h-4 w-4" />
                         {channelName(pane)}
                     </span>
                 )}
@@ -203,53 +217,53 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
             )}
 
             {detailsOpen && (
-                <dl className="mx-3 mb-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl border border-white/[0.06] bg-black/25 px-3.5 py-3 text-[12.5px] text-gray-100 sm:mx-4">
+                <dl className="mx-3 mb-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-card bg-surface-2 px-4 py-3 text-sm text-ink sm:mx-4 lg:ms-[4.25rem]">
                     {phone && (
                         <>
-                            <dt className="text-gray-400">Mobile</dt>
-                            <dd><a href={`tel:${phone}`} className="inline-flex items-center gap-1 tabular-nums text-emerald-300 hover:underline"><PhoneIcon className="h-3 w-3" />{displayUkPhone(phone)}</a></dd>
+                            <dt className="text-ink-3">Mobile</dt>
+                            <dd><a href={`tel:${phone}`} className="num inline-flex items-center gap-1.5 font-semibold text-accent-text hover:underline"><PhoneIcon className="h-4 w-4" />{displayUkPhone(phone)}</a></dd>
                         </>
                     )}
                     {email && (
                         <>
-                            <dt className="text-gray-400">Email</dt>
-                            <dd className={`break-all ${bounced ? 'text-red-300' : ''}`}>{email}{bounced ? ' · bounces' : ''}</dd>
+                            <dt className="text-ink-3">Email</dt>
+                            <dd className={`break-all ${bounced ? 'text-danger' : ''}`}>{email}{bounced ? ' · bounces' : ''}</dd>
                         </>
                     )}
                     {!email && !phone && (
                         <>
-                            <dt className="text-gray-400">From</dt>
+                            <dt className="text-ink-3">From</dt>
                             <dd className="break-all">{conv.address}</dd>
                         </>
                     )}
                     {conv.partExOrFinance && (
                         <>
-                            <dt className="text-gray-400">Deal</dt>
+                            <dt className="text-ink-3">Deal</dt>
                             <dd>{conv.partExOrFinance}</dd>
                         </>
                     )}
                     {conv.preferredTime && (
                         <>
-                            <dt className="text-gray-400">Prefers</dt>
+                            <dt className="text-ink-3">Prefers</dt>
                             <dd>{conv.preferredTime}</dd>
                         </>
                     )}
                     {conv.booking && (
                         <>
-                            <dt className="text-gray-400">Booked</dt>
-                            <dd className="text-emerald-300">{conv.booking.window}</dd>
+                            <dt className="text-ink-3">Booked</dt>
+                            <dd className="font-semibold text-success-ink">{conv.booking.window}</dd>
                         </>
                     )}
-                    <dt className="text-gray-400">Stage</dt>
+                    <dt className="text-ink-3">Stage</dt>
                     <dd>{STAGE_LABELS[conv.stage] || conv.stage}{group.shared ? ' · other ledger' : ''}</dd>
-                    <dt className="text-gray-400">Ref</dt>
-                    <dd className="font-mono text-gray-400">#{conv.shortId}</dd>
+                    <dt className="text-ink-3">Ref</dt>
+                    <dd className="num text-ink-2">#{conv.shortId}</dd>
                     {conv.contact?.leadId && (
                         <>
-                            <dt className="text-gray-400">CRM</dt>
+                            <dt className="text-ink-3">CRM</dt>
                             <dd>
-                                <button type="button" onClick={onOpenLead} className="inline-flex items-center gap-1 text-sky-300 hover:text-sky-200">
-                                    <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                                <button type="button" onClick={onOpenLead} className="inline-flex min-h-[32px] items-center gap-1.5 font-semibold text-accent-text hover:underline">
+                                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                                     {leadLabel || 'Open lead'}
                                 </button>
                             </dd>
@@ -259,7 +273,7 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
             )}
 
             {paneChannels.length > 1 && (
-                <div className="flex px-2 sm:px-4 lg:pl-[3.75rem]" role="tablist" aria-label="Channel">
+                <div className="flex px-1 sm:px-3 lg:ps-[3.75rem]" role="tablist" aria-label="Channel">
                     {paneChannels.map(ch => {
                         const on = pane === ch;
                         return (
@@ -269,21 +283,16 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
                                 role="tab"
                                 aria-selected={on}
                                 onClick={() => onPane(ch)}
-                                className={`relative flex h-11 items-center gap-1.5 px-3 text-[13px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-400 ${
-                                    on ? 'text-white' : 'text-gray-400 hover:text-gray-100'
+                                className={`relative flex min-h-[48px] items-center gap-2 px-3 text-sm font-semibold transition-colors duration-quick ease-out focus-visible:[outline-offset:-3px] lg:min-h-[44px] ${
+                                    on ? 'text-ink' : 'text-ink-2 hover:text-ink'
                                 }`}
                             >
-                                <ChannelIcon
-                                    channel={ch}
-                                    className={`h-4 w-4 ${on ? (ch === 'whatsapp' ? 'text-emerald-400' : 'text-sky-400') : ''}`}
-                                />
+                                <ChannelIcon channel={ch} brand={on} className="h-4 w-4" />
                                 {channelName(ch)}
-                                <span className={`tabular-nums text-[12px] ${on ? 'text-gray-400' : 'text-gray-500'}`}>{channelCounts[ch]}</span>
+                                <span className="num text-xs text-ink-3">{channelCounts[ch]}</span>
                                 <span
                                     aria-hidden
-                                    className={`absolute inset-x-2 bottom-0 h-[2px] rounded-full transition-opacity ${
-                                        ch === 'whatsapp' ? 'bg-emerald-400' : 'bg-sky-400'
-                                    } ${on ? 'opacity-100' : 'opacity-0'}`}
+                                    className={`absolute inset-x-2 bottom-0 h-[3px] rounded-t-full bg-accent transition-opacity duration-quick ease-out ${on ? 'opacity-100' : 'opacity-0'}`}
                                 />
                             </button>
                         );
@@ -293,54 +302,59 @@ const ThreadHeader: React.FC<ThreadHeaderProps> = ({
 
             {menuOpen && (
                 <>
-                    <div className="fixed inset-0 z-20" onClick={closeMenu} aria-hidden />
-                    <div role="menu" className="absolute right-2 top-14 z-30 w-60 overflow-hidden rounded-xl border border-white/10 bg-gray-800 py-1 shadow-2xl shadow-black/50 sm:right-4">
+                    <div className="fixed inset-0 z-dropdown" onClick={closeMenu} aria-hidden />
+                    <div role="menu" className="absolute end-2 top-14 z-dropdown w-64 overflow-hidden rounded-card border border-line bg-surface py-1 shadow-e2 sm:end-4">
                         {conv.mode !== 'human' && (
                             <MenuItem onClick={() => { closeMenu(); onMode('human'); }} disabled={changingMode}>Take over — I&apos;ll answer</MenuItem>
                         )}
                         {conv.mode !== 'agent' && (
                             <MenuItem onClick={() => { closeMenu(); onMode('agent'); }} disabled={changingMode}>
-                                <SparklesIcon className="h-4 w-4 text-amber-300" />
+                                <SparklesIcon className="text-accent-text" />
                                 Hand back to {agentName}
                             </MenuItem>
                         )}
                         {conv.mode !== 'paused' && (
                             <MenuItem onClick={() => { closeMenu(); onMode('paused'); }} disabled={changingMode}>Pause — send nothing</MenuItem>
                         )}
-                        <div className="my-1 border-t border-white/[0.06]" />
+                        <div className="my-1 border-t border-line" />
                         <MenuItem onClick={() => { closeMenu(); onToggleDetails(); }}>
                             {detailsOpen ? 'Hide details' : 'Details'}
                         </MenuItem>
                         <MenuItem onClick={() => { closeMenu(); onCarFixOpen(true); }}>
-                            <CarIcon className="h-4 w-4 text-amber-300" />
+                            <CarIcon className="text-ink-3" />
                             Change car
                         </MenuItem>
                         <MenuItem onClick={() => { closeMenu(); onSplit(); }}>
-                            <UsersIcon className="h-4 w-4 text-amber-300" />
+                            <UsersIcon className="text-ink-3" />
                             Different person
                         </MenuItem>
-                        {(phone || conv.contact?.leadId) && <div className="my-1 border-t border-white/[0.06]" />}
+                        {(phone || conv.contact?.leadId) && <div className="my-1 border-t border-line" />}
                         {phone && (
-                            <a href={`tel:${phone}`} role="menuitem" onClick={closeMenu} className="flex min-h-[44px] w-full items-center gap-2.5 px-4 text-sm text-gray-100 hover:bg-white/[0.06]">
-                                <PhoneIcon className="h-4 w-4 text-gray-400" />
-                                Call {displayUkPhone(phone)}
+                            <a
+                                href={`tel:${phone}`}
+                                role="menuitem"
+                                onClick={closeMenu}
+                                className="flex min-h-[48px] w-full items-center gap-3 px-4 text-base text-ink transition-colors duration-quick ease-out hover:bg-surface-2 focus-visible:[outline-offset:-3px] lg:min-h-[40px] lg:text-sm"
+                            >
+                                <PhoneIcon className="h-5 w-5 flex-shrink-0 text-ink-3" />
+                                Call <span className="num">{displayUkPhone(phone)}</span>
                             </a>
                         )}
                         {canWhatsAppFollowUp && (
                             <MenuItem onClick={() => { closeMenu(); onWhatsAppFollowUp(); }}>
-                                <WhatsAppIcon className="h-4 w-4 text-emerald-400" />
+                                <WhatsAppMark brand />
                                 Follow up on WhatsApp
                             </MenuItem>
                         )}
                         {conv.contact?.leadId && (
                             <MenuItem onClick={() => { closeMenu(); onOpenLead(); }}>
-                                <ArrowTopRightOnSquareIcon className="h-4 w-4 text-gray-400" />
+                                <ArrowTopRightOnSquareIcon className="text-ink-3" />
                                 Open CRM lead
                             </MenuItem>
                         )}
-                        <div className="my-1 border-t border-white/[0.06]" />
+                        <div className="my-1 border-t border-line" />
                         <MenuItem danger onClick={() => { closeMenu(); onDelete(); }}>
-                            <TrashIcon className="h-4 w-4" />
+                            <TrashIcon />
                             Delete conversation
                         </MenuItem>
                     </div>

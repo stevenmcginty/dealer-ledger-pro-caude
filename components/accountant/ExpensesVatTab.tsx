@@ -3,7 +3,10 @@ import type { StatementTransaction, FinancialAccount } from '../../types';
 import { buildExpenseRows, totalExpenseRows, ExpenseRow } from '../../utils/accounting/expenseRows';
 import { DateRange, inRange, toDay, formatDayShort } from '../../utils/accounting/yearEnd';
 import ReceiptThumb from '../common/ReceiptThumb';
-import { HubCard, CsvButton, money, downloadCsv, fix2 } from './hubShared';
+import { HubCard, CsvButton, downloadCsv, fix2, Money, moneyText, FootCell } from './hubShared';
+import { Search, Checkbox, Badge, EmptyState, DataTable, THead, TBody, Th, Tr, Td } from '../ui';
+import { eyebrow } from '../ui/cx';
+import Select from '../common/Select';
 
 // Every expense line in the period with its VAT, the receipt file one click away.
 // Booked rows come from the P&L (receipts + reconciled bank lines). Bank lines that are
@@ -21,8 +24,6 @@ interface Props {
 
 type StatusFilter = 'all' | 'reconciled' | 'unreconciled' | 'no_file';
 type Row = ExpenseRow & { notBooked?: boolean };
-
-const selectCls = 'block w-full rounded-md border-0 bg-gray-700 py-2 pl-3 pr-8 text-sm text-white ring-1 ring-inset ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-brand-500';
 
 const ExpensesVatTab = ({ range, rows, transactions, financialAccounts, isVatRegistered, initialStatus = 'all' }: Props) => {
     const [category, setCategory] = useState('all');
@@ -89,21 +90,23 @@ const ExpensesVatTab = ({ range, rows, transactions, financialAccounts, isVatReg
 
     const noFile = all.filter(r => r.source === 'receipt' && !r.receiptUrl && r.direction === 'expense').length;
 
+    const sourceText = (r: Row) => r.source === 'receipt' ? 'Receipt' : r.source === 'card' ? 'Card line' : 'Bank line';
+
     return (
         <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line lg:grid-cols-4">
                 {[
-                    { label: 'P&L expenses (net)', value: money(pnlTotals.net) },
-                    { label: 'VAT on P&L expenses', value: money(pnlTotals.vat) },
-                    { label: 'All lines (gross)', value: money(expenseTotals.gross) },
-                    { label: 'Lines', value: `${expenseTotals.count}${noFile ? ` · ${noFile} no file` : ''}` },
+                    { label: 'P&L costs (net)', value: <Money value={pnlTotals.net} /> },
+                    { label: 'VAT on P&L costs', value: <Money value={pnlTotals.vat} /> },
+                    { label: 'All lines (gross)', value: <Money value={expenseTotals.gross} /> },
+                    { label: 'Lines', value: <><span className="num">{expenseTotals.count}</span>{noFile ? <span className="text-base font-semibold text-warning-ink"> · <span className="num">{noFile}</span> no file</span> : null}</> },
                 ].map(s => (
-                    <div key={s.label} className="rounded-xl border border-gray-700/70 bg-gray-800 px-4 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{s.label}</p>
-                        <p className="mt-1 truncate text-lg font-semibold tabular-nums text-white">{s.value}</p>
+                    <div key={s.label} className="min-w-0 bg-surface px-4 py-3">
+                        <dt className={eyebrow}>{s.label}</dt>
+                        <dd className="mt-1 truncate text-lg font-bold text-ink sm:text-xl">{s.value}</dd>
                     </div>
                 ))}
-            </div>
+            </dl>
 
             <HubCard
                 title="Expense lines"
@@ -111,126 +114,115 @@ const ExpensesVatTab = ({ range, rows, transactions, financialAccounts, isVatReg
                 actions={<CsvButton onClick={handleCsv} />}
                 bodyClassName=""
             >
-                <div className="grid grid-cols-1 gap-2 border-b border-gray-700/70 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_auto]">
-                    <div className="relative min-w-0">
-                        <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
-                        <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search supplier, category, amount…" aria-label="Search expense lines"
-                            className="block w-full rounded-md border-0 bg-gray-700 py-2 pl-9 pr-3 text-sm text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-500" />
-                    </div>
-                    <select aria-label="Category" value={category} onChange={e => setCategory(e.target.value)} className={selectCls}>
+                <div className="grid grid-cols-1 gap-2 border-b border-line p-3 print:hidden sm:grid-cols-2 sm:p-4 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_auto]">
+                    <Search value={search} onChange={setSearch} label="Search expense lines" placeholder="Supplier, category, amount" className="sm:col-span-2 xl:col-span-1" />
+                    <Select aria-label="Category" value={category} onChange={e => setCategory(e.target.value)}>
                         <option value="all">All categories</option>
                         {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <select aria-label="Account" value={account} onChange={e => setAccount(e.target.value)} className={selectCls}>
+                    </Select>
+                    <Select aria-label="Account" value={account} onChange={e => setAccount(e.target.value)}>
                         <option value="all">All accounts</option>
                         {accounts.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                    <select aria-label="Status" value={status} onChange={e => setStatus(e.target.value as StatusFilter)} className={selectCls}>
+                    </Select>
+                    <Select aria-label="Status" value={status} onChange={e => setStatus(e.target.value as StatusFilter)}>
                         <option value="all">Any status</option>
                         <option value="reconciled">Reconciled</option>
                         <option value="unreconciled">Not reconciled</option>
                         <option value="no_file">Receipt with no file</option>
-                    </select>
-                    <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-1 py-2 text-sm text-gray-300">
-                        <input type="checkbox" checked={showIncome} onChange={e => setShowIncome(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-500" />
-                        Show income
-                    </label>
+                    </Select>
+                    <Checkbox label="Show income" checked={showIncome} onChange={e => setShowIncome(e.target.checked)} className="whitespace-nowrap px-1" />
                 </div>
 
                 {filtered.length === 0 ? (
-                    <p className="px-4 py-12 text-center text-sm text-gray-400">No lines match this period and filter.</p>
+                    <EmptyState title="No lines match" description="Nothing in this period fits these filters. Clear the search or pick another status." />
                 ) : (
-                    <div className="max-h-[70vh] overflow-auto">
-                        <table className="w-full min-w-[56rem] text-sm">
-                            <thead className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur">
-                                <tr className="text-[11px] uppercase tracking-wider text-gray-400">
-                                    <th className="py-2.5 pl-4 pr-2 text-left font-semibold">Date</th>
-                                    <th className="px-2 py-2.5 text-left font-semibold">File</th>
-                                    <th className="px-2 py-2.5 text-left font-semibold">Description</th>
-                                    <th className="px-2 py-2.5 text-left font-semibold">Category</th>
-                                    <th className="px-2 py-2.5 text-left font-semibold">Account</th>
-                                    <th className="px-2 py-2.5 text-right font-semibold">Net</th>
-                                    <th className="px-2 py-2.5 text-right font-semibold">VAT</th>
-                                    <th className="py-2.5 pl-2 pr-4 text-right font-semibold">Gross</th>
+                    <DataTable ariaLabel="Expense lines" minWidth={896} maxHeight="70vh" className="rounded-none border-0 print:max-h-none print:overflow-visible">
+                        <THead>
+                            <tr>
+                                <Th className="ps-4">Date</Th>
+                                <Th>File</Th>
+                                <Th>Description</Th>
+                                <Th>Category</Th>
+                                <Th>Account</Th>
+                                <Th numeric>Net</Th>
+                                <Th numeric>VAT</Th>
+                                <Th numeric className="pe-4">Gross</Th>
+                            </tr>
+                        </THead>
+                        <TBody>
+                            {filtered.map(r => {
+                                const inc = r.direction === 'income';
+                                return (
+                                    <Tr key={r.id} className={r.notBooked ? '[&>td]:bg-warning-soft' : ''}>
+                                        <Td className="num ps-4 text-ink-2">{formatDayShort(r.date)}</Td>
+                                        <Td className="py-1.5">
+                                            {r.receiptUrl ? <ReceiptThumb url={r.receiptUrl} size="sm" label={`${r.description} · ${formatDayShort(r.date)}`} />
+                                                : r.source === 'receipt' ? <span className="inline-flex h-8 items-center rounded-chip border border-dashed border-warning px-1.5 text-xs font-semibold text-warning-ink" title="Receipt has no file attached">No file</span>
+                                                : <span className="inline-flex h-8 w-8 items-center justify-center text-ink-3" title="Bank or card line" aria-label="Bank or card line">–</span>}
+                                        </Td>
+                                        <Td className="max-w-[16rem] whitespace-normal py-2">
+                                            <p className="truncate font-semibold text-ink" title={r.description}>{r.description}</p>
+                                            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-ink-3">
+                                                <span>{sourceText(r)}</span>
+                                                {r.notBooked ? <Badge variant="warning" size="sm" dot>Not reconciled</Badge>
+                                                    : r.reconciled ? <Badge variant="success" size="sm" dot>Reconciled</Badge> : null}
+                                                {!r.inPnl && !r.notBooked && <span title={r.notInPnlLabel}><Badge size="sm">Not in P&L</Badge></span>}
+                                                {inc && <Badge variant="info" size="sm">Income</Badge>}
+                                            </p>
+                                        </Td>
+                                        <Td className="text-ink-2">{r.category}</Td>
+                                        <Td className="max-w-[10rem] truncate text-ink-3" title={r.account}>{r.account}</Td>
+                                        <Td numeric className={inc ? 'text-info' : 'text-ink'}>{inc ? '+' : ''}{moneyText(r.net)}</Td>
+                                        <Td numeric className="text-ink-2">{r.vat ? moneyText(r.vat) : '–'}</Td>
+                                        <Td numeric className={`pe-4 font-semibold ${inc ? 'text-info' : 'text-ink'}`}>{inc ? '+' : ''}{moneyText(r.gross)}</Td>
+                                    </Tr>
+                                );
+                            })}
+                        </TBody>
+                        <tfoot className="sticky bottom-0 z-sticky">
+                            <tr>
+                                <FootCell colSpan={5} className="ps-4">Costs · <span className="num">{expenseTotals.count}</span> lines</FootCell>
+                                <FootCell numeric>{moneyText(expenseTotals.net)}</FootCell>
+                                <FootCell numeric>{moneyText(expenseTotals.vat)}</FootCell>
+                                <FootCell numeric className="pe-4">{moneyText(expenseTotals.gross)}</FootCell>
+                            </tr>
+                            {showIncome && (
+                                <tr>
+                                    <FootCell colSpan={5} className="border-t-line ps-4 text-info">Income · <span className="num">{incomeTotals.count}</span> lines</FootCell>
+                                    <FootCell numeric className="border-t-line text-info">+{moneyText(incomeTotals.net)}</FootCell>
+                                    <FootCell numeric className="border-t-line text-info">+{moneyText(incomeTotals.vat)}</FootCell>
+                                    <FootCell numeric className="border-t-line pe-4 text-info">+{moneyText(incomeTotals.gross)}</FootCell>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-700/50">
-                                {filtered.map(r => {
-                                    const inc = r.direction === 'income';
-                                    return (
-                                        <tr key={r.id} className={`hover:bg-gray-700/30 ${r.notBooked ? 'bg-amber-900/10' : ''}`}>
-                                            <td className="whitespace-nowrap py-2 pl-4 pr-2 tabular-nums text-gray-300">{formatDayShort(r.date)}</td>
-                                            <td className="px-2 py-1.5">
-                                                {r.receiptUrl ? <ReceiptThumb url={r.receiptUrl} size="sm" label={`${r.description} · ${formatDayShort(r.date)}`} />
-                                                    : r.source === 'receipt' ? <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-dashed border-amber-500/50 text-[9px] font-semibold uppercase text-amber-300/80" title="Receipt has no file attached">None</span>
-                                                    : <span className="inline-flex h-8 w-8 items-center justify-center text-gray-600" title="Bank or card line">–</span>}
-                                            </td>
-                                            <td className="max-w-[16rem] px-2 py-2">
-                                                <p className="truncate text-white" title={r.description}>{r.description}</p>
-                                                <p className="mt-0.5 flex flex-wrap gap-1.5 text-[11px] text-gray-500">
-                                                    <span>{r.source === 'receipt' ? 'Receipt' : r.source === 'card' ? 'Card line' : 'Bank line'}</span>
-                                                    {r.notBooked ? <span className="rounded bg-amber-500/15 px-1.5 text-amber-300">Not reconciled</span>
-                                                        : r.reconciled ? <span className="rounded bg-emerald-500/10 px-1.5 text-emerald-300/90">Reconciled</span> : null}
-                                                    {!r.inPnl && !r.notBooked && <span className="rounded bg-gray-700 px-1.5 text-gray-300" title={r.notInPnlLabel}>Not in P&L</span>}
-                                                    {inc && <span className="rounded bg-sky-500/15 px-1.5 text-sky-300">Income</span>}
-                                                </p>
-                                            </td>
-                                            <td className="whitespace-nowrap px-2 py-2 text-gray-300">{r.category}</td>
-                                            <td className="max-w-[10rem] truncate whitespace-nowrap px-2 py-2 text-gray-400" title={r.account}>{r.account}</td>
-                                            <td className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${inc ? 'text-sky-300' : 'text-gray-200'}`}>{money(r.net)}</td>
-                                            <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-gray-400">{r.vat ? money(r.vat) : '–'}</td>
-                                            <td className={`whitespace-nowrap py-2 pl-2 pr-4 text-right tabular-nums font-medium ${inc ? 'text-sky-300' : 'text-white'}`}>{money(r.gross)}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                            <tfoot className="sticky bottom-0 bg-gray-900/95 backdrop-blur">
-                                <tr className="border-t border-gray-600 font-semibold text-white">
-                                    <td colSpan={5} className="py-2.5 pl-4 pr-2">Expenses · {expenseTotals.count} lines</td>
-                                    <td className="px-2 py-2.5 text-right tabular-nums">{money(expenseTotals.net)}</td>
-                                    <td className="px-2 py-2.5 text-right tabular-nums">{money(expenseTotals.vat)}</td>
-                                    <td className="py-2.5 pl-2 pr-4 text-right tabular-nums">{money(expenseTotals.gross)}</td>
-                                </tr>
-                                {showIncome && (
-                                    <tr className="font-semibold text-sky-300">
-                                        <td colSpan={5} className="py-2 pl-4 pr-2">Income · {incomeTotals.count} lines</td>
-                                        <td className="px-2 py-2 text-right tabular-nums">{money(incomeTotals.net)}</td>
-                                        <td className="px-2 py-2 text-right tabular-nums">{money(incomeTotals.vat)}</td>
-                                        <td className="py-2 pl-2 pr-4 text-right tabular-nums">{money(incomeTotals.gross)}</td>
-                                    </tr>
-                                )}
-                            </tfoot>
-                        </table>
-                    </div>
+                            )}
+                        </tfoot>
+                    </DataTable>
                 )}
             </HubCard>
 
             <HubCard title="Totals by category" subtitle="Expense lines that match the filters above." bodyClassName="">
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[32rem] text-sm">
-                        <thead>
-                            <tr className="text-[11px] uppercase tracking-wider text-gray-400">
-                                <th className="py-2.5 pl-4 pr-2 text-left font-semibold">Category</th>
-                                <th className="px-2 py-2.5 text-right font-semibold">Lines</th>
-                                <th className="px-2 py-2.5 text-right font-semibold">Net</th>
-                                <th className="px-2 py-2.5 text-right font-semibold">VAT</th>
-                                <th className="py-2.5 pl-2 pr-4 text-right font-semibold">Gross</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700/50">
-                            {byCategory.map(c => (
-                                <tr key={c.category}>
-                                    <td className="py-2 pl-4 pr-2 text-gray-200">{c.category}{!c.inPnl && <span className="ml-2 rounded bg-gray-700 px-1.5 text-[11px] text-gray-300">Not in P&L</span>}</td>
-                                    <td className="px-2 py-2 text-right tabular-nums text-gray-400">{c.count}</td>
-                                    <td className="px-2 py-2 text-right tabular-nums text-gray-200">{money(c.net)}</td>
-                                    <td className="px-2 py-2 text-right tabular-nums text-gray-400">{money(c.vat)}</td>
-                                    <td className="py-2 pl-2 pr-4 text-right tabular-nums text-white">{money(c.gross)}</td>
-                                </tr>
-                            ))}
-                            {byCategory.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">No expense lines.</td></tr>}
-                        </tbody>
-                    </table>
-                </div>
+                <DataTable ariaLabel="Totals by category" minWidth={512} className="rounded-none border-0">
+                    <THead>
+                        <tr>
+                            <Th className="ps-4">Category</Th>
+                            <Th numeric>Lines</Th>
+                            <Th numeric>Net</Th>
+                            <Th numeric>VAT</Th>
+                            <Th numeric className="pe-4">Gross</Th>
+                        </tr>
+                    </THead>
+                    <TBody>
+                        {byCategory.map(c => (
+                            <Tr key={c.category}>
+                                <Td className="ps-4">{c.category}{!c.inPnl && <Badge size="sm" className="ms-2">Not in P&L</Badge>}</Td>
+                                <Td numeric className="text-ink-3">{c.count}</Td>
+                                <Td numeric>{moneyText(c.net)}</Td>
+                                <Td numeric className="text-ink-2">{moneyText(c.vat)}</Td>
+                                <Td numeric className="pe-4 font-semibold">{moneyText(c.gross)}</Td>
+                            </Tr>
+                        ))}
+                        {byCategory.length === 0 && <tr><Td colSpan={5} className="text-center text-ink-3">No expense lines.</Td></tr>}
+                    </TBody>
+                </DataTable>
             </HubCard>
         </div>
     );

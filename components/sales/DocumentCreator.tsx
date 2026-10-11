@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Vehicle, NewSalesDocument, FinanceCompany, DocumentType, SalesDocument, SalesDocumentUpdate, Payment, BusinessDetails, PartExchangeVehicle } from '../../types';
 import { addFinanceCompany } from '../../services/dataService';
-import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { PlusIcon, TrashIcon } from '../icons';
+import { Button, Checkbox, DocChip, IconButton, Input, Plate } from '../ui';
+import { controlFrame, controlInput, cx, eyebrow } from '../ui/cx';
+import Select from '../common/Select';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from '../crm/SheetParts';
+import { DOC_KIND, DOC_NAME } from './docMeta';
 import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
 import { formatCurrency } from '../../utils/helpers';
@@ -29,6 +33,16 @@ type PaymentDraft = Omit<Payment, 'amount'> & { amount: string };
 
 const toDraft = (p: Payment): PaymentDraft => ({ ...p, amount: p.amount ? String(p.amount) : '' });
 const toPayment = (p: PaymentDraft): Payment => ({ ...p, amount: parseFloat(p.amount) || 0 });
+
+const FieldLabel: React.FC<{ htmlFor: string; children: React.ReactNode }> = ({ htmlFor, children }) => (
+    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-semibold leading-5 text-ink">{children}</label>
+);
+
+const TextArea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = ({ className, readOnly, ...props }) => (
+    <div className={controlFrame({ disabled: readOnly })}>
+        <textarea readOnly={readOnly} {...props} className={cx(controlInput, 'resize-y', readOnly && 'text-ink-3', className)} />
+    </div>
+);
 
 const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editingDocument, prefillData, onSubmit, onCancel, financeCompanies, businessDetails }: DocumentCreatorProps) => {
     const { isVatRegistered, customers, addCustomer, updateCustomer } = useData();
@@ -388,7 +402,7 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         return (
             <div className="w-full flex flex-col h-full">
                 {submissionError && (
-                    <div className="flex-shrink-0 m-4 mb-0 p-3 rounded-md bg-red-900/50 border border-red-700 text-sm text-red-200">{submissionError}</div>
+                    <p role="alert" className="m-4 mb-0 flex-none rounded-control bg-danger-soft px-3.5 py-3 text-sm text-danger-ink">{submissionError}</p>
                 )}
                 <PrintableView
                     document={docForPreview}
@@ -409,121 +423,179 @@ const DocumentCreator = ({ companyId, vehicle, documentType, priorDeposit, editi
         'Deposit Slip': 'Deposit Slip',
         'Purchase Invoice': 'Purchase Invoice'
     };
-    const title = isEditing ? `Edit ${editingDocument?.documentType}` : `Create ${docTitles[documentType]}`;
-    
+    const docName = DOC_NAME[documentType].toLowerCase();
+    const title = isEditing ? `Edit ${docName}` : `New ${docName}`;
+    const finance = !!financeCompany;
+
     return (
-        <div className="w-full flex flex-col h-full">
-             <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <div>
-                    <h2 className="text-lg font-bold text-white">{title}</h2>
-                    <p className="text-sm text-gray-400">{vehicle.reg} - {vehicle.make} {vehicle.model}</p>
-                </div>
-                <button onClick={onCancel} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <form id="doc-creator-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
-                <div>
-                    <label htmlFor="customerName" className="block text-sm font-medium text-gray-300">{financeCompany ? 'Invoice To (Finance Co.)' : 'Customer Name'}</label>
-                    <input type="text" id="customerName" value={financeCompany ? financeCompany.name : customerName} onChange={e => !financeCompany && setCustomerName(e.target.value)} readOnly={!!financeCompany} required className={`mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white ${!!financeCompany && 'bg-gray-900 text-gray-400'}`} />
-                </div>
-                <div>
-                    <label htmlFor="customerAddress" className="block text-sm font-medium text-gray-300">{financeCompany ? 'Finance Co. Address' : 'Customer Address'}</label>
-                    <textarea id="customerAddress" value={financeCompany ? financeCompany.address : customerAddress} onChange={e => !financeCompany && setCustomerAddress(e.target.value)} readOnly={!!financeCompany} required rows={3} className={`mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white ${!!financeCompany && 'bg-gray-900 text-gray-400'}`} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SheetFrame>
+            <SheetHeader
+                title={title}
+                description={
+                    <span className="flex min-w-0 items-center gap-2">
+                        <DocChip kind={DOC_KIND[documentType]} label={null} />
+                        {vehicle.reg && <Plate reg={vehicle.reg} size="sm" />}
+                        <span className="truncate">{vehicle.make} {vehicle.model}</span>
+                    </span>
+                }
+                onClose={onCancel}
+            />
+            <SheetBody className="pt-2">
+            <form id="doc-creator-form" onSubmit={handleGeneratePreview} className="space-y-7">
+                {/* ---- Buyer ---- */}
+                <section className="space-y-4" aria-labelledby="dc-buyer">
+                    <h3 id="dc-buyer" className={eyebrow}>Buyer</h3>
+                    <Input
+                        id="customerName"
+                        label={finance ? 'Invoice to (finance company)' : 'Name'}
+                        value={finance ? financeCompany!.name : customerName}
+                        onChange={e => !finance && setCustomerName(e.target.value)}
+                        readOnly={finance}
+                        required
+                        className={finance ? 'text-ink-3' : undefined}
+                    />
                     <div>
-                        <label htmlFor="customerEmail" className="block text-sm font-medium text-gray-300">Customer Email <span className="text-gray-500">(to send the {docTitles[documentType].toLowerCase()})</span></label>
-                        <input type="email" id="customerEmail" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="name@example.com" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                        <FieldLabel htmlFor="customerAddress">{finance ? 'Finance company address' : 'Address'}</FieldLabel>
+                        <TextArea id="customerAddress" value={finance ? financeCompany!.address : customerAddress} onChange={e => !finance && setCustomerAddress(e.target.value)} readOnly={finance} required rows={3} />
                     </div>
-                    <div>
-                        <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-300">Customer Mobile <span className="text-gray-500">(to WhatsApp the {docTitles[documentType].toLowerCase()})</span></label>
-                        <input type="tel" id="customerPhone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="07123 456789" className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Input
+                            id="customerEmail"
+                            label="Email"
+                            type="email"
+                            inputMode="email"
+                            value={customerEmail}
+                            onChange={e => setCustomerEmail(e.target.value)}
+                            placeholder="name@example.com"
+                            hint={`To email the ${docTitles[documentType].toLowerCase()}`}
+                        />
+                        <Input
+                            id="customerPhone"
+                            label="Mobile"
+                            type="tel"
+                            inputMode="tel"
+                            value={customerPhone}
+                            onChange={e => setCustomerPhone(e.target.value)}
+                            placeholder="07123 456789"
+                            hint={`To WhatsApp the ${docTitles[documentType].toLowerCase()}`}
+                            className="num"
+                        />
                     </div>
-                </div>
-                <div className="relative flex items-start">
-                    <div className="flex h-6 items-center"><input id="useDeliveryAddress" type="checkbox" checked={useDeliveryAddress} onChange={e => setUseDeliveryAddress(e.target.checked)} disabled={!!financeCompany} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 disabled:opacity-70" /></div>
-                    <div className="ml-3 text-sm"><label htmlFor="useDeliveryAddress" className="font-medium text-gray-300">Use separate delivery/finance company address</label></div>
-                </div>
+                    <Checkbox
+                        id="useDeliveryAddress"
+                        checked={useDeliveryAddress}
+                        onChange={e => setUseDeliveryAddress(e.target.checked)}
+                        disabled={finance}
+                        label="Different delivery address, or a finance company"
+                    />
 
-                {useDeliveryAddress && (
-                    <div className="p-4 border border-gray-700 rounded-lg space-y-4">
-                        <div className="flex items-center gap-4">
-                             <select value={selectedFinCo} onChange={e => setSelectedFinCo(e.target.value)} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white">
-                                <option value="">-- Select Finance Company --</option>
-                                {financeCompanies.map(fc => <option key={fc.id} value={fc.id}>{fc.name}</option>)}
-                            </select>
-                            <button type="button" onClick={() => setIsAddingFinCo(!isAddingFinCo)} className="p-2 text-sm font-semibold text-brand-400 hover:text-brand-300 whitespace-nowrap">{isAddingFinCo ? 'Cancel' : 'Add New'}</button>
-                        </div>
-                        {isAddingFinCo && (
-                            <div className="space-y-2 p-2 bg-gray-900/50 rounded-md">
-                                <input type="text" placeholder="Company Name" value={newFinCoName} onChange={e => setNewFinCoName(e.target.value)} required className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
-                                <textarea placeholder="Company Address" value={newFinCoAddress} onChange={e => setNewFinCoAddress(e.target.value)} required rows={2} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
-                                <button type="button" onClick={handleAddFinanceCompany} className="w-full px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">Save Company</button>
+                    {useDeliveryAddress && (
+                        <div className="space-y-4 rounded-card border border-line bg-surface-2 p-4">
+                            <div>
+                                <FieldLabel htmlFor="dc-finco">Finance company</FieldLabel>
+                                <div className="flex items-center gap-2">
+                                    <Select id="dc-finco" value={selectedFinCo} onChange={e => setSelectedFinCo(e.target.value)} wrapperClassName="min-w-0 flex-1">
+                                        <option value="">No finance company</option>
+                                        {financeCompanies.map(fc => <option key={fc.id} value={fc.id}>{fc.name}</option>)}
+                                    </Select>
+                                    <Button type="button" variant="ghost" onClick={() => setIsAddingFinCo(!isAddingFinCo)} className="flex-none px-3">
+                                        {isAddingFinCo ? 'Cancel' : 'Add new'}
+                                    </Button>
+                                </div>
                             </div>
-                        )}
-                        <div>
-                            <label htmlFor="deliveryName" className="block text-sm font-medium text-gray-300">{financeCompany ? 'Deliver To (Customer Name)' : 'Delivery Name'}</label>
-                            <input type="text" id="deliveryName" value={financeCompany ? customerName : deliveryName} onChange={e => financeCompany ? setCustomerName(e.target.value) : setDeliveryName(e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                            {isAddingFinCo && (
+                                <div className="space-y-3 rounded-control border border-line bg-surface p-3">
+                                    <Input id="dc-finco-name" label="Company name" value={newFinCoName} onChange={e => setNewFinCoName(e.target.value)} required />
+                                    <div>
+                                        <FieldLabel htmlFor="dc-finco-address">Company address</FieldLabel>
+                                        <TextArea id="dc-finco-address" value={newFinCoAddress} onChange={e => setNewFinCoAddress(e.target.value)} required rows={2} />
+                                    </div>
+                                    <Button type="button" variant="secondary" block onClick={handleAddFinanceCompany}>Save finance company</Button>
+                                </div>
+                            )}
+                            <Input
+                                id="deliveryName"
+                                label={finance ? 'Deliver to (customer name)' : 'Delivery name'}
+                                value={finance ? customerName : deliveryName}
+                                onChange={e => finance ? setCustomerName(e.target.value) : setDeliveryName(e.target.value)}
+                            />
+                            <div>
+                                <FieldLabel htmlFor="deliveryAddress">{finance ? 'Delivery address (customer)' : 'Delivery address'}</FieldLabel>
+                                <TextArea id="deliveryAddress" value={finance ? customerAddress : deliveryAddress} onChange={e => finance ? setCustomerAddress(e.target.value) : setDeliveryAddress(e.target.value)} rows={3} />
+                            </div>
                         </div>
-                        <div>
-                            <label htmlFor="deliveryAddress" className="block text-sm font-medium text-gray-300">{financeCompany ? 'Delivery Address (Customer)' : 'Delivery Address'}</label>
-                            <textarea id="deliveryAddress" value={financeCompany ? customerAddress : deliveryAddress} onChange={e => financeCompany ? setCustomerAddress(e.target.value) : setDeliveryAddress(e.target.value)} rows={3} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                    )}
+                </section>
+
+                {/* ---- Price ---- */}
+                <section className="space-y-4" aria-labelledby="dc-price">
+                    <h3 id="dc-price" className={eyebrow}>Price</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2 sm:col-span-1"><FieldLabel htmlFor="invoiceDate">Date</FieldLabel><UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} required/></div>
+                        <div className="col-span-2 sm:col-span-1"><FieldLabel htmlFor="price">Car price</FieldLabel><CurrencyInput id="price" value={priceStr} onChange={e => setPriceStr(e.target.value)} required /></div>
+                        <div><FieldLabel htmlFor="deliveryCharge">Delivery</FieldLabel><CurrencyInput id="deliveryCharge" value={deliveryChargeStr} onChange={e => setDeliveryChargeStr(e.target.value)} /></div>
+                        <div><FieldLabel htmlFor="surcharge">Surcharge</FieldLabel><CurrencyInput id="surcharge" value={surchargeStr} onChange={e => setSurchargeStr(e.target.value)} /></div>
+                    </div>
+
+                    <Checkbox id="hasPartExchange" checked={hasPartExchange} onChange={e => setHasPartExchange(e.target.checked)} label="Part exchange" description="Their car goes against the price" />
+                    {hasPartExchange && (
+                        <div className="grid grid-cols-1 gap-4 rounded-card border border-line bg-surface-2 p-4 md:grid-cols-2">
+                            <div className="md:col-span-2"><FieldLabel htmlFor="pxValue">Part-exchange value</FieldLabel><CurrencyInput id="pxValue" value={pxValueStr} onChange={e => setPxValueStr(e.target.value)} required /></div>
+                            <Input id="pxReg" label="Registration" autoCapitalize="characters" value={partExchangeDetails.reg || ''} onChange={e => setPartExchangeDetails(p => ({...p, reg: e.target.value.toUpperCase()}))} className="font-mono uppercase tracking-[0.08em]" />
+                            <Input id="pxMake" label="Make" value={partExchangeDetails.make || ''} onChange={e => setPartExchangeDetails(p => ({...p, make: e.target.value}))} />
+                            <Input id="pxModel" label="Model" value={partExchangeDetails.model || ''} onChange={e => setPartExchangeDetails(p => ({...p, model: e.target.value}))} />
+                            <Input id="pxMileage" label="Mileage" type="number" inputMode="numeric" value={partExchangeDetails.mileage || ''} onChange={e => setPartExchangeDetails(p => ({...p, mileage: parseInt(e.target.value)}))} trailing={<span className="text-sm">mi</span>} className="num" />
                         </div>
-                    </div>
-                )}
-                
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div><label htmlFor="invoiceDate" className="block text-sm font-medium text-gray-300">Date</label><UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="mt-1" required/></div>
-                    <div><label htmlFor="price" className="block text-sm font-medium text-gray-300">Vehicle Price</label><CurrencyInput id="price" value={priceStr} onChange={e => setPriceStr(e.target.value)} required /></div>
-                    <div><label htmlFor="deliveryCharge" className="block text-sm font-medium text-gray-300">Delivery Charge</label><CurrencyInput id="deliveryCharge" value={deliveryChargeStr} onChange={e => setDeliveryChargeStr(e.target.value)} /></div>
-                    <div><label htmlFor="surcharge" className="block text-sm font-medium text-gray-300">Surcharge</label><CurrencyInput id="surcharge" value={surchargeStr} onChange={e => setSurchargeStr(e.target.value)} /></div>
-                </div>
+                    )}
+                </section>
 
-                <div className="relative flex items-start">
-                    <div className="flex h-6 items-center"><input id="hasPartExchange" type="checkbox" checked={hasPartExchange} onChange={e => setHasPartExchange(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600" /></div>
-                    <div className="ml-3 text-sm"><label htmlFor="hasPartExchange" className="font-medium text-gray-300">Part Exchange</label></div>
-                </div>
-                {hasPartExchange && (
-                    <div className="p-4 border border-gray-700 rounded-lg grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2"><label htmlFor="pxValue" className="block text-sm font-medium text-gray-300">Part Exchange Value</label><CurrencyInput id="pxValue" value={pxValueStr} onChange={e => setPxValueStr(e.target.value)} required /></div>
-                        <div><label htmlFor="pxReg" className="block text-sm font-medium text-gray-300">Registration</label><input type="text" id="pxReg" value={partExchangeDetails.reg || ''} onChange={e => setPartExchangeDetails(p => ({...p, reg: e.target.value.toUpperCase()}))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase" /></div>
-                        <div><label htmlFor="pxMake" className="block text-sm font-medium text-gray-300">Make</label><input type="text" id="pxMake" value={partExchangeDetails.make || ''} onChange={e => setPartExchangeDetails(p => ({...p, make: e.target.value}))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                        <div><label htmlFor="pxModel" className="block text-sm font-medium text-gray-300">Model</label><input type="text" id="pxModel" value={partExchangeDetails.model || ''} onChange={e => setPartExchangeDetails(p => ({...p, model: e.target.value}))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                        <div><label htmlFor="pxMileage" className="block text-sm font-medium text-gray-300">Mileage</label><input type="number" id="pxMileage" value={partExchangeDetails.mileage || ''} onChange={e => setPartExchangeDetails(p => ({...p, mileage: parseInt(e.target.value)}))} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                    </div>
-                )}
-
-                <div>
-                    <h3 className="text-base font-semibold text-white">Payments</h3>
+                {/* ---- Payments ---- */}
+                <section className="space-y-3" aria-labelledby="dc-payments">
+                    <h3 id="dc-payments" className={eyebrow}>Payments taken</h3>
+                    {payments.length === 0 && <p className="text-sm text-ink-3">Nothing paid yet.</p>}
                     {payments.map((p, i) => (
-                         <div key={i} className="flex items-end gap-2 mt-2">
-                             <div className="flex-1"><label className="sr-only">Method</label><select value={p.method} onChange={e => handlePaymentChange(i, 'method', e.target.value)} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"><option>Bank Transfer</option><option>Card</option><option>Cash</option><option>Finance</option><option>Deposit</option><option>Other</option></select></div>
-                             <div className="w-36"><label className="sr-only">Amount</label><CurrencyInput id={`payment-amount-${i}`} value={p.amount} onChange={e => handlePaymentChange(i, 'amount', e.target.value)} /></div>
-                             <button type="button" onClick={() => removePayment(i)} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
-                         </div>
+                        <div key={i} className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                                <label htmlFor={`payment-method-${i}`} className="sr-only">Payment {i + 1} method</label>
+                                <Select id={`payment-method-${i}`} value={p.method} onChange={e => handlePaymentChange(i, 'method', e.target.value)}>
+                                    <option>Bank Transfer</option><option>Card</option><option>Cash</option><option>Finance</option><option>Deposit</option><option>Other</option>
+                                </Select>
+                            </div>
+                            <div className="w-36 flex-none sm:w-44">
+                                <label htmlFor={`payment-amount-${i}`} className="sr-only">Payment {i + 1} amount</label>
+                                <CurrencyInput id={`payment-amount-${i}`} value={p.amount} onChange={e => handlePaymentChange(i, 'amount', e.target.value)} />
+                            </div>
+                            <IconButton label={`Remove payment ${i + 1}`} icon={<TrashIcon />} onClick={() => removePayment(i)} className="-me-2 hover:bg-danger-soft hover:text-danger" />
+                        </div>
                     ))}
-                    <button type="button" onClick={addPayment} className="mt-2 w-full text-sm font-semibold text-brand-400 hover:text-brand-300 flex items-center justify-center gap-2 p-2 border-2 border-dashed border-gray-600 rounded-lg hover:border-gray-500"><PlusIcon className="h-4 w-4"/> Add Payment</button>
-                </div>
+                    <Button type="button" variant="secondary" icon={<PlusIcon />} onClick={addPayment} block className="border-dashed">
+                        Add payment
+                    </Button>
+                </section>
 
-                <div>
-                    <label htmlFor="additionalNotes" className="block text-sm font-medium text-gray-300">Additional Notes</label>
-                    <textarea id="additionalNotes" value={additionalNotes} onChange={e => setAdditionalNotes(e.target.value)} rows={3} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" placeholder={documentType === 'Deposit Slip' ? 'Enter any prep work to be done here...' : ''} />
-                </div>
+                {/* ---- Notes ---- */}
+                <section aria-labelledby="dc-notes">
+                    <h3 id="dc-notes" className={cx(eyebrow, 'mb-3')}>Notes</h3>
+                    <FieldLabel htmlFor="additionalNotes">On the document <span className="font-normal text-ink-3">(optional)</span></FieldLabel>
+                    <TextArea id="additionalNotes" value={additionalNotes} onChange={e => setAdditionalNotes(e.target.value)} rows={3} placeholder={documentType === 'Deposit Slip' ? 'Enter any prep work to be done here...' : ''} />
+                </section>
 
-                 <div className="pt-4 border-t border-gray-700 space-y-2">
-                    <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Subtotal</span><span className="font-medium text-white">{formatCurrency(subtotal)}</span></div>
-                    <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Total Payments</span><span className="font-medium text-white">({formatCurrency(totalPayments)})</span></div>
-                    {hasPartExchange && <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Part Exchange</span><span className="font-medium text-white">({formatCurrency(pxValue)})</span></div>}
-                    <div className="flex justify-between items-center text-lg font-bold"><span className="text-white">Balance Due</span><span className="text-white">{formatCurrency(balance)}</span></div>
-                </div>
-
+                {/* ---- Totals: what the paper will say ---- */}
+                <dl className="m-0 divide-y divide-line rounded-card border border-line bg-surface-2 text-sm">
+                    <div className="flex items-center justify-between px-4 py-2.5"><dt className="text-ink-2">Subtotal</dt><dd className="num m-0 font-semibold text-ink">{formatCurrency(subtotal)}</dd></div>
+                    <div className="flex items-center justify-between px-4 py-2.5"><dt className="text-ink-2">Payments</dt><dd className="num m-0 font-semibold text-ink">({formatCurrency(totalPayments)})</dd></div>
+                    {hasPartExchange && <div className="flex items-center justify-between px-4 py-2.5"><dt className="text-ink-2">Part exchange</dt><dd className="num m-0 font-semibold text-ink">({formatCurrency(pxValue)})</dd></div>}
+                    <div className="flex items-center justify-between px-4 py-3"><dt className="text-base font-bold text-ink">Balance due</dt><dd className="num m-0 text-xl font-bold text-ink">{formatCurrency(balance)}</dd></div>
+                </dl>
             </form>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end space-x-3 items-center bg-gray-800">
-                <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                <button type="submit" form="doc-creator-form" disabled={isSubmitting} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : 'Generate Preview'}
-                </button>
-            </footer>
-        </div>
+            </SheetBody>
+            <SheetFooter>
+                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" form="doc-creator-form" loading={isSubmitting}>
+                    Preview {docName}
+                </Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

@@ -302,6 +302,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode; user: User }> =
         deleteExpenseCategory: (id) => dataService.deleteExpenseCategory(companyId!, id).then(() => true).catch(() => false),
         updateExpenseCategories: (cats) => dataService.updateExpenseCategories(companyId!, cats),
         updateBusinessDetails: (data) => dataService.updateBusinessDetails(companyId!, data),
+        updateTheme: async (newTheme) => {
+            if (isDemo) { setBusinessDetails(prev => prev ? { ...prev, theme: newTheme } : prev); return; }
+            await dataService.updateBusinessTheme(companyId!, newTheme);
+        },
         addYearEndAdjustment: async (data) => {
             if (isDemo) { setDemoAdjustments(all => ({ ...all, [`demo-${Date.now()}`]: data })); return; }
             await dataService.addYearEndAdjustment(companyId!, data);

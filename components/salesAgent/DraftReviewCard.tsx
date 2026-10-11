@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, useToast } from '../ui';
 import Spinner from '../common/Spinner';
-import { WhatsAppIcon } from '../icons';
+import { WhatsAppMark } from './inbox/parts';
 import {
     CHANNEL_LABELS,
     Conversation,
@@ -103,27 +103,23 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
     return (
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-sm font-semibold text-white">{conversationName(conv)}</p>
-                <span className="font-mono text-[11px] text-gray-500">#{conv.shortId}</span>
+                <p className="text-sm font-semibold text-ink">{conversationName(conv)}</p>
+                <span className="font-mono text-xs text-ink-3">#{conv.shortId}</span>
                 {isWa ? (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold bg-[#25d366]/20 text-[#25d366] border border-[#25d366]/40">
-                        <WhatsAppIcon className="h-3 w-3" /> WhatsApp
-                    </span>
+                    <Badge size="sm"><WhatsAppMark brand className="h-3.5 w-3.5" /> WhatsApp</Badge>
                 ) : (
                     <Badge size="sm" variant="warning">{CHANNEL_LABELS[conv.channel] || conv.channel}</Badge>
                 )}
                 {conv.vehicleInterest?.title && (
-                    <span className="truncate text-[11px] text-gray-400">{conv.vehicleInterest.title}</span>
+                    <span className="truncate text-xs text-ink-3">{conv.vehicleInterest.title}</span>
                 )}
             </div>
 
             {draft.customerText && (
-                <div className={`rounded-xl px-3.5 py-2.5 text-sm shadow-sm ${
-                    isWa
-                        ? 'bg-[#202c33] border border-gray-700/60 border-l-4 border-l-[#25d366] text-gray-100'
-                        : 'bg-gray-900/70 border border-gray-700/60 text-gray-200'
+                <div className={`rounded-card px-3.5 py-2.5 text-sm text-ink ${
+                    isWa ? 'rounded-es-[4px] bg-bubble-in' : 'border border-line bg-surface'
                 }`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isWa ? 'text-[#25d366]' : 'text-gray-500'}`}>
+                    <p className="mb-1 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">
                         {isWa ? 'Customer wrote on WhatsApp' : 'They said'}
                     </p>
                     <p className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words">
@@ -133,7 +129,7 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
             )}
 
             <div>
-                <p className={`text-[11px] font-medium uppercase tracking-wide ${isWa ? 'text-[#25d366]' : 'text-gray-500'}`}>
+                <p className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-accent-text">
                     {agentName} drafted · {formatAgentTime(draft.createdAt)}
                     {draft.subject ? ` · ${draft.subject}` : ''}
                 </p>
@@ -143,26 +139,22 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                     onChange={e => setText(e.target.value)}
                     disabled={!!busy}
                     aria-label={`The reply ${agentName} has drafted`}
-                    className={`mt-1 w-full resize-y rounded-lg border ${
-                        isWa
-                            ? 'border-[#25d366]/50 focus:border-[#25d366] focus:ring-2 focus:ring-[#25d366]/40'
-                            : 'border-amber-500/40 focus:ring-2 focus:ring-amber-500/40'
-                    } bg-gray-900/70 px-3 py-2 text-sm leading-relaxed text-white placeholder-gray-500 focus:outline-none disabled:opacity-60`}
+                    className="mt-1.5 w-full resize-y rounded-control border border-accent bg-surface px-3.5 py-3 text-base leading-[1.45] text-ink placeholder:text-ink-3 disabled:bg-surface-2 disabled:text-ink-3"
                 />
             </div>
 
             {ownerName && (
-                <div className="flex items-center gap-2 text-xs text-gray-400">
+                <div className="flex items-center gap-2 text-sm text-ink-2">
                     <span>Send as</span>
-                    <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="inline-flex gap-[3px] rounded-control border border-line bg-surface-2 p-[3px]">
                         {(['agent', 'owner'] as const).map(who => (
                             <button
                                 key={who}
                                 type="button"
                                 onClick={() => setSignAs(who)}
                                 disabled={!!busy}
-                                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                                    signAs === who ? (isWa ? 'bg-[#25d366] text-white' : 'bg-brand-600 text-white') : 'bg-gray-900/60 text-gray-300 hover:bg-gray-800'
+                                className={`min-h-[40px] rounded-[6px] px-3 text-sm font-semibold transition-colors duration-quick ease-out ${
+                                    signAs === who ? 'bg-surface text-ink shadow-e1 ring-1 ring-line' : 'text-ink-2 hover:text-ink'
                                 }`}
                             >
                                 {who === 'agent' ? agentName : ownerName}
@@ -185,15 +177,14 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
 
             <div className="flex flex-wrap gap-2 items-center">
                 {isWa ? (
-                    <button
+                    <Button
                         type="button"
                         onClick={handleApprove}
                         disabled={!text.trim() || !!busy}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#25d366] hover:bg-[#20ba5a] px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-[#25d366]/25 disabled:opacity-50 transition-all active:scale-95"
+                        icon={<WhatsAppMark />}
                     >
-                        <WhatsAppIcon className="h-4 w-4" />
                         {busy === 'approve' ? 'Sending…' : `${sendViaLabel(sendVia)}${signAs === 'owner' && ownerName ? ` as ${ownerName}` : ''}`}
-                    </button>
+                    </Button>
                 ) : (
                     <Button
                         size="sm"
@@ -215,12 +206,12 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                     Discard
                 </Button>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm text-ink-3">
                 Sends during office hours. Approve after hours and it waits until opening time.
             </p>
 
-            <div className="border-t border-gray-700/60 pt-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+            <div className="border-t border-line pt-3">
+                <p className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">
                     Tell {agentName} to rewrite
                 </p>
                 <textarea
@@ -236,7 +227,7 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                             handleRewrite();
                         }
                     }}
-                    className="mt-1 w-full resize-y rounded-lg border border-gray-600 bg-gray-900/70 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-60"
+                    className="mt-1.5 w-full resize-y rounded-control border border-line-strong bg-surface px-3.5 py-3 text-base text-ink placeholder:text-ink-3 disabled:bg-surface-2 disabled:text-ink-3"
                 />
                 <div className="mt-2">
                     <Button
@@ -250,8 +241,8 @@ const DraftReviewCard: React.FC<DraftReviewCardProps> = ({ conv, companyId, agen
                     </Button>
                 </div>
                 {rewriting && (
-                    <p className="mt-2 flex items-center gap-2 text-xs text-brand-300">
-                        <Spinner className="h-3.5 w-3.5" />
+                    <p className="mt-2 flex items-center gap-2 text-sm text-accent-text">
+                        <Spinner className="h-4 w-4" />
                         New draft will replace this one when it is ready.
                     </p>
                 )}
@@ -295,17 +286,15 @@ export const QuestionReviewCard: React.FC<QuestionReviewCardProps> = ({ conv, co
     return (
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-sm font-semibold text-white">{conversationName(conv)}</p>
-                <span className="font-mono text-[11px] text-gray-500">#{conv.shortId}</span>
+                <p className="text-sm font-semibold text-ink">{conversationName(conv)}</p>
+                <span className="font-mono text-xs text-ink-3">#{conv.shortId}</span>
                 {isWa ? (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold bg-[#25d366]/20 text-[#25d366] border border-[#25d366]/40">
-                        <WhatsAppIcon className="h-3 w-3" /> WhatsApp
-                    </span>
+                    <Badge size="sm"><WhatsAppMark brand className="h-3.5 w-3.5" /> WhatsApp</Badge>
                 ) : null}
                 <Badge size="sm" variant="warning">Waiting on you</Badge>
             </div>
-            <p className="text-sm text-gray-100">{question.question}</p>
-            {question.context && <p className="text-xs text-gray-400">{question.context}</p>}
+            <p className="text-sm text-ink">{question.question}</p>
+            {question.context && <p className="text-sm text-ink-3">{question.context}</p>}
             <textarea
                 rows={2}
                 value={answer}
@@ -319,22 +308,17 @@ export const QuestionReviewCard: React.FC<QuestionReviewCardProps> = ({ conv, co
                         handleAnswer();
                     }
                 }}
-                className={`w-full resize-y rounded-lg border ${
-                    isWa
-                        ? 'border-[#25d366]/50 focus:border-[#25d366] focus:ring-2 focus:ring-[#25d366]/40'
-                        : 'border-amber-500/40 focus:ring-2 focus:ring-amber-500/40'
-                } bg-gray-900/70 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none`}
+                className="w-full resize-y rounded-control border border-line-strong bg-surface px-3.5 py-3 text-base text-ink placeholder:text-ink-3"
             />
             {isWa ? (
-                <button
+                <Button
                     type="button"
                     onClick={handleAnswer}
                     disabled={!answer.trim() || busy}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#25d366] hover:bg-[#20ba5a] px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-[#25d366]/25 disabled:opacity-50 transition-all active:scale-95"
+                    icon={<WhatsAppMark />}
                 >
-                    <WhatsAppIcon className="h-4 w-4" />
                     {busy ? 'Sending…' : 'Send answer'}
-                </button>
+                </Button>
             ) : (
                 <Button size="sm" variant="primary" onClick={handleAnswer} loading={busy} disabled={!answer.trim() || busy}>
                     Send answer

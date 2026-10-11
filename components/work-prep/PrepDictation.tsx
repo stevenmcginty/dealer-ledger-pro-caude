@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useData } from '../../hooks/useData';
-import { useToast } from '../ui';
+import { Badge, Button, Checkbox, IconButton, Input, Plate, Search, Sheet, useToast } from '../ui';
 import Spinner from '../common/Spinner';
-import { ArrowPathIcon, ExclamationTriangleIcon, MagnifyingGlassIcon, PlusIcon, TrashIcon, XMarkIcon } from '../icons';
+import { ArrowPathIcon, ExclamationTriangleIcon, PlusIcon, TrashIcon, XMarkIcon } from '../icons';
 import { parsePrepDictation } from '../../utils/ai';
 import {
     WAV_SAMPLE_RATE,
@@ -178,6 +177,8 @@ const PrepDictation = () => {
     const lastWavRef = useRef<Blob | null>(null);
     /** Bumped whenever a recording or a Gemini call is abandoned, so a late result is ignored. */
     const runRef = useRef(0);
+    /** What the sheet last showed, so it keeps its content while it slides away. */
+    const shownRef = useRef<{ body: React.ReactNode; footer: React.ReactNode }>({ body: null, footer: null });
 
     const isOpen = phase !== 'closed';
     const isRecording = phase === 'recording';
@@ -349,14 +350,6 @@ const PrepDictation = () => {
         releaseMic();
     }, [releaseMic]);
 
-    // No background scroll behind the sheet.
-    useEffect(() => {
-        if (!isOpen) return;
-        const previous = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        return () => { document.body.style.overflow = previous; };
-    }, [isOpen]);
-
     const handleMicButton = () => {
         if (isRecording) stopRecording();
         else if (phase === 'closed') void startRecording();
@@ -436,13 +429,13 @@ const PrepDictation = () => {
     const renderCarHeader = (card: Card) => {
         if (card.skipped) {
             return (
-                <div className="flex items-center justify-between gap-3 px-4 py-3">
-                    <p className="min-w-0 truncate text-sm text-gray-400">
-                        Skipped{card.spokenAs ? <> · <span className="text-gray-300">{card.spokenAs}</span></> : null}
+                <div className="flex items-center justify-between gap-3 py-1 pe-1 ps-4">
+                    <p className="min-w-0 truncate text-sm text-ink-3">
+                        Skipped{card.spokenAs ? <> · <span className="text-ink-2">{card.spokenAs}</span></> : null}
                     </p>
-                    <button type="button" onClick={() => updateCard(card.key, c => ({ ...c, skipped: false }))} className="min-h-[44px] shrink-0 rounded-lg px-3 text-sm font-medium text-brand-400 hover:bg-gray-700/60 hover:text-brand-300">
+                    <Button variant="ghost" onClick={() => updateCard(card.key, c => ({ ...c, skipped: false }))} className="shrink-0">
                         Undo
-                    </button>
+                    </Button>
                 </div>
             );
         }
@@ -450,16 +443,16 @@ const PrepDictation = () => {
         const chosen = card.vehicleId ? stockById.get(card.vehicleId) : undefined;
         if (chosen) {
             return (
-                <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
-                    <div className="min-w-0">
-                        <p className="text-lg font-bold leading-tight tracking-wide text-white">{chosen.reg || 'No reg'}</p>
-                        <p className="mt-0.5 truncate text-sm text-gray-400">
-                            {carLine(chosen)}{chosen.stockNumber ? <span className="text-gray-500"> · {chosen.stockNumber}</span> : null}
+                <div className="flex items-start justify-between gap-3 pb-3 pe-1 ps-4 pt-3">
+                    <div className="min-w-0 pt-1">
+                        {chosen.reg ? <Plate reg={chosen.reg} /> : <p className="text-base font-semibold text-ink">No reg</p>}
+                        <p className="mt-1.5 truncate text-sm text-ink-2">
+                            {carLine(chosen)}{chosen.stockNumber ? <span className="font-mono tabular-nums text-ink-3"> · {chosen.stockNumber}</span> : null}
                         </p>
                     </div>
-                    <button type="button" onClick={() => updateCard(card.key, c => ({ ...c, vehicleId: undefined, searching: c.candidateIds.length < 2 }))} className="min-h-[44px] shrink-0 rounded-lg px-3 text-sm font-medium text-gray-400 hover:bg-gray-700/60 hover:text-white">
+                    <Button variant="ghost" onClick={() => updateCard(card.key, c => ({ ...c, vehicleId: undefined, searching: c.candidateIds.length < 2 }))} className="shrink-0">
                         Change
-                    </button>
+                    </Button>
                 </div>
             );
         }
@@ -470,11 +463,11 @@ const PrepDictation = () => {
         const results = showSearch ? searchStock(stockList, query, 6) : [];
 
         return (
-            <div className="px-4 pt-4 pb-3">
-                <p className="text-base font-semibold text-white">
+            <div className="px-4 pb-2 pt-4">
+                <p className="text-base font-semibold text-ink">
                     {showSearch ? 'Which car?' : `Which ${card.spokenAs.replace(/^the\s+/i, '') || 'car'}?`}
                 </p>
-                <p className="mt-0.5 text-sm text-gray-400">
+                <p className="mt-0.5 text-sm text-ink-2">
                     {showSearch
                         ? (card.spokenAs ? <>Heard “{card.spokenAs}”</> : 'Pick the car for these jobs')
                         : `${candidates.length} cars fit. Pick one.`}
@@ -482,43 +475,38 @@ const PrepDictation = () => {
 
                 {showSearch ? (
                     <div className="mt-3">
-                        <div className="relative">
-                            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500" />
-                            <input
-                                type="search"
-                                inputMode="search"
-                                autoComplete="off"
-                                value={query}
-                                onChange={e => setSearchText(prev => ({ ...prev, [card.key]: e.target.value }))}
-                                placeholder="Reg, make or model"
-                                aria-label="Search stock"
-                                className="h-11 w-full rounded-lg border border-gray-600 bg-gray-900 pl-10 pr-3 text-base text-white placeholder-gray-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                            />
-                        </div>
-                        <div className="mt-2 space-y-1.5">
+                        <Search
+                            value={query}
+                            onChange={value => setSearchText(prev => ({ ...prev, [card.key]: value }))}
+                            label="Search stock"
+                            placeholder="Reg, make or model"
+                            inputMode="search"
+                            autoComplete="off"
+                        />
+                        <div className="mt-2 space-y-2">
                             {results.map(car => (
                                 <CarChoice key={car.id} car={car} onPick={() => chooseCar(card.key, car.id)} />
                             ))}
-                            {results.length === 0 && <p className="px-1 py-2 text-sm text-gray-500">No car in stock matches.</p>}
+                            {results.length === 0 && <p className="px-1 py-2 text-sm text-ink-3">No car in stock matches.</p>}
                         </div>
                     </div>
                 ) : (
-                    <div className="mt-3 space-y-1.5">
+                    <div className="mt-3 space-y-2">
                         {candidates.map(car => (
                             <CarChoice key={car.id} car={car} onPick={() => chooseCar(card.key, car.id)} />
                         ))}
                     </div>
                 )}
 
-                <div className="mt-2 flex items-center justify-between">
+                <div className="mt-1 flex items-center justify-between">
                     {candidates.length > 1 ? (
-                        <button type="button" onClick={() => updateCard(card.key, c => ({ ...c, searching: !showSearch }))} className="min-h-[44px] rounded-lg px-1 text-sm font-medium text-gray-400 hover:text-white">
+                        <Button variant="ghost" onClick={() => updateCard(card.key, c => ({ ...c, searching: !showSearch }))} className="-ms-3">
                             {showSearch ? 'Back to the cars that fit' : 'Another car'}
-                        </button>
+                        </Button>
                     ) : <span />}
-                    <button type="button" onClick={() => updateCard(card.key, c => ({ ...c, skipped: true }))} className="min-h-[44px] rounded-lg px-3 text-sm font-medium text-gray-400 hover:bg-gray-700/60 hover:text-white">
+                    <Button variant="ghost" onClick={() => updateCard(card.key, c => ({ ...c, skipped: true }))} className="-me-3">
                         Skip
-                    </button>
+                    </Button>
                 </div>
             </div>
         );
@@ -528,22 +516,16 @@ const PrepDictation = () => {
         const editing = editingJobId === job.id;
         const duplicate = !!card.vehicleId && isOpenPrepDuplicate(job.text, card.vehicleId, todos);
         return (
-            <li key={job.id} className="flex items-center gap-1 pl-1 pr-1">
-                <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={job.include}
-                    aria-label={job.include ? 'Untick job' : 'Tick job'}
-                    onClick={() => updateJob(card.key, job.id, j => ({ ...j, include: !j.include }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center"
-                >
-                    <span className={`flex h-5 w-5 items-center justify-center rounded-md border transition-colors ${job.include ? 'border-brand-500 bg-brand-600 text-white' : 'border-gray-500 bg-gray-900 text-transparent'}`}>
-                        <CheckMark className="h-3.5 w-3.5" />
-                    </span>
-                </button>
+            <li key={job.id} className="flex items-center gap-1 px-1">
+                <Checkbox
+                    checked={job.include}
+                    onChange={() => updateJob(card.key, job.id, j => ({ ...j, include: !j.include }))}
+                    aria-label={job.text || 'New job'}
+                    className="h-12 w-12 shrink-0 place-items-center"
+                />
                 <div className="min-w-0 flex-1 py-1.5">
                     {editing ? (
-                        <input
+                        <Input
                             autoFocus
                             value={editText}
                             onChange={e => setEditText(e.target.value)}
@@ -554,25 +536,22 @@ const PrepDictation = () => {
                             }}
                             placeholder="Job, e.g. Valet"
                             aria-label="Job text"
-                            className="h-10 w-full rounded-md border border-brand-500 bg-gray-900 px-2.5 text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                         />
                     ) : (
-                        <button type="button" onClick={() => beginEdit(job)} className={`block w-full rounded-md px-1 py-1.5 text-left text-[15px] leading-snug ${job.include ? 'text-gray-100' : 'text-gray-500 line-through'}`}>
+                        <button type="button" onClick={() => beginEdit(job)} className={`block min-h-[44px] w-full rounded-control px-1 py-2 text-start text-base leading-snug ${job.include ? 'text-ink' : 'text-ink-3 line-through'}`}>
                             {job.text}
-                            {job.urgent && <span className="ml-2 inline-flex translate-y-[-1px] items-center rounded-full bg-red-900/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-300">Urgent</span>}
-                            {duplicate && <span className="ml-2 inline-flex translate-y-[-1px] items-center rounded-full bg-gray-700 px-2 py-0.5 text-[11px] font-medium text-gray-300">Already in prep</span>}
+                            {job.urgent && <Badge variant="danger" size="sm" className="ms-2 align-middle">Urgent</Badge>}
+                            {duplicate && <Badge size="sm" className="ms-2 align-middle">Already in prep</Badge>}
                         </button>
                     )}
                 </div>
-                <button
-                    type="button"
-                    aria-label="Delete job"
+                <IconButton
+                    label="Delete job"
+                    icon={<TrashIcon />}
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => { if (editing) setEditingJobId(null); updateJob(card.key, job.id, () => null); }}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-700/60 hover:text-red-400"
-                >
-                    <TrashIcon className="h-5 w-5" />
-                </button>
+                    className="hover:text-danger"
+                />
             </li>
         );
     };
@@ -581,8 +560,8 @@ const PrepDictation = () => {
         if (phase === 'starting') {
             return (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-                    <Spinner className="h-7 w-7 text-gray-300" />
-                    <p className="text-sm text-gray-400">Starting the microphone…</p>
+                    <Spinner className="h-7 w-7 text-ink-3" />
+                    <p className="text-sm text-ink-2">Starting the microphone…</p>
                 </div>
             );
         }
@@ -592,35 +571,35 @@ const PrepDictation = () => {
                 <div className="flex flex-1 flex-col items-center justify-center px-2 py-10 text-center">
                     <div className="flex items-center gap-2.5">
                         <span className="relative flex h-3 w-3">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
-                            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-60" />
+                            <span className="relative inline-flex h-3 w-3 rounded-full bg-danger" />
                         </span>
-                        <span className="text-sm font-medium uppercase tracking-wider text-red-400">Recording</span>
+                        <span className="text-sm font-semibold text-danger-ink">Recording</span>
                     </div>
-                    <p className="mt-4 font-mono text-5xl font-semibold tabular-nums text-white">{formatClock(elapsed)}</p>
-                    <p className="mt-2 text-xs text-gray-500">{left < 30000 ? `Stops in ${Math.ceil(left / 1000)}s` : 'Up to 3 minutes'}</p>
-                    <p className="mt-8 max-w-xs text-sm leading-relaxed text-gray-400">
+                    <p className="mt-4 font-mono text-5xl font-semibold tabular-nums text-ink">{formatClock(elapsed)}</p>
+                    <p className="mt-2 text-xs text-ink-3">{left < 30000 ? `Stops in ${Math.ceil(left / 1000)}s` : 'Up to 3 minutes'}</p>
+                    <p className="mt-8 max-w-xs text-sm leading-relaxed text-ink-2">
                         Say the car, then its jobs.<br />
-                        <span className="text-gray-500">“The black Porsche needs a valet and a nearside tyre.”</span>
+                        <span className="text-ink-3">“The black Porsche needs a valet and a nearside tyre.”</span>
                     </p>
                     <button
                         type="button"
                         onClick={stopRecording}
                         aria-label="Stop recording"
-                        className="mt-10 flex h-20 w-20 items-center justify-center rounded-full bg-red-600 shadow-lg shadow-red-900/40 ring-4 ring-red-600/25 transition-transform hover:bg-red-500 active:scale-95"
+                        className="mt-10 flex h-20 w-20 items-center justify-center rounded-full bg-danger shadow-[0_0_0_6px_rgb(var(--c-danger-soft))] transition-[background-color,transform] duration-quick ease-out hover:bg-danger-hover active:scale-95 active:duration-press"
                     >
-                        <span className="h-7 w-7 rounded-md bg-white" />
+                        <span className="h-7 w-7 rounded-md bg-on-danger" />
                     </button>
-                    <p className="mt-3 text-sm font-medium text-gray-300">Tap to stop</p>
+                    <p className="mt-3 text-sm font-medium text-ink-2">Tap to stop</p>
                 </div>
             );
         }
         if (phase === 'working') {
             return (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-                    <Spinner className="h-8 w-8 text-brand-400" />
-                    <p className="text-base font-medium text-white">Working it out…</p>
-                    <p className="text-sm text-gray-500">Matching the jobs to your stock</p>
+                    <Spinner className="h-8 w-8 text-accent-text" />
+                    <p className="text-base font-semibold text-ink">Working it out…</p>
+                    <p className="text-sm text-ink-3">Matching the jobs to your stock</p>
                 </div>
             );
         }
@@ -628,30 +607,29 @@ const PrepDictation = () => {
             const text = ERROR_TEXT[error];
             const canResend = error === 'ai' && !!lastWavRef.current;
             return (
-                <div className="flex flex-1 flex-col items-center justify-center px-4 py-14 text-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/40">
-                        <ExclamationTriangleIcon className="h-6 w-6 text-amber-400" />
+                <div className="flex flex-1 flex-col items-center justify-center px-2 py-14 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning-soft">
+                        <ExclamationTriangleIcon className="h-6 w-6 text-warning-ink" />
                     </div>
-                    <p className="mt-4 text-base font-semibold text-white">{text.title}</p>
-                    <p className="mt-1 max-w-xs text-sm text-gray-400">{text.body}</p>
+                    <p className="mt-4 text-base font-semibold text-ink">{text.title}</p>
+                    <p className="mt-1 max-w-xs text-sm text-ink-2">{text.body}</p>
                     <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
                         {error !== 'unsupported' && (
-                            <button
-                                type="button"
+                            <Button
+                                block
+                                icon={canResend ? <ArrowPathIcon /> : <MicIcon />}
                                 onClick={() => (canResend ? void analyse(lastWavRef.current!) : void startRecording())}
-                                className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-base font-semibold text-white hover:bg-brand-500"
                             >
-                                {canResend ? <ArrowPathIcon className="h-5 w-5" /> : <MicIcon className="h-5 w-5" />}
                                 Try again
-                            </button>
+                            </Button>
                         )}
-                        <button
-                            type="button"
+                        <Button
+                            variant="secondary"
+                            block
                             onClick={() => (cards.length > 0 ? (setError(null), setPhase('check')) : resetAll())}
-                            className="min-h-[48px] rounded-xl px-4 text-base font-medium text-gray-300 hover:bg-gray-800"
                         >
                             {cards.length > 0 ? 'Back to the list' : 'Close'}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             );
@@ -660,18 +638,17 @@ const PrepDictation = () => {
             return (
                 <div className="space-y-3">
                     {cards.map(card => (
-                        <section key={card.key} className={`overflow-hidden rounded-xl border bg-gray-800 ${!card.skipped && !card.vehicleId ? 'border-amber-500/40' : 'border-gray-700'}`}>
+                        <section key={card.key} className={`overflow-hidden rounded-card border bg-surface ${!card.skipped && !card.vehicleId ? 'border-warning' : 'border-line'}`}>
                             {renderCarHeader(card)}
                             {!card.skipped && (
                                 <>
-                                    <ul className="divide-y divide-gray-700/60 border-t border-gray-700/70">
+                                    <ul className="divide-y divide-line border-t border-line">
                                         {card.jobs.map(job => renderJob(card, job))}
                                     </ul>
-                                    <div className="border-t border-gray-700/70 px-2">
-                                        <button type="button" onClick={() => addLine(card.key)} className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-brand-400 hover:text-brand-300">
-                                            <PlusIcon className="h-4 w-4" />
+                                    <div className="border-t border-line px-1">
+                                        <Button variant="ghost" icon={<PlusIcon />} onClick={() => addLine(card.key)}>
                                             Add line
-                                        </button>
+                                        </Button>
                                     </div>
                                 </>
                             )}
@@ -679,9 +656,9 @@ const PrepDictation = () => {
                     ))}
                     {transcripts.length > 0 && (
                         <div className="px-1 pt-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-600">What I heard</p>
+                            <p className="text-xs font-semibold text-ink-3">What I heard</p>
                             {transcripts.map((t, i) => (
-                                <p key={i} className="mt-1 text-xs leading-relaxed text-gray-500">{t}</p>
+                                <p key={i} className="mt-1 text-sm leading-relaxed text-ink-2">{t}</p>
                             ))}
                         </div>
                     )}
@@ -693,83 +670,75 @@ const PrepDictation = () => {
 
     const jobCountLabel = `Add ${toSave.length} job${toSave.length === 1 ? '' : 's'} to prep`;
 
-    const overlay = isOpen ? createPortal(
-        <div
-            className="fixed inset-0 z-[60] flex items-stretch justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="prep-dictation-title"
-        >
-            <div className="flex h-[100dvh] w-full flex-col bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-gray-700 sm:shadow-2xl">
-                <header className="flex shrink-0 items-center justify-between border-b border-gray-800 pl-4 pr-1.5 sm:rounded-t-2xl" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-                    <div className="flex h-14 items-center gap-2.5">
-                        <MicIcon className="h-5 w-5 text-brand-400" />
-                        <h2 id="prep-dictation-title" className="text-base font-semibold text-white">Prep dictation</h2>
+    const renderFooter = () => {
+        if (phase !== 'check') return null;
+        if (confirmDiscard) {
+            return (
+                <div className="w-full">
+                    <p className="mb-2 text-sm font-semibold text-ink">Discard this list?</p>
+                    <div className="flex gap-2">
+                        <Button variant="secondary" onClick={() => setConfirmDiscard(false)} className="flex-1">Keep list</Button>
+                        <Button variant="danger" onClick={resetAll} className="flex-1">Discard list</Button>
                     </div>
-                    <button type="button" onClick={handleClose} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white">
-                        <XMarkIcon className="h-6 w-6" />
-                    </button>
-                </header>
-
-                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 py-4">
-                    {renderBody()}
                 </div>
-
-                {phase === 'check' && (
-                    <footer className="shrink-0 border-t border-gray-800 bg-gray-900 px-4 pt-3 sm:rounded-b-2xl" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-                        {confirmDiscard ? (
-                            <div className="flex items-center gap-2">
-                                <p className="flex-1 text-sm text-gray-300">Discard this list?</p>
-                                <button type="button" onClick={() => setConfirmDiscard(false)} className="min-h-[48px] rounded-xl px-4 text-sm font-medium text-gray-300 hover:bg-gray-800">Keep</button>
-                                <button type="button" onClick={resetAll} className="min-h-[48px] rounded-xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-500">Discard</button>
-                            </div>
-                        ) : (
-                            <>
-                                {cardsNeedingCar > 0 && (
-                                    <p className="mb-2 text-center text-xs text-amber-300/90">
-                                        Pick a car (or skip) for {cardsNeedingCar === 1 ? 'one list' : `${cardsNeedingCar} lists`} first.
-                                    </p>
-                                )}
-                                <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => void startRecording()}
-                                        disabled={isSaving}
-                                        className="inline-flex min-h-[48px] shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-700 bg-gray-800 px-4 text-sm font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-                                    >
-                                        <MicIcon className="h-5 w-5" />
-                                        Record more
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleSave()}
-                                        disabled={!canSave}
-                                        className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
-                                    >
-                                        {isSaving ? <Spinner className="h-5 w-5 text-white" /> : jobCountLabel}
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </footer>
+            );
+        }
+        return (
+            <div className="w-full">
+                {cardsNeedingCar > 0 && (
+                    <p className="mb-2 text-center text-sm text-warning-ink">
+                        Pick a car (or skip) for {cardsNeedingCar === 1 ? 'one list' : `${cardsNeedingCar} lists`} first.
+                    </p>
                 )}
+                <div className="flex gap-2">
+                    <Button variant="secondary" icon={<MicIcon />} onClick={() => void startRecording()} disabled={isSaving} className="shrink-0">
+                        Record more
+                    </Button>
+                    <Button onClick={() => void handleSave()} disabled={!canSave} loading={isSaving} className="min-w-0 flex-1">
+                        {jobCountLabel}
+                    </Button>
+                </div>
             </div>
-        </div>,
-        document.body,
-    ) : null;
+        );
+    };
+
+    // While the sheet slides away (phase is already 'closed'), keep showing what it last held.
+    if (isOpen) shownRef.current = { body: renderBody(), footer: renderFooter() };
+    const { body, footer } = shownRef.current;
+
+    // A tap outside, Esc or a drag-down must not throw away a recording or a pending Gemini call; the X still can.
+    const dismissible = phase === 'check' || phase === 'error';
 
     return (
         <>
-            <button
-                type="button"
-                onClick={handleMicButton}
-                aria-label={isRecording ? 'Stop dictation' : 'Dictate prep'}
+            <IconButton
+                label={isRecording ? 'Stop dictation' : 'Dictate prep'}
                 title="Dictate prep"
-                className={`p-1.5 rounded-full transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'hover:bg-white/5'}`}
+                icon={isRecording ? <MicIcon className="text-danger" /> : <GeminiMicIcon />}
+                onClick={handleMicButton}
+                className={isRecording ? 'animate-pulse' : undefined}
+            />
+            <Sheet
+                open={isOpen}
+                onClose={handleClose}
+                dismissible={dismissible}
+                labelledBy="prep-dictation-title"
+                size="lg"
+                tall
+                footer={footer || undefined}
             >
-                {isRecording ? <MicIcon className="h-7 w-7" /> : <GeminiMicIcon className="h-7 w-7" />}
-            </button>
-            {overlay}
+                <div className="flex min-h-0 flex-1 flex-col">
+                    <header className="flex flex-none items-start gap-3 px-5 pb-3 pt-2 sm:pt-5">
+                        <h2 id="prep-dictation-title" className="min-w-0 flex-1 pt-1.5 text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">
+                            Prep dictation
+                        </h2>
+                        <IconButton label="Close" icon={<XMarkIcon />} onClick={handleClose} className="-me-2 -mt-1" />
+                    </header>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-5 pb-5">
+                        {body}
+                    </div>
+                </div>
+            </Sheet>
         </>
     );
 };
@@ -778,13 +747,13 @@ const CarChoice = ({ car, onPick }: { car: PrepStockCar; onPick: () => void }) =
     <button
         type="button"
         onClick={onPick}
-        className="flex min-h-[52px] w-full items-center justify-between gap-3 rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-2 text-left transition-colors hover:border-brand-500/60 hover:bg-gray-900 active:bg-gray-900"
+        className="flex min-h-[56px] w-full items-center justify-between gap-3 rounded-control border border-line bg-surface px-3 py-2 text-start transition-colors duration-quick ease-out hover:border-line-strong hover:bg-surface-2 active:bg-surface-3"
     >
-        <span className="min-w-0">
-            <span className="block font-bold tracking-wide text-white">{car.reg || 'No reg'}</span>
-            <span className="block truncate text-sm text-gray-400">{carLine(car) || 'No details'}</span>
+        <span className="flex min-w-0 items-center gap-3">
+            {car.reg ? <Plate reg={car.reg} size="sm" /> : <span className="text-sm font-semibold text-ink">No reg</span>}
+            <span className="min-w-0 truncate text-sm text-ink-2">{carLine(car) || 'No details'}</span>
         </span>
-        {car.stockNumber && <span className="shrink-0 rounded-md bg-gray-800 px-2 py-1 text-xs font-medium text-gray-400">{car.stockNumber}</span>}
+        {car.stockNumber && <span className="shrink-0 font-mono text-xs tabular-nums text-ink-3">{car.stockNumber}</span>}
     </button>
 );
 

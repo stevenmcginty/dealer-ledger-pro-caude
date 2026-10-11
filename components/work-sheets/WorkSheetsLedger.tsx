@@ -1,14 +1,24 @@
 import React, { useState, useMemo } from 'react';
-import { WorkSheet } from '../../types';
-import { WrenchScrewdriverIcon, PlusIcon, EditIcon, TrashIcon } from '../icons';
-import { formatDate } from '../../utils/helpers';
+import { WorkSheet, workSheetRecordType } from '../../types';
+import { WrenchScrewdriverIcon } from '../icons';
+import { formatCurrency } from '../../utils/helpers';
 import Spinner from '../common/Spinner';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
+import { EmptyState, Search, StatusChip } from '../ui';
+import JobBook, { JobBookBar, JobBookRow } from './JobBook';
 
 interface WorkSheetsLedgerProps {
   sheets: WorkSheet[];
 }
+
+/** Same sum the editor shows: line amounts, plus 20% when VAT was added to chargeable work. */
+const sheetTotal = (sheet: WorkSheet): number | null => {
+  const priced = (sheet.items || []).filter(i => typeof i.amount === 'number');
+  if (priced.length === 0) return null;
+  const sum = priced.reduce((s, i) => s + (i.amount || 0), 0);
+  return workSheetRecordType(sheet) === 'customer' && sheet.vatApplied ? sum * 1.2 : sum;
+};
 
 const WorkSheetsLedger = ({ sheets }: WorkSheetsLedgerProps) => {
   const { openModal } = useUI();
@@ -35,81 +45,62 @@ const WorkSheetsLedger = ({ sheets }: WorkSheetsLedgerProps) => {
 
   if (!sheets || !vehicles) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
 
-  const EmptyState = () => (
-    <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-      <WrenchScrewdriverIcon className="h-12 w-12 text-gray-500 mx-auto" />
-      <h3 className="mt-4 text-lg font-medium text-white">{searchTerm ? 'No Work Sheets Found' : 'No Work Sheets'}</h3>
-      <p className="mt-1 text-sm text-gray-400">{searchTerm ? 'Try adjusting your search.' : 'Create a sheet to provide customers with a list of work carried out.'}</p>
-       {!searchTerm && (
-          <div className="mt-6">
-              <button onClick={() => openModal('workSheet')} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                  <PlusIcon className="-ml-0.5 h-5 w-5" /> Add Work Sheet
-              </button>
-          </div>
-       )}
-    </div>
-  );
+  const count = filteredSheets.length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
-          <div className="relative sm:max-w-xs w-full">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                   <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
-              </div>
-              <input
-                  type="search"
-                  name="search"
-                  id="search"
-                  className="block w-full rounded-md border-0 bg-gray-700 py-2 pl-10 pr-3 text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-500 sm:text-sm"
-                  placeholder="Search work sheets..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-              />
-          </div>
-      </div>
+    <div className="space-y-4">
+      <JobBookBar summary={sheets.length > 0 && <><span className="num font-semibold text-ink">{count}</span> work {count === 1 ? 'sheet' : 'sheets'}{searchTerm ? ' found' : ''}</>}>
+        <Search value={searchTerm} onChange={setSearchTerm} label="Search work sheets" placeholder="Search reg, car or customer" shortcut="/" />
+      </JobBookBar>
 
-       {filteredSheets.length === 0 ? <EmptyState /> : (
-            <div className="bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                <ul role="list" className="divide-y divide-gray-700">
-                    {filteredSheets.map((sheet) => {
-                        const carDetails = sheet.carDetails || vehicles.find(v => v.id === sheet.vehicleId);
-                        if (!carDetails) return null;
-                        return (
-                            <li key={sheet.id} className="group relative">
-                                <button onClick={() => openModal('workSheet', { viewOnly: true, sheet })} className="block w-full text-left hover:bg-gray-700/50 focus:outline-none focus:bg-gray-700/50 transition duration-150 ease-in-out">
-                                    <div className="px-4 py-4 sm:px-6">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-sm font-medium text-brand-400 truncate">Sheet #{sheet.workSheetNumber}</p>
-                                            <span className="inline-flex items-center rounded-full bg-brand-900/60 px-2 py-1 text-[11px] font-medium text-brand-300">View &amp; download</span>
-                                        </div>
-                                        <div className="mt-2 sm:flex sm:justify-between">
-                                            <div className="sm:flex">
-                                                <p className="flex items-center text-sm text-gray-300 font-semibold">{carDetails.make} {carDetails.model} - <span className="uppercase ml-2 bg-gray-900 px-2 py-0.5 rounded text-xs">{carDetails.reg}</span></p>
-                                                {sheet.customerName && (
-                                                    <p className="mt-2 flex items-center text-sm text-gray-400 sm:mt-0 sm:ml-6">{sheet.customerName}</p>
-                                                )}
-                                            </div>
-                                            <div className="mt-2 flex items-center text-sm text-gray-400 sm:mt-0">
-                                                <p>{formatDate(sheet.workDate)}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
-                                <div className="absolute top-1/2 -translate-y-1/2 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-x-2">
-                                    <button onClick={() => openModal('workSheet', { editingSheet: sheet })} className="p-2 rounded-full text-gray-300 bg-gray-700 hover:bg-gray-600 hover:text-white" title="Edit">
-                                        <EditIcon className="h-5 w-5" />
-                                    </button>
-                                    <button onClick={() => openModal('deleteWorkSheetConfirm', sheet)} className="p-2 rounded-full text-gray-300 bg-gray-700 hover:bg-red-600 hover:text-white" title="Delete">
-                                        <TrashIcon className="h-5 w-5" />
-                                    </button>
-                                </div>
-                            </li>
-                        )
-                    })}
-                </ul>
-            </div>
-       )}
+      {count === 0 ? (
+        <div className="rounded-card border border-line bg-surface">
+          {searchTerm ? (
+            <EmptyState
+              icon={<WrenchScrewdriverIcon />}
+              title="No work sheets match"
+              description={`Nothing found for “${searchTerm}”. Try a reg, a sheet number or a customer name.`}
+              secondaryLabel="Clear search"
+              onSecondary={() => setSearchTerm('')}
+            />
+          ) : (
+            <EmptyState
+              icon={<WrenchScrewdriverIcon />}
+              title="No work sheets yet"
+              description="A work sheet lists the work done on a car. Print it as a receipt for the customer or keep it as an internal record."
+              actionLabel="Add work sheet"
+              onAction={() => openModal('workSheet')}
+            />
+          )}
+        </div>
+      ) : (
+        <JobBook label="Work sheets" head={{ primary: 'Vehicle', secondary: 'Customer', status: 'Type', amount: 'Total' }}>
+          {filteredSheets.map(sheet => {
+            const carDetails = sheet.carDetails || vehicles.find(v => v.id === sheet.vehicleId);
+            if (!carDetails) return null;
+            const internal = workSheetRecordType(sheet) === 'internal';
+            const total = sheetTotal(sheet);
+            const car = `${carDetails.make || ''} ${carDetails.model || ''}`.trim();
+            return (
+              <JobBookRow
+                key={sheet.id}
+                noun="work sheet"
+                number={String(sheet.workSheetNumber)}
+                date={sheet.workDate}
+                reg={carDetails.reg}
+                title={car || 'Vehicle'}
+                detail={sheet.customerName || (internal ? 'In-house work' : undefined)}
+                status={internal ? <StatusChip status="neutral">Internal</StatusChip> : <StatusChip status="stock">Customer</StatusChip>}
+                amount={total === null ? <span className="text-ink-3">—</span> : formatCurrency(total)}
+                openLabel={`View work sheet ${sheet.workSheetNumber}, ${carDetails.reg || ''} ${car}${sheet.customerName ? `, ${sheet.customerName}` : ''}`}
+                onOpen={() => openModal('workSheet', { viewOnly: true, sheet })}
+                onEdit={() => openModal('workSheet', { editingSheet: sheet })}
+                onDelete={() => openModal('deleteWorkSheetConfirm', sheet)}
+              />
+            );
+          })}
+        </JobBook>
+      )}
     </div>
   );
 };

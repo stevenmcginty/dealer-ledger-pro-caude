@@ -1,32 +1,45 @@
 /**
  * Dave's pending work on the open thread, docked right above the composer:
- * his drafted reply (approve / edit / bin) and his question (answer inline).
+ * his drafted reply (approve / edit / discard) and his question (answer inline).
  * All behaviour comes in through props; these are presentation only.
+ *
+ * The card is outlined in the brand colour and labelled "not sent", so it can
+ * never be mistaken for a message that went. Send is the full-width primary
+ * at the bottom (thumb reach); Discard sits up in the header, away from it.
  */
 
 import React, { useEffect, useRef } from 'react';
 import Spinner from '../../common/Spinner';
-import { ChevronDownIcon, SparklesIcon } from '../../icons';
+import { PencilIcon, SparklesIcon, XMarkIcon } from '../../icons';
+import { Button } from '../../ui';
+import { controlFrame, controlInput } from '../../ui/cx';
 import SendViaBar, { sendViaLabel, type SendViaChoice } from '../SendViaBar';
 import { ChannelIcon } from './parts';
 
-/** Send button colour carries the route: WhatsApp green, email blue, both teal. */
-export const sendButtonClass = (via: SendViaChoice): string => (
-    via === 'email' ? 'bg-sky-600 text-white hover:bg-sky-500'
-        : via === 'both' ? 'bg-teal-600 text-white hover:bg-teal-500'
-            : 'bg-emerald-500 text-gray-950 hover:bg-emerald-400'
-);
+/** The send button is always the screen's one accent action; the route shows in its glyph and words. */
+export const sendButtonClass = (_via: SendViaChoice): string =>
+    'bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-press';
 
 export const SendRouteIcon: React.FC<{ via: SendViaChoice; className?: string }> = ({ via, className = 'h-4 w-4' }) => (
     via === 'both' ? (
-        <span className="inline-flex items-center -space-x-0.5" aria-hidden>
+        <span className="inline-flex items-center gap-0.5" aria-hidden>
             <ChannelIcon channel="email" className={className} />
             <ChannelIcon channel="whatsapp" className={className} />
         </span>
     ) : (
-        <span aria-hidden><ChannelIcon channel={via} className={className} /></span>
+        <span aria-hidden className="inline-flex"><ChannelIcon channel={via} className={className} /></span>
     )
 );
+
+/** Dave's initial, the way the spec draws him: a small accent disc. */
+const DaveDisc: React.FC<{ agentName: string }> = ({ agentName }) => (
+    <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-accent font-mono text-sm font-bold leading-none text-on-accent" aria-hidden>
+        {(agentName.trim()[0] || 'D').toUpperCase()}
+    </span>
+);
+
+/** The shell both cards share: brand outline, e-2 lift, accent-soft header. */
+const daveShell = 'overflow-hidden rounded-card border-[1.5px] border-accent bg-surface shadow-e2 lg:ms-auto lg:max-w-[34rem]';
 
 export interface DraftCardProps {
     agentName: string;
@@ -83,62 +96,67 @@ export const DraftCard: React.FC<DraftCardProps> = ({
     }, [open, text]);
 
     return (
-        <section
-            aria-label={`${agentName}'s draft reply`}
-            className="overflow-hidden rounded-2xl bg-gradient-to-b from-amber-400/[0.09] to-amber-400/[0.04] ring-1 ring-inset ring-amber-400/25"
-        >
-            <div className="flex items-center gap-2 pl-3.5 pr-1.5 pt-1.5">
-                <SparklesIcon className="h-4 w-4 flex-shrink-0 text-amber-300" />
-                <p className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300">
-                    {source === 'instruction' ? `${agentName}'s draft · from your prompt` : `${agentName} drafted a reply`}
+        <section aria-label={`${agentName}'s draft reply`} className={daveShell}>
+            <div className="flex items-center gap-2.5 bg-accent-soft py-1 pe-1 ps-3 text-accent-soft-ink">
+                <DaveDisc agentName={agentName} />
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {agentName}&rsquo;s draft
+                    {source === 'instruction' && <span className="font-normal"> · from your prompt</span>}
+                    <span className="font-normal"> · not sent</span>
                 </p>
-                <span className="flex-shrink-0 rounded-md bg-amber-400/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-200">Not sent</span>
                 <button
                     type="button"
-                    onClick={() => onOpen(!open)}
-                    aria-expanded={open}
-                    aria-label={open ? 'Fold the draft away' : 'Open the draft to edit it'}
-                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-amber-300/80 hover:bg-amber-400/10 hover:text-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+                    onClick={onDiscard}
+                    disabled={!!busy}
+                    aria-label="Discard draft"
+                    title="Discard draft"
+                    className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-control text-accent-soft-ink transition-colors duration-quick ease-out hover:bg-surface disabled:cursor-not-allowed disabled:text-ink-3 sm:h-10 sm:w-10"
                 >
-                    <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+                    {busy === 'discard' ? <Spinner className="h-5 w-5" /> : <XMarkIcon className="h-5 w-5" />}
                 </button>
             </div>
 
             {bounceWarning && (
-                <p className="px-3.5 pb-1 text-[12px] leading-snug text-red-300">
+                <p className="border-b border-line bg-danger-soft px-3 py-2 text-sm leading-5 text-danger-ink">
                     This may be a reply to the bounce notice, not the customer — read it before sending.
                 </p>
             )}
 
             {open ? (
-                <div className="space-y-2 px-3 pb-1">
-                    <textarea
-                        ref={boxRef}
-                        rows={3}
-                        value={text}
-                        onChange={e => onText(e.target.value)}
-                        aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
-                        className="block w-full resize-none rounded-xl border border-amber-400/20 bg-gray-950/60 px-3 py-2.5 text-[16px] leading-relaxed text-gray-50 focus:border-amber-400/50 focus:outline-none focus:ring-2 focus:ring-amber-400/20 sm:text-[14.5px]"
-                    />
-                    <div className="flex items-center gap-2">
-                        <input
-                            value={prompt}
-                            onChange={e => onPrompt(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onRedo(); } }}
-                            placeholder={`Tell ${agentName} what to change…`}
-                            aria-label={`Your prompt to ${agentName} — amend it and run him again`}
-                            className="h-11 min-w-0 flex-1 rounded-xl bg-black/30 px-3.5 text-[16px] text-white placeholder-gray-500 ring-1 ring-inset ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-400/40 sm:h-10 sm:text-[13px]"
+                <div className="space-y-2.5 px-3 pt-3">
+                    <div className={`${controlFrame()} items-stretch`}>
+                        <textarea
+                            ref={boxRef}
+                            rows={3}
+                            value={text}
+                            onChange={e => onText(e.target.value)}
+                            aria-label={`The reply ${agentName} has drafted — edit it before sending if you like`}
+                            className={`${controlInput} resize-none leading-[1.45]`}
                         />
-                        <button
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className={`${controlFrame()} min-w-0 flex-1`}>
+                            <input
+                                value={prompt}
+                                onChange={e => onPrompt(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onRedo(); } }}
+                                placeholder={`Tell ${agentName} what to change…`}
+                                aria-label={`Your prompt to ${agentName} — amend it and run him again`}
+                                className={controlInput}
+                            />
+                        </div>
+                        <Button
                             type="button"
+                            variant="secondary"
                             onClick={onRedo}
                             disabled={redoBusy || !!busy}
+                            loading={redoBusy}
+                            icon={<SparklesIcon />}
                             title={prompt.trim() ? `Run ${agentName} again with this prompt` : `Have ${agentName} take another go`}
-                            className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-xl border border-amber-400/30 px-3 text-[13px] font-semibold text-amber-200 hover:bg-amber-400/10 disabled:opacity-40 sm:h-10"
+                            className="flex-shrink-0"
                         >
-                            {redoBusy ? <Spinner className="h-3.5 w-3.5 text-amber-200" /> : <SparklesIcon className="h-3.5 w-3.5" />}
                             Redo
-                        </button>
+                        </Button>
                     </div>
                     <SendViaBar
                         value={via}
@@ -154,46 +172,35 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                 <button
                     type="button"
                     onClick={() => onOpen(true)}
-                    className="block w-full px-3.5 pb-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-400/50"
+                    className="block w-full px-3 pt-3 text-start focus-visible:[outline-offset:-3px]"
                     aria-label="Open the draft to edit it"
                 >
-                    <span className="line-clamp-3 whitespace-pre-wrap text-[14.5px] leading-relaxed text-gray-100">
+                    <span className="line-clamp-4 whitespace-pre-wrap text-base leading-[1.45] text-ink">
                         {text || `${agentName} drafted a reply`}
                     </span>
                 </button>
             )}
 
-            <div className="flex items-center gap-1.5 px-2 pb-2 pt-1.5">
-                <button
-                    type="button"
-                    onClick={onDiscard}
-                    disabled={!!busy}
-                    className="flex h-11 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium text-gray-400 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:opacity-40"
-                >
-                    {busy === 'discard' ? <Spinner className="h-3.5 w-3.5" /> : 'Bin it'}
-                </button>
-                {!open && (
-                    <button
-                        type="button"
-                        onClick={() => onOpen(true)}
-                        className="flex h-11 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium text-gray-300 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-                    >
+            <div className="flex items-center gap-2 p-3">
+                {open ? (
+                    <Button type="button" variant="secondary" onClick={() => onOpen(false)} className="flex-shrink-0">
+                        Done
+                    </Button>
+                ) : (
+                    <Button type="button" variant="secondary" onClick={() => onOpen(true)} icon={<PencilIcon />} className="flex-shrink-0">
                         Edit
-                    </button>
+                    </Button>
                 )}
-                <button
+                <Button
                     type="button"
                     onClick={onApprove}
                     disabled={!text.trim() || !!busy}
-                    className={`ml-auto flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl px-4 text-[14px] font-semibold shadow-lg shadow-black/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-40 ${sendButtonClass(via)}`}
+                    loading={busy === 'approve'}
+                    icon={<SendRouteIcon via={via} className="h-5 w-5" />}
+                    className="min-w-0 flex-1"
                 >
-                    {busy === 'approve' ? <Spinner className="h-4 w-4" /> : (
-                        <>
-                            <SendRouteIcon via={via} />
-                            <span className="truncate">{sendViaLabel(via)}</span>
-                        </>
-                    )}
-                </button>
+                    <span className="truncate">{sendViaLabel(via)}</span>
+                </Button>
             </div>
         </section>
     );
@@ -218,35 +225,39 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ agentName, question,
     };
 
     return (
-        <section
-            aria-label={`${agentName} needs an answer`}
-            className="rounded-2xl bg-gradient-to-b from-amber-400/[0.09] to-amber-400/[0.04] px-3.5 pb-3 pt-3 ring-1 ring-inset ring-amber-400/25"
-        >
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300">
-                <SparklesIcon className="h-4 w-4" />
-                {agentName} needs an answer
-            </p>
-            <p className="mt-1.5 text-[15px] font-medium leading-snug text-white">{question}</p>
-            {context && <p className="mt-1 text-[12.5px] leading-snug text-gray-400">{context}</p>}
-            <div className="mt-2.5 flex items-end gap-2">
-                <textarea
-                    ref={boxRef}
-                    rows={1}
-                    value={answer}
-                    onChange={e => { onAnswer(e.target.value); grow(e.target); }}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-                    placeholder={`Your answer — ${agentName} phrases it`}
-                    aria-label={`Your answer to ${agentName}`}
-                    className="min-h-[44px] min-w-0 flex-1 resize-none rounded-xl bg-gray-950/60 px-3.5 py-2.5 text-[16px] leading-snug text-white placeholder-gray-500 ring-1 ring-inset ring-amber-400/20 focus:outline-none focus:ring-2 focus:ring-amber-400/50 sm:text-sm"
-                />
-                <button
-                    type="button"
-                    onClick={onSend}
-                    disabled={!answer.trim() || busy}
-                    className="flex h-11 flex-shrink-0 items-center justify-center gap-1 rounded-xl bg-amber-400 px-4 text-[14px] font-semibold text-gray-950 hover:bg-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-40"
-                >
-                    {busy ? <Spinner className="h-4 w-4 text-gray-950" /> : 'Answer'}
-                </button>
+        <section aria-label={`${agentName} needs an answer`} className={daveShell}>
+            <div className="flex min-h-[48px] items-center gap-2.5 bg-accent-soft px-3 text-accent-soft-ink">
+                <DaveDisc agentName={agentName} />
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {agentName} needs an answer
+                </p>
+            </div>
+            <div className="px-3 pb-3 pt-3">
+                <p className="text-base font-semibold leading-snug text-ink">{question}</p>
+                {context && <p className="mt-1 text-sm leading-5 text-ink-2">{context}</p>}
+                <div className="mt-3 flex items-end gap-2">
+                    <div className={`${controlFrame()} min-w-0 flex-1 items-stretch`}>
+                        <textarea
+                            ref={boxRef}
+                            rows={1}
+                            value={answer}
+                            onChange={e => { onAnswer(e.target.value); grow(e.target); }}
+                            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+                            placeholder={`Your answer — ${agentName} phrases it`}
+                            aria-label={`Your answer to ${agentName}`}
+                            className={`${controlInput} resize-none`}
+                        />
+                    </div>
+                    <Button
+                        type="button"
+                        onClick={onSend}
+                        disabled={!answer.trim() || busy}
+                        loading={busy}
+                        className="flex-shrink-0"
+                    >
+                        Answer
+                    </Button>
+                </div>
             </div>
         </section>
     );

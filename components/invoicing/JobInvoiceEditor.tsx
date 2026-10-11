@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { NewJobInvoice, JobInvoice, JobInvoiceUpdate, Customer, BusinessDetails, Payment } from '../../types';
 import { useData } from '../../hooks/useData';
-import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { TrashIcon } from '../icons';
 import CurrencyInput from '../common/CurrencyInput';
 import { formatCurrency } from '../../utils/helpers';
 import PrintableJobInvoice from './PrintableJobInvoice';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
-import { useToast } from '../ui';
+import { useToast, Button, Field, IconButton, Segmented } from '../ui';
+import EditorFrame, { AddLineButton, FrameInput, TotalLine } from '../work-sheets/EditorFrame';
 
 interface JobInvoiceEditorProps {
     editingInvoice?: JobInvoice | null;
@@ -151,67 +151,76 @@ const JobInvoiceEditor = ({ editingInvoice, onSubmit, onCancel, businessDetails 
     }
 
     return (
-        <div className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">{isEditing ? `Edit ${editingInvoice.status} #${editingInvoice.invoiceNumber}` : 'Create Job Quote/Invoice'}</h2>
-                <button onClick={onCancel} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <form id="job-invoice-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300">Customer</label>
-                        <Select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} required wrapperClassName="mt-1">
-                            <option value="">-- Select a Customer --</option>
-                            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </Select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300">Date</label>
-                        <UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="mt-1" required/>
-                    </div>
-                </div>
+        <EditorFrame
+            title={isEditing ? <>Edit {editingInvoice.status.toLowerCase()} <span className="num">#{editingInvoice.invoiceNumber}</span></> : 'New quote or invoice'}
+            onClose={onCancel}
+            formId="job-invoice-form"
+            onSubmit={handleGeneratePreview}
+            footer={<>
+                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" form="job-invoice-form" loading={isSubmitting} disabled={!selectedCustomerId}>
+                    {status === 'Quote' ? 'Preview quote' : 'Preview invoice'}
+                </Button>
+            </>}
+        >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="Customer" htmlFor="jobInvoiceCustomer">
+                    <Select id="jobInvoiceCustomer" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} required>
+                        <option value="">Choose a customer</option>
+                        {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </Select>
+                </Field>
+                <Field label="Date" htmlFor="invoiceDate">
+                    <UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} required />
+                </Field>
+            </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">Document Type</label>
-                    <div className="mt-2 flex items-center space-x-2 rounded-lg bg-gray-700 p-1">
-                        <button type="button" onClick={() => setStatus('Quote')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${status === 'Quote' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Quote</button>
-                        <button type="button" onClick={() => setStatus('Invoice')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${status === 'Invoice' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Invoice</button>
-                    </div>
-                </div>
+            <div className="flex flex-col gap-1.5">
+                <span id="jobInvoiceType" className="text-sm font-semibold text-ink">Document</span>
+                <Segmented
+                    ariaLabel="Document"
+                    full
+                    value={status}
+                    onChange={v => setStatus(v)}
+                    options={[{ value: 'Quote', label: 'Quote' }, { value: 'Invoice', label: 'Invoice' }]}
+                />
+            </div>
 
-                <div>
-                    <h3 className="text-base font-semibold text-white">Invoice Items</h3>
-                     <div className="mt-2 space-y-3">
-                        {items.map((item, index) => (
-                            <div key={index} className="flex items-end gap-2">
-                                <div className="flex-1"><label className="sr-only">Description</label><input type="text" placeholder="Description" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className="block w-full bg-gray-700 rounded-md py-2 px-3 text-white"/></div>
-                                <div className="w-24"><label className="sr-only">Qty</label><input type="number" placeholder="Qty" value={item.quantityStr} onChange={e => handleItemChange(index, 'quantityStr', e.target.value)} className="block w-full bg-gray-700 rounded-md py-2 px-3 text-white"/></div>
-                                <div className="w-36"><label className="sr-only">Unit Price</label><CurrencyInput id={`price-${index}`} value={item.unitPriceStr} onChange={e => handleItemChange(index, 'unitPriceStr', e.target.value)} /></div>
-                                <div className="w-36 text-right py-2 px-3 text-white">{formatCurrency(item.total)}</div>
-                                <button type="button" onClick={() => removeItem(index)} disabled={items.length <= 1} className="p-2 text-gray-400 hover:text-red-400 disabled:opacity-50"><TrashIcon className="h-5 w-5"/></button>
+            <fieldset>
+                <legend className="mb-2 text-base font-bold text-ink">Items</legend>
+                <div className="divide-y divide-line rounded-card border border-line">
+                    {items.map((item, index) => (
+                        <div key={index} className="flex flex-wrap items-center gap-2 p-2.5 md:flex-nowrap">
+                            <div className="min-w-0 basis-full md:flex-1 md:basis-0">
+                                <label htmlFor={`job-desc-${index}`} className="sr-only">Description, line {index + 1}</label>
+                                <FrameInput id={`job-desc-${index}`} type="text" placeholder="Description" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} />
                             </div>
-                        ))}
-                        <button type="button" onClick={addItem} className="w-full text-sm font-semibold text-brand-400 hover:text-brand-300 flex items-center justify-center gap-2 p-2 border-2 border-dashed border-gray-600 rounded-lg hover:border-gray-500">
-                            <PlusIcon className="h-4 w-4"/> Add Line Item
-                        </button>
-                    </div>
+                            <div className="w-20 flex-none">
+                                <label htmlFor={`job-qty-${index}`} className="sr-only">Quantity, line {index + 1}</label>
+                                <FrameInput id={`job-qty-${index}`} type="number" inputMode="decimal" placeholder="Qty" value={item.quantityStr} onChange={e => handleItemChange(index, 'quantityStr', e.target.value)} className="num fl-no-spin text-end" />
+                            </div>
+                            <div className="min-w-0 flex-1 md:w-36 md:flex-none">
+                                <label htmlFor={`price-${index}`} className="sr-only">Unit price, line {index + 1}</label>
+                                <CurrencyInput id={`price-${index}`} value={item.unitPriceStr} onChange={e => handleItemChange(index, 'unitPriceStr', e.target.value)} />
+                            </div>
+                            <span className="num hidden w-28 flex-none text-end text-base text-ink sm:block" aria-label={`Line ${index + 1} total`}>{formatCurrency(item.total)}</span>
+                            <IconButton label={`Remove line ${index + 1}`} icon={<TrashIcon />} onClick={() => removeItem(index)} disabled={items.length <= 1} />
+                        </div>
+                    ))}
                 </div>
-
-                <div className="pt-4 border-t border-gray-700 space-y-2">
-                    <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Subtotal</span><span className="font-medium text-white">{formatCurrency(subtotal)}</span></div>
-                    {isVatRegistered && customerDetails.isBusiness && (
-                         <div className="flex justify-between items-center text-sm"><span className="text-gray-400">VAT (20%)</span><span className="font-medium text-white">{formatCurrency(vat)}</span></div>
-                    )}
-                    <div className="flex justify-between items-center text-lg font-bold"><span className="text-white">Total</span><span className="font-bold text-white">{formatCurrency(total)}</span></div>
+                <div className="mt-2">
+                    <AddLineButton onClick={addItem} />
                 </div>
+            </fieldset>
 
-            </form>
-             <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end">
-                <button type="submit" form="job-invoice-form" disabled={isSubmitting || !selectedCustomerId} className="inline-flex items-center px-4 py-2 border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : 'Generate Preview'}
-                </button>
-            </footer>
-        </div>
+            <div className="space-y-1.5 border-t border-line pt-4">
+                <TotalLine label="Subtotal" value={formatCurrency(subtotal)} />
+                {isVatRegistered && customerDetails.isBusiness && (
+                    <TotalLine label="VAT (20%)" value={formatCurrency(vat)} />
+                )}
+                <TotalLine strong label="Total" value={formatCurrency(total)} />
+            </div>
+        </EditorFrame>
     )
 }
 

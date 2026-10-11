@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import CalendarPopover from './CalendarPopover';
 import { formatUkDate, parseUkDate } from '../../utils/ukDate';
+import { controlFrame, controlInput, cx } from '../ui/cx';
 
 interface UkDateInputProps {
   id: string;
@@ -30,7 +31,7 @@ const CalendarGlyph = ({ className }: { className?: string }) => (
 const INVALID_MESSAGE = 'Enter a real date as DD/MM/YYYY, e.g. 30/09/2026';
 
 // The app's one date field. Type a UK date (30/09/2026, 30-9-26, 30092026 …) and it commits on
-// Enter or blur, or press the calendar button for a dark Monday-first picker. The value handed to
+// Enter or blur, or press the calendar button for a Monday-first picker. The value handed to
 // onChange is always 'YYYY-MM-DD' or '' — callers read e.target.name/value/id/type as before.
 const UkDateInput = ({ id, name, value, onChange, className, required }: UkDateInputProps) => {
   const [draft, setDraft] = useState(() => formatUkDate(value));
@@ -119,7 +120,7 @@ const UkDateInput = ({ id, name, value, onChange, className, required }: UkDateI
   const errorId = `${id}-error`;
 
   return (
-    <div ref={wrapperRef} className={`relative ${className || ''}`}>
+    <div ref={wrapperRef} className={cx(controlFrame({ error: invalid }), className)}>
       <input
         ref={inputRef}
         type="text"
@@ -136,9 +137,7 @@ const UkDateInput = ({ id, name, value, onChange, className, required }: UkDateI
         onChange={e => { setDraft(e.target.value); setDirty(true); if (invalid) setInvalid(false); }}
         onBlur={commitDraft}
         onKeyDown={onKeyDown}
-        className={`block w-full min-w-0 rounded-md bg-gray-700 border-gray-600 py-2 pl-2.5 pr-10 text-white placeholder-gray-500 shadow-sm focus:outline-none focus:ring-2 ${
-          invalid ? 'ring-2 ring-red-500/80 focus:ring-red-500' : 'focus:ring-brand-500'
-        }`}
+        className={cx(controlInput, 'num pr-1')}
       />
       {invalid && <span id={errorId} className="sr-only">{INVALID_MESSAGE}</span>}
       <button
@@ -150,13 +149,20 @@ const UkDateInput = ({ id, name, value, onChange, className, required }: UkDateI
         aria-expanded={open}
         aria-controls={open ? `${id}-calendar` : undefined}
         onClick={() => setOpen(o => !o)}
-        className={`absolute inset-y-1 right-1 flex w-8 cursor-pointer items-center justify-center rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-          open
-            ? 'bg-brand-600 text-white'
-            : 'bg-brand-500/20 text-brand-300 ring-1 ring-inset ring-brand-400/40 hover:bg-brand-500/35 hover:text-white'
-        }`}
+        className={cx(
+          // 48 x 48 to tap, flush with the field's end; the drawn well inside is 40px.
+          'group/cal -my-px grid h-12 w-12 flex-none cursor-pointer place-items-center rounded-control focus-visible:outline-offset-[-3px]',
+          open ? 'text-accent-soft-ink' : 'text-ink-2 hover:text-ink',
+        )}
       >
-        <CalendarGlyph className="h-5 w-5" />
+        <span
+          className={cx(
+            'grid h-10 w-10 place-items-center rounded-[6px] transition-colors duration-quick ease-out',
+            open ? 'bg-accent-soft' : 'group-hover/cal:bg-surface-2 group-active/cal:bg-surface-3',
+          )}
+        >
+          <CalendarGlyph className="h-5 w-5" />
+        </span>
       </button>
       {open && (
         <CalendarPopover

@@ -1,9 +1,9 @@
-
-
 import React, { useState } from 'react';
 import { ExpenseCategory } from '../../types';
-import { XMarkIcon, EditIcon, TrashIcon, CheckCircleIcon } from '../icons';
+import { XMarkIcon, EditIcon, TrashIcon, CheckIcon } from '../icons';
 import Spinner from '../common/Spinner';
+import { Button, IconButton } from '../ui';
+import { controlFrame, controlInput } from '../ui/cx';
 
 interface CategoryManagerProps {
     categories: ExpenseCategory[];
@@ -36,7 +36,7 @@ const CategoryRow: React.FC<CategoryRowProps> = ({ category, onRename, onDelete 
             setIsEditing(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (window.confirm(`Are you sure you want to delete the category "${category.name}"? This cannot be undone.`)) {
             setIsLoading(true);
@@ -46,33 +46,40 @@ const CategoryRow: React.FC<CategoryRowProps> = ({ category, onRename, onDelete 
     };
 
     return (
-        <li className="flex items-center justify-between p-3 bg-gray-700/50 rounded-md">
+        <li className="flex min-h-[56px] items-center gap-3 border-b border-line py-1 pe-1 ps-4 last:border-b-0">
+            <span className={`h-3 w-3 flex-none rounded-full ${category.color || 'bg-ink-3'}`} aria-hidden="true" />
             {isEditing ? (
-                 <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="flex-1 flex items-center gap-x-2">
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="flex-1 bg-gray-600 border-gray-500 rounded-md py-1 px-2 text-white"
-                        autoFocus
-                    />
+                <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="min-w-0 flex-1">
+                    <div className={controlFrame()}>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            aria-label={`New name for ${category.name}`}
+                            className={controlInput}
+                            autoFocus
+                        />
+                    </div>
                 </form>
             ) : (
-                <p className="text-sm font-semibold text-white">{category.name}</p>
+                <p className="min-w-0 flex-1 truncate text-base font-semibold text-ink">
+                    {category.name}
+                    {isProtected && <span className="ms-2 text-sm font-normal text-ink-3">always kept</span>}
+                </p>
             )}
 
-            <div className="flex items-center gap-x-2 ml-4">
+            <div className="flex flex-none items-center">
                 {isLoading ? (
-                    <Spinner className="h-5 w-5" />
+                    <span className="grid h-12 w-12 place-items-center"><Spinner className="h-5 w-5" /></span>
                 ) : isEditing ? (
                     <>
-                        <button onClick={handleSave} className="p-2 text-green-400 hover:text-green-300"><CheckCircleIcon className="h-5 w-5" /></button>
-                        <button onClick={() => { setIsEditing(false); setName(category.name); }} className="p-2 text-gray-400 hover:text-white"><XMarkIcon className="h-5 w-5" /></button>
+                        <IconButton label="Save name" icon={<CheckIcon />} onClick={handleSave} className="text-success" />
+                        <IconButton label="Keep old name" icon={<XMarkIcon />} onClick={() => { setIsEditing(false); setName(category.name); }} />
                     </>
                 ) : (
                     <>
-                        <button onClick={() => setIsEditing(true)} disabled={isProtected} className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Rename"><EditIcon className="h-5 w-5" /></button>
-                        <button onClick={handleDelete} disabled={isProtected} className="p-2 text-gray-400 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed" title="Delete"><TrashIcon className="h-5 w-5" /></button>
+                        <IconButton label={`Rename ${category.name}`} icon={<EditIcon />} onClick={() => setIsEditing(true)} disabled={isProtected} className="[&_svg]:h-5 [&_svg]:w-5" />
+                        <IconButton label={`Delete ${category.name}`} icon={<TrashIcon />} onClick={handleDelete} disabled={isProtected} className="hover:text-danger [&_svg]:h-5 [&_svg]:w-5" />
                     </>
                 )}
             </div>
@@ -85,21 +92,23 @@ const CategoryManager = ({ categories, onClose, onRename, onDelete }: CategoryMa
     const sortedCategories = [...categories].sort((a,b) => a.order - b.order);
 
     return (
-        <div className="w-full flex flex-col h-full max-h-[90vh]">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <h2 className="text-lg font-bold text-white">Manage Expense Categories</h2>
-                <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
+        <div className="flex h-full max-h-[90vh] w-full flex-col">
+            <header className="flex flex-shrink-0 items-start gap-3 px-4 pb-3 pt-1 sm:px-5 sm:pt-5">
+                <div className="min-w-0 flex-1 pt-1.5">
+                    <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Expense categories</h2>
+                    <p className="mt-1 text-sm text-ink-2">Rename or delete a category. “Other” always stays.</p>
+                </div>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} className="-me-2" />
             </header>
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-                <p className="text-sm text-gray-400">Here you can rename and delete your expense categories. Note: The "Other" category cannot be changed or deleted.</p>
-                <ul className="space-y-2">
+            <div className="flex-1 overflow-y-auto px-4 pb-4 sm:px-5">
+                <ul className="m-0 list-none overflow-hidden rounded-card border border-line bg-surface p-0">
                     {sortedCategories.map(cat => (
                         <CategoryRow key={cat.id} category={cat} onRename={onRename} onDelete={onDelete} />
                     ))}
                 </ul>
             </div>
-             <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end bg-gray-800">
-                <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-white bg-brand-blue-600 hover:bg-brand-blue-700 rounded-md">Done</button>
+            <footer className="flex flex-shrink-0 justify-end border-t border-line bg-surface px-4 py-3 sm:px-5">
+                <Button onClick={onClose} className="w-full sm:w-auto">Done</Button>
             </footer>
         </div>
     );

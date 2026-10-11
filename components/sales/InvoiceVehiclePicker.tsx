@@ -2,13 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import { Vehicle, SalesDocument } from '../../types';
-import { XMarkIcon, CarIcon, PlusIcon, DocumentTextIcon, EditIcon, ArrowLeftIcon } from '../icons';
-
-const statusColorClasses: Record<Vehicle['status'], string> = {
-    'Available': 'bg-green-800 text-green-200',
-    'Deposit Paid': 'bg-cyan-800 text-cyan-200',
-    'Sold': 'bg-red-800 text-red-200',
-};
+import { CarIcon, EditIcon, ArrowLeftIcon, ChevronRightIcon } from '../icons';
+import { DocChip, EmptyState, IconButton, Plate, StatusChip } from '../ui';
+import { SheetBody, SheetFrame, SheetHeader } from '../crm/SheetParts';
+import { VEHICLE_CHIP } from './docMeta';
 
 interface PickedVehicle {
     vehicle: Vehicle;
@@ -52,89 +49,83 @@ const InvoiceVehiclePicker = () => {
 
     if (picked) {
         const { vehicle, depositDoc, salesDoc } = picked;
+        const choice = 'flex min-h-[64px] w-full items-center gap-3 border-b border-line px-4 py-3 text-start transition-colors duration-quick ease-out last:border-b-0 hover:bg-surface-2 active:bg-surface-3';
         return (
-            <div className="w-full">
-                <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <button onClick={() => setPicked(null)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white flex-shrink-0">
-                            <ArrowLeftIcon className="h-5 w-5" />
+            <SheetFrame>
+                <SheetHeader
+                    title="Which document?"
+                    description={
+                        <span className="flex min-w-0 items-center gap-2">
+                            <Plate reg={vehicle.reg} size="sm" />
+                            <span className="truncate">{vehicle.make} {vehicle.model}</span>
+                        </span>
+                    }
+                    leading={<IconButton label="Back to cars" icon={<ArrowLeftIcon />} onClick={() => setPicked(null)} />}
+                    onClose={closeModal}
+                />
+                <SheetBody>
+                    <div className="overflow-hidden rounded-card border border-line bg-surface">
+                        <button type="button" onClick={() => salesDoc ? handleEdit(salesDoc) : handleCreate('Sales Invoice')} className={choice}>
+                            <DocChip kind="SI" label={null} />
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-base font-semibold text-ink">{salesDoc ? 'Edit sales invoice' : 'Sales invoice'}</span>
+                                <span className="block text-sm text-ink-3">
+                                    {salesDoc ? <>Already made · <span className="num">#{salesDoc.invoiceNumber}</span></> : 'Paid in full, car is sold'}
+                                </span>
+                            </span>
+                            {salesDoc ? <EditIcon className="h-5 w-5 flex-none text-ink-3" aria-hidden="true" /> : <ChevronRightIcon className="h-5 w-5 flex-none text-ink-3" aria-hidden="true" />}
                         </button>
-                        <div className="min-w-0">
-                            <h2 className="text-lg font-bold text-white truncate">{vehicle.reg}</h2>
-                            <p className="text-sm text-gray-400 truncate">{vehicle.make} {vehicle.model}</p>
-                        </div>
+                        <button type="button" onClick={() => depositDoc ? handleEdit(depositDoc) : handleCreate('Deposit Slip')} className={choice}>
+                            <DocChip kind="DS" label={null} />
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-base font-semibold text-ink">{depositDoc ? 'Edit deposit slip' : 'Deposit slip'}</span>
+                                <span className="block text-sm text-ink-3">
+                                    {depositDoc ? <>Already made · <span className="num">#{depositDoc.invoiceNumber}</span></> : 'Deposit taken, car reserved'}
+                                </span>
+                            </span>
+                            {depositDoc ? <EditIcon className="h-5 w-5 flex-none text-ink-3" aria-hidden="true" /> : <ChevronRightIcon className="h-5 w-5 flex-none text-ink-3" aria-hidden="true" />}
+                        </button>
                     </div>
-                    <button onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white">
-                        <XMarkIcon className="h-6 w-6" />
-                    </button>
-                </header>
-                <div className="p-4 space-y-2">
-                    {salesDoc ? (
-                        <button onClick={() => handleEdit(salesDoc)} className="w-full text-left p-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-3 bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <EditIcon className="h-5 w-5 text-green-400" />
-                            <span>Edit Sales Invoice</span>
-                        </button>
-                    ) : (
-                        <button onClick={() => handleCreate('Sales Invoice')} className="w-full text-left p-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-3 bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <DocumentTextIcon className="h-5 w-5 text-green-400" />
-                            <span>Sales Invoice</span>
-                        </button>
-                    )}
-                    {depositDoc ? (
-                        <button onClick={() => handleEdit(depositDoc)} className="w-full text-left p-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-3 bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <EditIcon className="h-5 w-5 text-cyan-400" />
-                            <span>Edit Deposit Slip</span>
-                        </button>
-                    ) : (
-                        <button onClick={() => handleCreate('Deposit Slip')} className="w-full text-left p-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-3 bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <DocumentTextIcon className="h-5 w-5 text-cyan-400" />
-                            <span>Deposit Slip</span>
-                        </button>
-                    )}
-                </div>
-            </div>
+                </SheetBody>
+            </SheetFrame>
         );
     }
 
     return (
-        <div className="w-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Invoice for which vehicle?</h2>
-                <button onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white">
-                    <XMarkIcon className="h-6 w-6" />
-                </button>
-            </header>
-
-            {eligibleVehicles.length === 0 ? (
-                <div className="p-6 text-center">
-                    <CarIcon className="h-12 w-12 text-gray-500 mx-auto" />
-                    <p className="mt-4 text-sm text-gray-400">You have no vehicles in stock to invoice yet.</p>
-                    <div className="mt-6">
-                        <button onClick={handleAddVehicle} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                            <PlusIcon className="-ml-0.5 h-5 w-5" /> Add a vehicle first
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
-                    {eligibleVehicles.map(vehicle => (
-                        <button
-                            key={vehicle.id}
-                            onClick={() => handlePick(vehicle)}
-                            className="w-full text-left p-4 rounded-lg transition-colors flex items-center justify-between gap-3 bg-gray-700/50 hover:bg-gray-700"
-                        >
-                            <div className="min-w-0">
-                                <p className="text-sm font-bold text-white truncate">{vehicle.reg}</p>
-                                <p className="text-sm text-gray-400 truncate">{vehicle.make} {vehicle.model}</p>
-                            </div>
-                            <span className={`flex-shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusColorClasses[vehicle.status]}`}>
-                                {vehicle.status}
-                            </span>
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
+        <SheetFrame>
+            <SheetHeader title="Invoice which car?" description="Cars in stock and reserved, newest first." onClose={closeModal} />
+            <SheetBody>
+                {eligibleVehicles.length === 0 ? (
+                    <EmptyState
+                        icon={<CarIcon />}
+                        title="No cars to invoice"
+                        description="Every car is sold, or none are in stock yet. Add the car first, then make its invoice."
+                        actionLabel="Add a car"
+                        onAction={handleAddVehicle}
+                        className="px-0"
+                    />
+                ) : (
+                    <ul role="list" className="m-0 list-none overflow-hidden rounded-card border border-line bg-surface p-0">
+                        {eligibleVehicles.map(vehicle => {
+                            const chip = VEHICLE_CHIP[vehicle.status];
+                            return (
+                                <li key={vehicle.id} className="border-b border-line last:border-b-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePick(vehicle)}
+                                        className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
+                                    >
+                                        <Plate reg={vehicle.reg} size="sm" />
+                                        <span className="min-w-0 flex-1 truncate text-base font-semibold text-ink">{vehicle.make} {vehicle.model}</span>
+                                        {chip && <StatusChip status={chip.status}>{chip.label}</StatusChip>}
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </SheetBody>
+        </SheetFrame>
     );
 };
 

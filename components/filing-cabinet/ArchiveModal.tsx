@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { useData } from '../../hooks/useData';
 import { ArchiveBoxIcon, ExclamationTriangleIcon, CheckCircleIcon, TrashIcon } from '../icons';
 import Spinner from '../common/Spinner';
+import { Alert, Button } from '../ui';
 
 interface ArchiveDrawerProps {
     items: any[]; // The list of items to archive
@@ -19,7 +20,7 @@ const ArchiveDrawer = ({ items, onClose, companyId }: ArchiveDrawerProps) => {
 
     const handleArchive = async () => {
         setStatus('preparing');
-        setMessage('Generating secure archive package...');
+        setMessage('Making the archive…');
         const zip = new JSZip();
         const filesFolder = zip.folder("files");
         const manifest: any = { version: '1.0', timestamp: new Date().toISOString(), items: [] };
@@ -59,7 +60,7 @@ const ArchiveDrawer = ({ items, onClose, companyId }: ArchiveDrawerProps) => {
 
         zip.file("manifest.json", JSON.stringify(manifest, null, 2));
 
-        setMessage('Finalizing ZIP file...');
+        setMessage('Zipping…');
         const content = await zip.generateAsync({ type: "blob" });
         
         // Trigger Download
@@ -72,7 +73,7 @@ const ArchiveDrawer = ({ items, onClose, companyId }: ArchiveDrawerProps) => {
         document.body.removeChild(link);
 
         // Confirm Delete
-        if (window.confirm("Archive downloaded successfully. Do you want to proceed with deleting these items from the cloud? This cannot be undone without restoring from the backup.")) {
+        if (window.confirm("Archive downloaded. Delete these items from the cloud now? Only the archive file can bring them back.")) {
             await performDeletion();
         } else {
             setStatus('idle');
@@ -81,14 +82,14 @@ const ArchiveDrawer = ({ items, onClose, companyId }: ArchiveDrawerProps) => {
     };
 
     const handleDeleteOnly = async () => {
-        if (window.confirm("WARNING: You are about to permanently delete these items without creating a backup archive first. This assumes you have already backed them up elsewhere. Are you sure you want to proceed?")) {
+        if (window.confirm("Delete these items without making an archive first? Only do this if you already have one. You can't undo this.")) {
             await performDeletion();
         }
     };
 
     const performDeletion = async () => {
         setStatus('deleting');
-        setMessage('Deleting records and files from cloud...');
+        setMessage('Deleting records and files…');
         try {
             await batchArchiveDelete(items);
             setStatus('success');
@@ -99,66 +100,51 @@ const ArchiveDrawer = ({ items, onClose, companyId }: ArchiveDrawerProps) => {
     };
 
     return (
-        <div className="p-6 h-full flex flex-col">
-            <div className="flex-1 flex flex-col justify-center items-center text-center space-y-6">
-                {status === 'idle' && (
-                    <>
-                        <div className="bg-red-100 p-4 rounded-full">
-                            <ArchiveBoxIcon className="h-12 w-12 text-red-600" />
+        <div className="flex flex-col px-5 pb-5 pt-2 sm:pt-5">
+            {status === 'idle' && (
+                <>
+                    <div className="flex items-start gap-3">
+                        <span aria-hidden="true" className="grid h-12 w-12 flex-none place-items-center rounded-card bg-danger-soft text-danger-ink"><ArchiveBoxIcon className="h-6 w-6" /></span>
+                        <div className="min-w-0 pt-0.5">
+                            <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Archive and wipe <span className="num">{items.length}</span> {items.length === 1 ? 'item' : 'items'}?</h2>
+                            <p className="mt-1 text-sm leading-5 text-ink-2">Everything in these dates is saved to one ZIP file on this device, then taken out of the cloud.</p>
                         </div>
-                        <h3 className="text-2xl font-bold text-white">Archive & Wipe Period</h3>
-                        <p className="text-gray-300">
-                            You are about to archive <strong>{items.length} items</strong>.
-                        </p>
-                        <div className="bg-gray-700/50 p-4 rounded-lg text-sm text-left space-y-2 border border-gray-600 w-full max-w-md">
-                            <p className="flex items-start gap-2"><CheckCircleIcon className="h-5 w-5 text-green-400 shrink-0"/> All files (Receipts, Purchase Invoices) will be zipped.</p>
-                            <p className="flex items-start gap-2"><CheckCircleIcon className="h-5 w-5 text-green-400 shrink-0"/> Data records (including Sales Invoices) will be saved to a manifest.</p>
-                            <p className="flex items-start gap-2"><ExclamationTriangleIcon className="h-5 w-5 text-red-400 shrink-0"/> <strong>After download, these items will be deleted from the cloud.</strong></p>
-                        </div>
-                        
-                        <div className="w-full max-w-md space-y-3 pt-4">
-                            <button onClick={handleArchive} className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg flex items-center justify-center gap-2">
-                                <ArchiveBoxIcon className="h-5 w-5" /> Download Archive & Delete
-                            </button>
-                            <div className="relative flex items-center py-2">
-                                <div className="flex-grow border-t border-gray-600"></div>
-                                <span className="flex-shrink-0 mx-4 text-gray-500 text-sm">OR</span>
-                                <div className="flex-grow border-t border-gray-600"></div>
-                            </div>
-                            <button onClick={handleDeleteOnly} className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold rounded-lg shadow-sm border border-gray-600 flex items-center justify-center gap-2">
-                                <TrashIcon className="h-5 w-5" /> Delete Only (Already Archived)
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2">Only choose 'Delete Only' if you have already downloaded the archive.</p>
-                    </>
-                )}
+                    </div>
+                    <ul className="m-0 mt-5 list-none space-y-2.5 rounded-control border border-line bg-bg p-3.5 text-sm leading-5 text-ink-2">
+                        <li className="flex items-start gap-2.5"><CheckCircleIcon className="h-5 w-5 flex-none text-success" /> Receipt and purchase invoice files go into the ZIP.</li>
+                        <li className="flex items-start gap-2.5"><CheckCircleIcon className="h-5 w-5 flex-none text-success" /> Every record, sales invoices too, goes into its list of contents.</li>
+                        <li className="flex items-start gap-2.5 font-semibold text-ink"><ExclamationTriangleIcon className="h-5 w-5 flex-none text-danger" /> After the download, they are deleted from the cloud.</li>
+                    </ul>
+                    <div className="mt-5 flex flex-col gap-2">
+                        <Button variant="danger" icon={<ArchiveBoxIcon />} onClick={handleArchive} block>Download archive and delete</Button>
+                        <Button variant="secondary" icon={<TrashIcon />} onClick={handleDeleteOnly} block>Delete only (already archived)</Button>
+                        <Button variant="ghost" onClick={onClose} block>Keep everything</Button>
+                    </div>
+                    <p className="mt-3 text-sm text-ink-3">Only choose Delete only if you already have the archive file.</p>
+                </>
+            )}
 
-                {(status === 'preparing' || status === 'deleting') && (
-                    <>
-                        <Spinner className="h-12 w-12 text-white" />
-                        <h3 className="text-xl font-semibold text-white">{message}</h3>
-                        {status === 'preparing' && <p className="text-gray-400">{progress}% processed</p>}
-                    </>
-                )}
+            {(status === 'preparing' || status === 'deleting' || status === 'downloading') && (
+                <div className="flex flex-col items-center gap-3 py-10 text-center" role="status">
+                    <Spinner className="h-10 w-10 text-accent-text" />
+                    <h2 className="text-lg font-bold text-ink">{message}</h2>
+                    {status === 'preparing' && <p className="num text-sm text-ink-3">{progress}%</p>}
+                </div>
+            )}
 
-                {status === 'success' && (
-                    <>
-                        <CheckCircleIcon className="h-16 w-16 text-green-500" />
-                        <h3 className="text-xl font-bold text-white">Action Complete</h3>
-                        <p className="text-gray-400">Items have been removed from the filing cabinet.</p>
-                        <button onClick={onClose} className="mt-4 px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">Close</button>
-                    </>
-                )}
+            {status === 'success' && (
+                <div className="space-y-4 py-2">
+                    <Alert tone="success" title="Archived and wiped">The items are out of the filing cabinet. Keep the ZIP file safe.</Alert>
+                    <Button variant="secondary" onClick={onClose} block>Close</Button>
+                </div>
+            )}
 
-                {status === 'error' && (
-                    <>
-                        <ExclamationTriangleIcon className="h-16 w-16 text-red-500" />
-                        <h3 className="text-xl font-bold text-white">Error</h3>
-                        <p className="text-red-300">{message}</p>
-                        <button onClick={onClose} className="mt-4 px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg">Close</button>
-                    </>
-                )}
-            </div>
+            {status === 'error' && (
+                <div className="space-y-4 py-2">
+                    <Alert tone="danger" title="That didn't finish">{message}</Alert>
+                    <Button variant="secondary" onClick={onClose} block>Close</Button>
+                </div>
+            )}
         </div>
     );
 };

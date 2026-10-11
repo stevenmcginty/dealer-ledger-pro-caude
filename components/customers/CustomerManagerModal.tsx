@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Customer, NewCustomer } from '../../types';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { XMarkIcon, PlusIcon, TrashIcon, EditIcon, CheckCircleIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { PlusIcon, TrashIcon, EditIcon, ClockIcon } from '../icons';
+import { Badge, Button, Checkbox, IconButton, Input } from '../ui';
+import { controlFrame, controlInput, cx } from '../ui/cx';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from '../crm/SheetParts';
 import { formatCurrency } from '../../utils/helpers';
 
 interface CustomerEditorProps {
@@ -41,21 +43,26 @@ const CustomerEditor: React.FC<CustomerEditorProps> = ({ customer, onSave, onCan
     };
 
     return (
-        <form onSubmit={handleSubmit} className="p-4 bg-gray-700/50 rounded-lg space-y-4">
-            <h3 className="font-semibold text-white">{customer ? 'Edit Customer' : 'Add New Customer'}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="block text-sm text-gray-300">Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 w-full bg-gray-700 rounded-md py-2 px-3 text-white" /></div>
-                <div><label className="block text-sm text-gray-300">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="mt-1 w-full bg-gray-700 rounded-md py-2 px-3 text-white" /></div>
-                <div><label className="block text-sm text-gray-300">Phone</label><input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="mt-1 w-full bg-gray-700 rounded-md py-2 px-3 text-white" /></div>
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-card border border-line bg-surface-2 p-4">
+            <h3 className="text-base font-bold text-ink">{customer ? 'Edit customer' : 'New customer'}</h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input id={`cust-name-${customer?.id ?? 'new'}`} label="Name" value={name} onChange={e => setName(e.target.value)} required wrapperClassName="md:col-span-2" />
+                <Input id={`cust-email-${customer?.id ?? 'new'}`} label="Email" type="email" inputMode="email" value={email} onChange={e => setEmail(e.target.value)} />
+                <Input id={`cust-phone-${customer?.id ?? 'new'}`} label="Phone" type="text" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} className="num" />
             </div>
-            <div><label className="block text-sm text-gray-300">Address</label><textarea value={address} onChange={e => setAddress(e.target.value)} required rows={2} className="mt-1 w-full bg-gray-700 rounded-md py-2 px-3 text-white" /></div>
-            <div className="relative flex items-start"><div className="flex h-6 items-center"><input type="checkbox" checked={isBusiness} onChange={e => setIsBusiness(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 text-brand-600" /></div><div className="ml-3 text-sm"><label className="font-medium text-gray-300">This is a business account</label></div></div>
+            <div>
+                <label htmlFor={`cust-address-${customer?.id ?? 'new'}`} className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Address</label>
+                <div className={controlFrame()}>
+                    <textarea id={`cust-address-${customer?.id ?? 'new'}`} value={address} onChange={e => setAddress(e.target.value)} required rows={2} className={cx(controlInput, 'resize-y')} />
+                </div>
+            </div>
+            <Checkbox checked={isBusiness} onChange={e => setIsBusiness(e.target.checked)} label="This is a business" />
             {isBusiness && (
-                <div><label className="block text-sm text-gray-300">VAT Number</label><input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} className="mt-1 w-full bg-gray-700 rounded-md py-2 px-3 text-white" /></div>
+                <Input id={`cust-vat-${customer?.id ?? 'new'}`} label="VAT number" value={vatNumber} onChange={e => setVatNumber(e.target.value)} className="num uppercase" wrapperClassName="max-w-xs" />
             )}
-            <div className="flex justify-end gap-2">
-                <button type="button" onClick={onCancel} className="px-4 py-2 text-sm bg-gray-600 rounded-md">Cancel</button>
-                <button type="submit" disabled={isSubmitting} className="px-4 py-2 text-sm bg-brand-600 rounded-md">{isSubmitting ? <Spinner/> : 'Save'}</button>
+            <div className="flex flex-wrap justify-end gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
+                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" loading={isSubmitting}>Save customer</Button>
             </div>
         </form>
     );
@@ -91,24 +98,27 @@ const CustomerManagerModal = () => {
     };
     
     const handleDelete = (customer: Customer) => {
-        if(window.confirm(`Are you sure you want to delete ${customer.name}? This cannot be undone.`)){
+        if(window.confirm(`Delete ${customer.name}? Their contact details go too. You can't undo this.`)){
             deleteCustomer(customer.id);
         }
     }
 
     return (
-        <div className="w-full flex flex-col h-full max-h-[90vh]">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Customer Management</h2>
-                <button onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-                <button onClick={() => setIsAdding(true)} className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-gray-600 text-gray-300 hover:border-gray-500 hover:text-white">
-                    <PlusIcon className="h-5 w-5" /> Add New Customer
-                </button>
+        <SheetFrame className="max-h-[90vh]">
+            <SheetHeader
+                title="Customers"
+                description={`${customers.length} ${customers.length === 1 ? 'person or business' : 'people and businesses'}`}
+                onClose={closeModal}
+            />
+            <SheetBody className="space-y-3">
+                {!isAdding && (
+                    <Button variant="secondary" block icon={<PlusIcon />} onClick={() => setIsAdding(true)} className="border-dashed">
+                        Add a customer
+                    </Button>
+                )}
                 {isAdding && !editingCustomer && <CustomerEditor customer={null} onSave={handleSave} onCancel={() => setIsAdding(false)} />}
-                
-                <ul className="space-y-2">
+
+                <ul role="list" className="m-0 list-none space-y-2 p-0">
                     {customers.map(c => {
                         const stats = customerStats.get(c.id);
                         return (
@@ -116,31 +126,34 @@ const CustomerManagerModal = () => {
                                 {editingCustomer?.id === c.id ? (
                                     <CustomerEditor customer={c} onSave={handleSave} onCancel={() => setEditingCustomer(null)} />
                                 ) : (
-                                    <div className="p-3 bg-gray-900/50 rounded-md">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="font-semibold text-white">{c.name}</p>
-                                                <p className="text-xs text-gray-400">{c.address.split('\n')[0]}</p>
+                                    <div className="rounded-card border border-line bg-surface py-3 pe-1 ps-4">
+                                        <div className="flex items-start gap-2">
+                                            <div className="min-w-0 flex-1 pt-1">
+                                                <p className="flex items-center gap-2">
+                                                    <span className="truncate text-base font-semibold text-ink">{c.name}</span>
+                                                    {c.isBusiness && <Badge size="sm">Business</Badge>}
+                                                </p>
+                                                <p className="truncate text-sm text-ink-3">{c.address.split('\n')[0]}</p>
                                                 {/* How to reach them, at a glance — the list used to show the
                                                     address only, so a contact captured on an invoice was invisible. */}
                                                 {(c.email || c.phone) && (
-                                                    <p className="mt-1 text-xs text-gray-300 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-ink-2">
                                                         {c.email && <span className="break-all">{c.email}</span>}
-                                                        {c.phone && <span>{c.phone}</span>}
+                                                        {c.phone && <span className="num">{c.phone}</span>}
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="flex gap-1">
-                                                <button onClick={() => openModal('customerDetailView', c)} className="px-3 py-2 text-xs font-semibold bg-gray-700 rounded-md text-white hover:bg-gray-600">View History</button>
-                                                <button onClick={() => setEditingCustomer(c)} className="p-2 text-gray-400 hover:text-white"><EditIcon className="h-5 w-5"/></button>
-                                                <button onClick={() => handleDelete(c)} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
+                                            <div className="flex flex-none items-center">
+                                                <IconButton label={`History for ${c.name}`} icon={<ClockIcon />} onClick={() => openModal('customerDetailView', c)} />
+                                                <IconButton label={`Edit ${c.name}`} icon={<EditIcon />} onClick={() => setEditingCustomer(c)} />
+                                                <IconButton label={`Delete ${c.name}`} icon={<TrashIcon />} onClick={() => handleDelete(c)} className="hover:bg-danger-soft hover:text-danger" />
                                             </div>
                                         </div>
                                         {stats && (
-                                            <div className="mt-2 pt-2 border-t border-gray-700/50 flex items-center gap-4 text-xs">
-                                                <span className="text-gray-400">Jobs: <span className="font-bold text-white">{stats.jobCount}</span></span>
-                                                <span className="text-gray-400">Lifetime Value: <span className="font-bold text-white">{formatCurrency(stats.lifetimeValue)}</span></span>
-                                            </div>
+                                            <p className="me-3 mt-2 flex items-center gap-4 border-t border-line pt-2 text-sm text-ink-3">
+                                                <span>Jobs <span className="num font-semibold text-ink">{stats.jobCount}</span></span>
+                                                <span>Lifetime <span className="num font-semibold text-ink">{formatCurrency(stats.lifetimeValue)}</span></span>
+                                            </p>
                                         )}
                                     </div>
                                 )}
@@ -148,11 +161,11 @@ const CustomerManagerModal = () => {
                         )
                     })}
                 </ul>
-            </div>
-             <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end bg-gray-800">
-                <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-md">Done</button>
-            </footer>
-        </div>
+            </SheetBody>
+            <SheetFooter>
+                <Button type="button" onClick={closeModal}>Done</Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

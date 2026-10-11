@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MotSweepSummary, Notification, Vehicle } from '../../types';
 import { BellIcon, ChevronDownIcon, ChevronRightIcon, SparklesIcon, WhatsAppIcon, XMarkIcon } from '../icons';
+import Plate from '../ui/Plate';
+import { cx } from '../ui/cx';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import { useToast } from '../ui';
@@ -150,33 +152,34 @@ const motStatus = (row: MotRow): { text: string; tone: string } => {
     const { daysLeft } = row;
     if (daysLeft < 0) {
         const ago = Math.abs(daysLeft);
-        return { text: `Expired ${ago} day${ago === 1 ? '' : 's'} ago`, tone: 'text-red-400' };
+        return { text: `Expired ${ago} day${ago === 1 ? '' : 's'} ago`, tone: 'text-danger' };
     }
-    if (daysLeft === 0) return { text: 'Due today', tone: 'text-amber-400' };
-    if (daysLeft === 1) return { text: 'Due tomorrow', tone: 'text-amber-400' };
-    if (daysLeft <= MOT_URGENT_DAYS) return { text: `Due in ${daysLeft} days`, tone: 'text-amber-400' };
+    if (daysLeft === 0) return { text: 'Due today', tone: 'text-warning' };
+    if (daysLeft === 1) return { text: 'Due tomorrow', tone: 'text-warning' };
+    if (daysLeft <= MOT_URGENT_DAYS) return { text: `Due in ${daysLeft} days`, tone: 'text-warning' };
     const sameYear = row.dueDate?.slice(0, 4) === String(new Date().getFullYear());
     const when = row.dueDate
         ? formatDate(row.dueDate, sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
         : `in ${daysLeft} days`;
-    return { text: `Due ${when}`, tone: 'text-gray-400' };
+    return { text: `Due ${when}`, tone: 'text-ink-3' };
 };
 
 const MotRowItem: React.FC<{ row: MotRow; onOpen: (row: MotRow) => void }> = ({ row, onOpen }) => {
     const status = motStatus(row);
-    const dot = row.daysLeft < 0 ? 'bg-red-400' : row.daysLeft <= MOT_URGENT_DAYS ? 'bg-amber-400' : 'bg-gray-600';
+    // Shape as well as colour: a filled dot once expired, a ring while due soon.
+    const dot = row.daysLeft < 0
+        ? 'bg-danger'
+        : row.daysLeft <= MOT_URGENT_DAYS ? 'border-2 border-warning' : 'bg-line-strong';
     return (
         <button
             type="button"
             onClick={() => onOpen(row)}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-700/40 transition-colors"
+            className="flex min-h-[48px] w-full items-center gap-3 px-4 py-2 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
         >
-            <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dot}`} aria-hidden="true" />
-            <span className="flex-shrink-0 rounded bg-yellow-400 px-1.5 py-0.5 font-mono text-xs font-bold tracking-wide text-gray-900">
-                {row.reg || '—'}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-gray-300">{row.vehicleLabel}</span>
-            <span className={`flex-shrink-0 text-xs font-medium ${status.tone}`}>{status.text}</span>
+            <span className={`h-2.5 w-2.5 flex-none rounded-full ${dot}`} aria-hidden="true" />
+            <Plate reg={row.reg || '—'} size="sm" />
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{row.vehicleLabel}</span>
+            <span className={`flex-none text-xs font-semibold ${status.tone}`}>{status.text}</span>
         </button>
     );
 };
@@ -218,44 +221,46 @@ const WhatsAppRow: React.FC<WhatsAppRowProps> = ({ alert, conv, companyId, isUns
     };
 
     return (
-        <div className="px-4 py-2.5 hover:bg-gray-700/30 transition-colors">
+        <div className="px-4 py-1.5 transition-colors duration-quick ease-out hover:bg-surface-2">
             <div className="flex items-start gap-3">
                 <span
-                    className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${isUnseen ? 'bg-[#25d366]' : 'bg-transparent'}`}
+                    className={`mt-3 h-2.5 w-2.5 flex-none rounded-full ${isUnseen ? 'bg-accent' : 'bg-transparent'}`}
                     aria-label={isUnseen ? 'New' : undefined}
                 />
                 <div className="min-w-0 flex-1">
-                    <button type="button" onClick={open} className="block w-full text-left">
+                    <button type="button" onClick={open} className="block min-h-[44px] w-full py-1 text-start">
                         <div className="flex items-baseline gap-2">
-                            <span className={`truncate text-sm ${isUnseen ? 'font-semibold text-white' : 'font-medium text-gray-200'}`}>
+                            <span className={`truncate text-sm ${isUnseen ? 'font-bold text-ink' : 'font-semibold text-ink-2'}`}>
                                 {customerName}
                             </span>
                             {vehicleTitle ? (
-                                <span className="min-w-0 truncate text-xs text-gray-500">{vehicleTitle}</span>
+                                <span className="min-w-0 truncate text-xs text-ink-3">{vehicleTitle}</span>
                             ) : null}
-                            <span className="ml-auto flex-shrink-0 text-[11px] text-gray-500">{formatAgentTime(alert.sentAt)}</span>
+                            <span className="num ms-auto flex-none text-xs text-ink-3">{formatAgentTime(alert.sentAt)}</span>
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-gray-400">{preview || 'New message'}</p>
+                        <p className="mt-0.5 truncate text-sm text-ink-2">{preview || 'New message'}</p>
                     </button>
 
                     {alert.convId && !replying && (
                         <button
                             type="button"
                             onClick={() => setReplying(true)}
-                            className="mt-1 text-xs font-medium text-[#25d366] hover:underline"
+                            className="-ms-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-control px-2 text-sm font-semibold text-accent-text hover:bg-accent-soft"
                         >
+                            <WhatsAppIcon className="h-4 w-4" />
                             Reply
                         </button>
                     )}
 
                     {replying && (
-                        <div className="mt-2 space-y-2">
+                        <div className="mt-1 space-y-2 pb-2">
                             <textarea
                                 rows={2}
                                 value={replyText}
                                 onChange={e => setReplyText(e.target.value)}
                                 disabled={sending}
                                 placeholder={`Reply to ${customerName}…`}
+                                aria-label={`Reply to ${customerName}`}
                                 autoFocus
                                 onKeyDown={e => {
                                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -263,32 +268,33 @@ const WhatsAppRow: React.FC<WhatsAppRowProps> = ({ alert, conv, companyId, isUns
                                         handleSend();
                                     }
                                 }}
-                                className="w-full resize-none rounded-md border border-gray-600 bg-gray-900 p-2 text-sm text-white placeholder-gray-500 focus:border-[#25d366]/60 focus:outline-none focus:ring-1 focus:ring-[#25d366]/40 disabled:opacity-60"
+                                className="w-full resize-none rounded-control border border-line-strong bg-surface p-2.5 text-base text-ink placeholder:text-ink-3 focus-visible:border-focus focus-visible:shadow-[0_0_0_1px_rgb(var(--c-focus))] disabled:opacity-60"
                             />
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
                                     onClick={handleSend}
                                     disabled={!replyText.trim() || sending}
-                                    className="inline-flex items-center gap-1.5 rounded-md bg-[#25d366] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#20ba5a] disabled:opacity-50"
+                                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-control bg-accent px-4 text-sm font-semibold text-on-accent transition-colors duration-quick hover:bg-accent-hover active:bg-accent-press disabled:bg-surface-2 disabled:text-ink-3"
                                 >
-                                    <WhatsAppIcon className="h-3.5 w-3.5" />
+                                    <WhatsAppIcon className="h-4 w-4" />
                                     {sending ? 'Sending…' : 'Send'}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { setReplying(false); setReplyText(''); }}
                                     disabled={sending}
-                                    className="px-2 py-1 text-xs text-gray-400 hover:text-white"
+                                    className="inline-flex min-h-[44px] items-center rounded-control px-3 text-sm font-semibold text-ink-2 transition-colors duration-quick hover:bg-surface-3 hover:text-ink"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="button"
                                     onClick={open}
-                                    className="ml-auto text-xs text-gray-400 hover:text-white"
+                                    className="ms-auto inline-flex min-h-[44px] items-center gap-1 rounded-control px-2 text-sm font-semibold text-accent-text transition-colors duration-quick hover:bg-accent-soft"
                                 >
-                                    Full thread &rarr;
+                                    Full thread
+                                    <ChevronRightIcon className="h-4 w-4 rtl:-scale-x-100" />
                                 </button>
                             </div>
                         </div>
@@ -301,7 +307,7 @@ const WhatsAppRow: React.FC<WhatsAppRowProps> = ({ alert, conv, companyId, isUns
 
 const SectionHeader: React.FC<{ title: string; aside?: React.ReactNode }> = ({ title, aside }) => (
     <div className="flex items-center justify-between px-4 pb-1 pt-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{title}</span>
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">{title}</h3>
         {aside}
     </div>
 );
@@ -310,7 +316,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 const NotificationBell = ({ notifications }: NotificationBellProps) => {
     const { companyId, vehicles, isServiceBusiness } = useData();
-    const { setView, openModal } = useUI();
+    const { setView, openVehicle } = useUI();
     const [isOpen, setIsOpen] = useState(false);
     const [showLaterMots, setShowLaterMots] = useState(false);
     const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -319,6 +325,7 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
     const [seenAt, setSeenAt] = useState(readSeenAt);
     const [agentName, setAgentName] = useState('Dave');
     const menuRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (!companyId) return;
@@ -366,6 +373,18 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Esc closes the panel and puts focus back on the bell.
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            setIsOpen(false);
+            buttonRef.current?.focus();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [isOpen]);
 
     // --- MOT ---
     const motRows = useMemo(
@@ -439,11 +458,12 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
         if (only) requestAgentConversation(only.id);
     };
 
+    // An MOT row opens that car's page; a sweep-only car with no stock record opens the list.
     const handleOpenMot = (row: MotRow) => {
         setIsOpen(false);
-        setView('stock');
-        const vehicle = row.vehicleId ? (vehicles).find(v => v.id === row.vehicleId) : undefined;
-        if (vehicle) openModal('vehicle', vehicle);
+        const vehicle = row.vehicleId ? vehicles.find(v => v.id === row.vehicleId) : undefined;
+        if (vehicle) openVehicle(vehicle.id);
+        else setView('stock');
     };
 
     const daveSummary = [
@@ -454,124 +474,141 @@ const NotificationBell = ({ notifications }: NotificationBellProps) => {
     return (
         <div className="relative" ref={menuRef}>
             <button
+                ref={buttonRef}
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="relative p-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-700 transition-colors"
-                aria-label={count > 0 ? `View notifications (${count})` : 'View notifications'}
+                aria-expanded={isOpen}
+                aria-haspopup="dialog"
+                className={cx(
+                    'relative grid h-12 w-12 place-items-center rounded-control transition-colors duration-quick ease-out',
+                    isOpen ? 'bg-surface-2 text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink active:bg-surface-3',
+                )}
+                aria-label={count > 0 ? `Alerts, ${count} new` : 'Alerts'}
+                title="Alerts"
             >
                 <BellIcon className="h-6 w-6" />
                 {count > 0 && (
-                    <span className={`absolute top-0 right-0 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white ring-2 ring-gray-900 ${
-                        unseenWhatsApp.length > 0 ? 'bg-[#25d366]' : 'bg-red-500'
-                    }`}>
-                        {count > 9 ? '9+' : count}
+                    <span
+                        aria-hidden="true"
+                        className="num absolute end-1 top-1.5 h-5 min-w-[20px] rounded-full bg-danger px-[5px] text-center text-xs font-semibold leading-5 text-on-danger shadow-[0_0_0_2px_rgb(var(--c-surface))]"
+                    >
+                        {count > 99 ? '99+' : count}
                     </span>
                 )}
             </button>
 
             {isOpen && (
-                <div className="fixed inset-x-0 bottom-0 top-12 z-[60] flex max-h-[100dvh] flex-col overflow-hidden rounded-t-2xl bg-gray-800 pb-[env(safe-area-inset-bottom)] shadow-2xl ring-1 ring-black/40 focus:outline-none md:inset-auto md:absolute md:bottom-auto md:left-auto md:right-0 md:top-auto md:mt-2 md:max-h-[min(85vh,40rem)] md:w-[26rem] md:rounded-xl md:pb-0">
-                    {/* Header */}
-                    <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-gray-700 px-4 py-3">
-                        <span className="text-sm font-semibold text-white">Notifications</span>
-                        <button
-                            type="button"
-                            onClick={() => setIsOpen(false)}
-                            className="rounded-md p-1 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-                            aria-label="Close notifications"
-                        >
-                            <XMarkIcon className="h-4 w-4" />
-                        </button>
-                    </div>
+                <>
+                    {/* Phone: the panel is a sheet, so dim what is behind it. */}
+                    <div className="anim-fade-in fixed inset-0 z-sheet bg-scrim md:hidden" onClick={() => setIsOpen(false)} aria-hidden="true" />
+                    <div
+                        role="dialog"
+                        aria-label="Alerts"
+                        className="anim-sheet-in fixed inset-x-0 bottom-0 top-14 z-sheet flex flex-col overflow-hidden rounded-t-sheet bg-surface pb-[env(safe-area-inset-bottom)] shadow-e3 md:anim-pop-in md:absolute md:inset-x-auto md:bottom-auto md:end-0 md:top-[calc(100%+6px)] md:max-h-[min(85vh,40rem)] md:w-[26rem] md:rounded-card md:border md:border-line md:pb-0"
+                    >
+                        <div className="flex flex-none items-center justify-between gap-2 border-b border-line py-1 pe-1 ps-4">
+                            <h2 className="text-base font-bold text-ink">Alerts</h2>
+                            <button
+                                type="button"
+                                onClick={() => setIsOpen(false)}
+                                className="grid h-12 w-12 place-items-center rounded-control text-ink-2 transition-colors duration-quick hover:bg-surface-2 hover:text-ink"
+                                aria-label="Close alerts"
+                            >
+                                <XMarkIcon className="h-5 w-5" />
+                            </button>
+                        </div>
 
-                    <div className="overflow-y-auto pb-2">
-                        {shownWhatsApp.length > 0 && (
-                            <section>
-                                <SectionHeader
-                                    title="WhatsApp"
-                                    aside={unseenWhatsApp.length > 0 ? (
-                                        <span className="text-[11px] font-medium text-[#25d366]">{unseenWhatsApp.length} new</span>
-                                    ) : undefined}
-                                />
-                                {shownWhatsApp.map(alert => (
-                                    <WhatsAppRow
-                                        key={alert.id}
-                                        alert={alert}
-                                        conv={conversations.find(c => c.id === alert.convId)}
-                                        companyId={companyId || ''}
-                                        isUnseen={(alert.sentAt || 0) > seenAt}
-                                        onOpen={handleOpenConversation}
+                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+                            {shownWhatsApp.length > 0 && (
+                                <section>
+                                    <SectionHeader
+                                        title="WhatsApp"
+                                        aside={unseenWhatsApp.length > 0 ? (
+                                            <span className="num text-xs font-semibold text-accent-text">{unseenWhatsApp.length} new</span>
+                                        ) : undefined}
                                     />
-                                ))}
-                            </section>
-                        )}
+                                    {shownWhatsApp.map(alert => (
+                                        <WhatsAppRow
+                                            key={alert.id}
+                                            alert={alert}
+                                            conv={conversations.find(c => c.id === alert.convId)}
+                                            companyId={companyId || ''}
+                                            isUnseen={(alert.sentAt || 0) > seenAt}
+                                            onOpen={handleOpenConversation}
+                                        />
+                                    ))}
+                                </section>
+                            )}
 
-                        {motRows.length > 0 && (
-                            <section className={shownWhatsApp.length > 0 ? 'mt-1 border-t border-gray-700/70' : ''}>
-                                <SectionHeader title="MOT" />
-                                {nearMots.map(row => (
-                                    <MotRowItem key={row.key} row={row} onOpen={handleOpenMot} />
-                                ))}
-                                {nearMots.length === 0 && (
-                                    <p className="px-4 py-2 text-xs text-gray-500">Nothing due in the next {MOT_SHOWN_DAYS} days.</p>
-                                )}
-                                {showLaterMots && laterMots.map(row => (
-                                    <MotRowItem key={row.key} row={row} onOpen={handleOpenMot} />
-                                ))}
-                                {laterMots.length > 0 && (
+                            {motRows.length > 0 && (
+                                <section className={shownWhatsApp.length > 0 ? 'mt-1 border-t border-line' : ''}>
+                                    <SectionHeader title="MOT" />
+                                    {nearMots.map(row => (
+                                        <MotRowItem key={row.key} row={row} onOpen={handleOpenMot} />
+                                    ))}
+                                    {nearMots.length === 0 && (
+                                        <p className="px-4 py-2 text-sm text-ink-3">Nothing due in the next {MOT_SHOWN_DAYS} days.</p>
+                                    )}
+                                    {showLaterMots && laterMots.map(row => (
+                                        <MotRowItem key={row.key} row={row} onOpen={handleOpenMot} />
+                                    ))}
+                                    {laterMots.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowLaterMots(v => !v)}
+                                            aria-expanded={showLaterMots}
+                                            className="flex min-h-[44px] items-center gap-1.5 px-4 text-sm font-semibold text-ink-2 hover:text-ink"
+                                        >
+                                            <ChevronDownIcon className={`h-4 w-4 transition-transform duration-quick ${showLaterMots ? 'rotate-180' : ''}`} />
+                                            {showLaterMots ? 'Hide later ones' : `Show later ones (${laterMots.length})`}
+                                        </button>
+                                    )}
+                                </section>
+                            )}
+
+                            {actionCount > 0 && (
+                                <section className={shownWhatsApp.length > 0 || motRows.length > 0 ? 'mt-1 border-t border-line' : ''}>
+                                    <SectionHeader title={`${agentName} needs you`} />
                                     <button
                                         type="button"
-                                        onClick={() => setShowLaterMots(v => !v)}
-                                        className="flex items-center gap-1 px-4 py-2 text-xs text-gray-400 hover:text-white"
+                                        onClick={handleOpenDave}
+                                        className="flex min-h-[56px] w-full items-center gap-3 px-4 py-2 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
                                     >
-                                        <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform ${showLaterMots ? 'rotate-180' : ''}`} />
-                                        {showLaterMots ? 'Hide later ones' : `Show later ones (${laterMots.length})`}
+                                        <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-accent-soft text-accent-soft-ink">
+                                            <SparklesIcon className="h-5 w-5" />
+                                        </span>
+                                        <span className="min-w-0 flex-1 text-sm text-ink-2">
+                                            <span className="font-semibold text-ink">{agentName} needs you</span>
+                                            <span> · {daveSummary}</span>
+                                        </span>
+                                        <ChevronRightIcon className="h-5 w-5 flex-none text-ink-3 rtl:-scale-x-100" />
                                     </button>
-                                )}
-                            </section>
-                        )}
+                                </section>
+                            )}
 
-                        {actionCount > 0 && (
-                            <section className={shownWhatsApp.length > 0 || motRows.length > 0 ? 'mt-1 border-t border-gray-700/70' : ''}>
-                                <SectionHeader title={`${agentName} needs you`} />
-                                <button
-                                    type="button"
-                                    onClick={handleOpenDave}
-                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-700/40 transition-colors"
-                                >
-                                    <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-600/20 text-brand-400">
-                                        <SparklesIcon className="h-4 w-4" />
-                                    </span>
-                                    <span className="min-w-0 flex-1 text-sm text-gray-200">
-                                        <span className="font-semibold text-white">{agentName} needs you</span>
-                                        <span className="text-gray-400"> — {daveSummary}</span>
-                                    </span>
-                                    <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-gray-500" />
-                                </button>
-                            </section>
-                        )}
-
-                        {!hasAnything && (
-                            <div className="px-4 py-10 text-center">
-                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-gray-700/60 text-gray-400">
-                                    <BellIcon className="h-5 w-5" />
+                            {!hasAnything && (
+                                <div className="px-6 py-10 text-start">
+                                    <div className="mb-3 grid h-10 w-10 place-items-center rounded-full bg-surface-2 text-ink-2">
+                                        <BellIcon className="h-5 w-5" />
+                                    </div>
+                                    <p className="text-base font-semibold text-ink">All caught up</p>
+                                    <p className="mt-1 text-sm text-ink-3">No MOTs due, nothing waiting on {agentName}, no new WhatsApp messages.</p>
                                 </div>
-                                <p className="text-sm font-semibold text-gray-300">All caught up</p>
-                                <p className="mt-0.5 text-xs text-gray-500">No MOTs due, nothing waiting on {agentName}, no new WhatsApp messages</p>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
 
-                    <div className="flex-shrink-0 border-t border-gray-700 px-4 py-2.5 text-right">
-                        <button
-                            type="button"
-                            onClick={() => { setIsOpen(false); setView('agentInbox'); }}
-                            className="text-xs font-semibold text-brand-400 hover:text-brand-300"
-                        >
-                            Open Agent Inbox &rarr;
-                        </button>
+                        <div className="flex flex-none justify-end border-t border-line px-2 py-1">
+                            <button
+                                type="button"
+                                onClick={() => { setIsOpen(false); setView('agentInbox'); }}
+                                className="inline-flex min-h-[44px] items-center gap-1 rounded-control px-3 text-sm font-semibold text-accent-text transition-colors duration-quick hover:bg-accent-soft"
+                            >
+                                Open Inbox
+                                <ChevronRightIcon className="h-4 w-4 rtl:-scale-x-100" />
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

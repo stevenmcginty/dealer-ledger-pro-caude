@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useData } from '../../hooks/useData';
 import { auth } from '../../services/firebase';
-import { useToast } from '../ui';
+import { IconButton, useToast } from '../ui';
 import { ClipboardIcon, CheckCircleIcon } from '../icons';
+import { Panel, PanelSection } from './SettingsKit';
 
 const SessionInfoCard = () => {
     const { companyId, userId } = useData();
@@ -17,37 +18,36 @@ const SessionInfoCard = () => {
             setTimeout(() => setCopied(null), 2000);
         }).catch(err => {
             console.error('Failed to copy text: ', err);
-            toast.error("Could not copy to the clipboard.");
+            toast.error("Couldn't copy to the clipboard.");
         });
     };
 
-    const InfoRow = ({ label, value, field }: { label: string; value: string | null | undefined; field: string }) => (
-        <div className="flex items-center justify-between py-3">
-            <div>
-                <dt className="text-sm font-medium text-gray-400">{label}</dt>
-                <dd className="mt-1 text-sm text-white font-mono break-all">{value || 'N/A'}</dd>
-            </div>
-            <button
-                onClick={() => handleCopy(value || null, field)}
-                className="p-2 ml-4 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-                title={`Copy ${label}`}
-                disabled={!value}
-            >
-                {copied === field ? <CheckCircleIcon className="h-5 w-5 text-green-400" /> : <ClipboardIcon className="h-5 w-5" />}
-            </button>
-        </div>
-    );
+    const rows: { label: string; value: string | null | undefined; field: string }[] = [
+        { label: 'Email', value: userEmail, field: 'email' },
+        { label: 'User ID (uid)', value: userId, field: 'userId' },
+        { label: 'Company ID', value: companyId, field: 'companyId' },
+    ];
 
     return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h2 className="text-lg font-semibold text-white">Session Information</h2>
-            <p className="text-sm text-gray-400 -mt-1 mb-2">Use these IDs to verify your Firebase security rules.</p>
-            <dl className="divide-y divide-gray-700">
-                <InfoRow label="User Email" value={userEmail} field="email" />
-                <InfoRow label="User ID (uid)" value={userId} field="userId" />
-                <InfoRow label="Company ID" value={companyId} field="companyId" />
+        <Panel ariaLabel="Session">
+            <PanelSection title="Signed in as" description="Use these IDs to check the Firebase security rules." />
+            <dl className="m-0 divide-y divide-line">
+                {rows.map(({ label, value, field }) => (
+                    <div key={field} className="flex items-center gap-3 py-2 pe-2 ps-4 sm:ps-5">
+                        <div className="min-w-0 flex-1">
+                            <dt className="text-sm font-semibold text-ink-3">{label}</dt>
+                            <dd className="m-0 mt-0.5 break-all font-mono text-sm text-ink">{value || 'Not set'}</dd>
+                        </div>
+                        <IconButton
+                            label={copied === field ? `${label} copied` : `Copy ${label}`}
+                            icon={copied === field ? <CheckCircleIcon className="text-success" /> : <ClipboardIcon />}
+                            onClick={() => handleCopy(value || null, field)}
+                            disabled={!value}
+                        />
+                    </div>
+                ))}
             </dl>
-        </div>
+        </Panel>
     );
 };
 

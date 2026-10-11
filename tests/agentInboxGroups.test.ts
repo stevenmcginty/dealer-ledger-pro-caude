@@ -7,10 +7,12 @@ import {
     defaultThreadChannel,
     groupConversations,
     groupHasChannel,
+    inboxWaitingCount,
     keepMessageOnChannel,
     partitionSharedGroups,
     phoneKey,
     threadChannelsOf,
+    unreadFor,
 } from '../utils/agentInboxGroups';
 import { displayUkPhone, phoneFromMessages, phoneFromThread, phonesInText, resolveThreadPhone, threadLooksBounced } from '../utils/agentInboxBounce';
 
@@ -32,6 +34,52 @@ const conv = (over: Partial<Conversation>): Conversation => ({
     updatedAt: over.updatedAt || 1,
     unread: over.unread || 0,
     ...over,
+});
+
+describe('unreadFor', () => {
+    it('counts every inbound for someone who never opened the thread', () => {
+        expect(unreadFor(conv({ inboundCount: 3, unread: 0 }), 'steve')).toBe(3);
+    });
+
+    it('counts only what arrived since this person last opened it', () => {
+        const c = conv({ inboundCount: 5, readBy: { steve: { count: 3, at: 100 } } });
+        expect(unreadFor(c, 'steve')).toBe(2);
+    });
+
+    it('never goes below zero when the read count is ahead', () => {
+        const c = conv({ inboundCount: 2, readBy: { steve: { count: 4, at: 100 } } });
+        expect(unreadFor(c, 'steve')).toBe(0);
+    });
+
+    it('treats a read after the last inbound as read on an older thread', () => {
+        const c = conv({ unread: 2, lastInboundAt: 100, readBy: { steve: { count: 0, at: 150 } } });
+        expect(unreadFor(c, 'steve')).toBe(0);
+    });
+
+    it('falls back to the shared unread on an older thread never opened', () => {
+        expect(unreadFor(conv({ unread: 2, lastInboundAt: 100 }), 'steve')).toBe(2);
+    });
+
+    it('falls back to the shared unread when the read came before the last inbound', () => {
+        const c = conv({ unread: 2, lastInboundAt: 200, readBy: { steve: { count: 0, at: 150 } } });
+        expect(unreadFor(c, 'steve')).toBe(2);
+    });
+
+    it('uses the shared unread when nobody is signed in', () => {
+        const c = conv({ unread: 4, inboundCount: 9, readBy: { steve: { count: 9, at: 1 } } });
+        expect(unreadFor(c)).toBe(4);
+    });
+
+    it('keeps the thread unread for Chris after Steve opens it', () => {
+        const c = conv({ unread: 0, inboundCount: 3, readBy: { steve: { count: 3, at: 100 } } });
+        expect(unreadFor(c, 'steve')).toBe(0);
+        expect(unreadFor(c, 'chris')).toBe(3);
+        const [group] = groupConversations([c], 'co-a', 'chris');
+        expect(group.unread).toBe(3);
+        expect(groupConversations([c], 'co-a', 'steve')[0].unread).toBe(0);
+        expect(inboxWaitingCount([c], 'chris').unread).toBe(3);
+        expect(inboxWaitingCount([c], 'steve').unread).toBe(0);
+    });
 });
 
 describe('phoneKey', () => {

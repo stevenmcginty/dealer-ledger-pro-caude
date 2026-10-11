@@ -2,15 +2,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { NewMiscInvoice, StatementTransaction, Customer, NewCustomer, BusinessDetails, MiscInvoice, MiscInvoiceUpdate } from '../../types';
 import * as dataService from '../../services/dataService';
 import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
-import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
-import { formatCurrency } from '../../utils/helpers';
 import PrintableMiscInvoice from './PrintableMiscInvoice';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
 import Select from '../common/Select';
-import { useToast } from '../ui';
+import { useToast, Button, IconButton, Input, Field, Checkbox } from '../ui';
+import { controlFrame, controlInput, cx } from '../ui/cx';
+import { Money, Line } from '../accountant/hubShared';
+
+const textareaCls = cx(controlFrame(), 'block w-full px-3.5 py-3 text-base leading-snug text-ink placeholder:text-ink-3 focus-visible:outline-none');
 
 
 interface MiscInvoiceEditorProps {
@@ -196,96 +198,95 @@ const MiscInvoiceEditor = ({ companyId, transaction, editingInvoice, customers, 
         );
     }
 
+    const fromTx = !!transaction && !isEditing;
+    const shownSubtotal = fromTx ? subtotal : totalFromItems;
+    const shownVat = fromTx ? vat : totalFromItems * 0.2;
+    const shownTotal = isVatInvoice ? (fromTx ? total : totalFromItems * 1.2) : (fromTx ? total : totalFromItems);
+
     return (
-        <div className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">{isEditing ? `Edit Invoice #${editingInvoice.invoiceNumber}` : 'Create Income Invoice'}</h2>
-                <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
+        <div className="flex h-full w-full flex-col">
+            <header className="flex items-center justify-between gap-3 border-b border-line py-2 pe-2 ps-4">
+                <h2 className="min-w-0 truncate text-lg font-bold text-ink">{isEditing ? <>Edit invoice <span className="num">#{editingInvoice.invoiceNumber}</span></> : 'New income invoice'}</h2>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} />
             </header>
-            <form id="misc-invoice-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
-                 <div>
-                    <label htmlFor="customer" className="block text-sm font-medium text-gray-300">Customer</label>
-                    <div className="flex gap-2 mt-1">
-                        <Select id="customer" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)}>
-                            <option value="">-- Manual Entry --</option>
+            <form id="misc-invoice-form" onSubmit={handleGeneratePreview} className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6">
+                <Field label="Customer" htmlFor="customer">
+                    <div className="flex gap-2">
+                        <Select id="customer" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} wrapperClassName="flex-1">
+                            <option value="">Type the name and address below</option>
                             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </Select>
-                        <button type="button" onClick={() => setIsAddingCustomer(!isAddingCustomer)} className="p-2 rounded-md bg-gray-600 text-white hover:bg-gray-500"><PlusIcon className="h-5 w-5"/></button>
+                        <IconButton variant="outlined" label={isAddingCustomer ? 'Close new customer form' : 'Add a new customer'} icon={<PlusIcon />} onClick={() => setIsAddingCustomer(!isAddingCustomer)} aria-expanded={isAddingCustomer} />
                     </div>
-                </div>
+                </Field>
 
-                <div>
-                    <label htmlFor="invoiceDate" className="block text-sm font-medium text-gray-300">Date</label>
-                    <UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="mt-1" required/>
-                </div>
+                <Field label="Date" htmlFor="invoiceDate">
+                    <UkDateInput id="invoiceDate" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} required />
+                </Field>
 
                 {isAddingCustomer && (
-                    <div className="p-4 bg-gray-700/50 rounded-lg space-y-4">
-                         <h3 className="font-semibold text-white">Add New Customer</h3>
-                         <input type="text" placeholder="New Customer Name" value={newCustomer.name || ''} onChange={e => setNewCustomer(p => ({...p, name: e.target.value}))} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" required/>
-                         <textarea placeholder="Customer Address" value={newCustomer.address || ''} onChange={e => setNewCustomer(p => ({...p, address: e.target.value}))} rows={2} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" required/>
-                         {/* FIX: Changed isVatRegistered to isBusiness */}
-                         <div className="relative flex items-start"><div className="flex h-6 items-center"><input id="isBusiness" type="checkbox" checked={newCustomer.isBusiness} onChange={e => setNewCustomer(p => ({...p, isBusiness: e.target.checked}))} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600" /></div><div className="ml-3 text-sm"><label htmlFor="isBusiness" className="font-medium text-gray-300">This is a business account</label></div></div>
-                         <button type="button" onClick={handleAddCustomer} className="w-full px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">Save Customer</button>
+                    <div className="space-y-4 rounded-card border border-line bg-surface-2 p-4">
+                        <h3 className="font-bold text-ink">New customer</h3>
+                        <Input label="Name" value={newCustomer.name || ''} onChange={e => setNewCustomer(p => ({...p, name: e.target.value}))} required />
+                        <Field label="Address">
+                            <textarea value={newCustomer.address || ''} onChange={e => setNewCustomer(p => ({...p, address: e.target.value}))} rows={2} className={textareaCls} required />
+                        </Field>
+                        {/* FIX: Changed isVatRegistered to isBusiness */}
+                        <Checkbox id="isBusiness" label="This is a business" checked={newCustomer.isBusiness} onChange={e => setNewCustomer(p => ({...p, isBusiness: e.target.checked}))} />
+                        <Button type="button" variant="secondary" block onClick={handleAddCustomer}>Save customer</Button>
                     </div>
                 )}
 
                 {(!selectedCustomerId || isEditing) && !isAddingCustomer && (
                     <div className="grid grid-cols-1 gap-4">
-                        <div><label htmlFor="customerName" className="block text-sm font-medium text-gray-300">Full Name</label><input type="text" id="customerName" value={customerName} onChange={e => setCustomerName(e.target.value)} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                        <div><label htmlFor="customerAddress" className="block text-sm font-medium text-gray-300">Address</label><textarea id="customerAddress" value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} required rows={3} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
+                        <Input label="Full name" id="customerName" value={customerName} onChange={e => setCustomerName(e.target.value)} required />
+                        <Field label="Address" htmlFor="customerAddress">
+                            <textarea id="customerAddress" value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} required rows={3} className={textareaCls} />
+                        </Field>
                     </div>
                 )}
-                
-                {isVatRegistered && <div className="relative flex items-start"><div className="flex h-6 items-center"><input id="isVatInvoice" type="checkbox" checked={isVatInvoice} onChange={e => setIsVatInvoice(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600" /></div><div className="ml-3 text-sm"><label htmlFor="isVatInvoice" className="font-medium text-gray-300">This is a VAT Invoice</label></div></div>}
-                
-                {transaction && !isEditing ? (
-                    <div>
-                        <label htmlFor="total" className="block text-sm font-medium text-gray-300">Total Amount Received</label>
-                        <CurrencyInput id="total" value={totalStr} onChange={e => setTotalStr(e.target.value)} />
-                        <label htmlFor="description" className="mt-2 block text-sm font-medium text-gray-300">Description</label>
-                        <input id="description" type="text" placeholder="e.g., Monthly Rent" value={items[0].description} onChange={e => handleItemChange(0, 'description', e.target.value)} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"/>
+
+                {isVatRegistered && <Checkbox id="isVatInvoice" label="This is a VAT invoice" checked={isVatInvoice} onChange={e => setIsVatInvoice(e.target.checked)} />}
+
+                {fromTx ? (
+                    <div className="space-y-4">
+                        <Field label="Total received" htmlFor="total">
+                            <CurrencyInput id="total" value={totalStr} onChange={e => setTotalStr(e.target.value)} />
+                        </Field>
+                        <Input label="Description" id="description" placeholder="Monthly rent" value={items[0].description} onChange={e => handleItemChange(0, 'description', e.target.value)} />
                     </div>
                 ) : (
-                     <div>
-                        <h3 className="text-base font-semibold text-white">Invoice Items</h3>
-                         <div className="mt-2 space-y-3">
+                    <div>
+                        <h3 className="text-base font-bold text-ink">What it is for</h3>
+                        <div className="mt-2 space-y-2">
                             {items.map((item, index) => (
                                 <div key={index} className="flex items-start gap-2">
-                                    <div className="flex-1"><label htmlFor={`desc-${index}`} className="sr-only">Description</label><input id={`desc-${index}`} type="text" placeholder="e.g., Full Service" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"/></div>
-                                    <div className="w-36"><label htmlFor={`cost-${index}`} className="sr-only">Amount</label><CurrencyInput id={`cost-${index}`} value={item.amountStr} onChange={e => handleItemChange(index, 'amountStr', e.target.value)} /></div>
-                                    <button type="button" onClick={() => removeItem(index)} disabled={items.length <= 1} className="p-2 text-gray-400 hover:text-red-400 disabled:opacity-50"><TrashIcon className="h-5 w-5"/></button>
+                                    <div className="min-w-0 flex-1"><label htmlFor={`desc-${index}`} className="sr-only">Description</label><div className={controlFrame()}><input id={`desc-${index}`} type="text" placeholder="Full service" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className={controlInput} /></div></div>
+                                    <div className="w-32 flex-none sm:w-36"><label htmlFor={`cost-${index}`} className="sr-only">Amount</label><CurrencyInput id={`cost-${index}`} value={item.amountStr} onChange={e => handleItemChange(index, 'amountStr', e.target.value)} /></div>
+                                    <IconButton label={`Remove line ${index + 1}`} icon={<TrashIcon />} onClick={() => removeItem(index)} disabled={items.length <= 1} className="hover:text-danger" />
                                 </div>
                             ))}
-                            <button type="button" onClick={addItem} className="w-full text-sm font-semibold text-brand-400 hover:text-brand-300 flex items-center justify-center gap-2 p-2 border-2 border-dashed border-gray-600 rounded-lg hover:border-gray-500"><PlusIcon className="h-4 w-4"/> Add Line Item</button>
+                            <Button type="button" variant="ghost" size="sm" onClick={addItem} icon={<PlusIcon />}>Add line</Button>
                         </div>
                     </div>
                 )}
 
-                <div className="pt-4 border-t border-gray-700 space-y-2">
-                    <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Subtotal</span><span className="font-medium text-white">{formatCurrency(transaction && !isEditing ? subtotal : totalFromItems)}</span></div>
-                    {isVatInvoice && <div className="flex justify-between items-center text-sm"><span className="text-gray-400">VAT (20%)</span><span className="font-medium text-white">{formatCurrency(transaction && !isEditing ? vat : totalFromItems * 0.2)}</span></div>}
-                    <div className="flex justify-between items-center text-lg font-bold"><span className="text-white">Total</span><span className="font-bold text-white">{formatCurrency(isVatInvoice ? (transaction && !isEditing ? total : totalFromItems * 1.2) : (transaction && !isEditing ? total : totalFromItems))}</span></div>
+                <div className="border-t border-line pt-3">
+                    <Line label="Subtotal"><Money value={shownSubtotal} /></Line>
+                    {isVatInvoice && <Line label="VAT (20%)"><Money value={shownVat} /></Line>}
+                    <Line total label="Total"><Money value={shownTotal} className="text-lg" /></Line>
                 </div>
 
             </form>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800">
+            <footer className="flex flex-none items-center justify-between gap-3 border-t border-line bg-surface p-4">
                 <div>
                     {isEditing && (
-                        <button
-                            type="button"
-                            onClick={handleDelete}
-                            disabled={isSubmitting}
-                            className="inline-flex items-center text-sm font-medium text-red-400 hover:text-red-300 disabled:opacity-50"
-                        >
-                            <TrashIcon className="h-5 w-5 mr-2 -ml-1" />
-                            Delete Invoice
-                        </button>
+                        <Button type="button" variant="ghost" onClick={handleDelete} disabled={isSubmitting} icon={<TrashIcon />} className="text-danger hover:bg-danger-soft">
+                            Delete invoice
+                        </Button>
                     )}
                 </div>
-                <button type="submit" form="misc-invoice-form" disabled={isSubmitting} className="inline-flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : 'Generate Preview'}
-                </button>
+                <Button type="submit" form="misc-invoice-form" loading={isSubmitting}>Preview invoice</Button>
             </footer>
         </div>
     );

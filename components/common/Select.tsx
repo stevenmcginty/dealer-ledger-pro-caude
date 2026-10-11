@@ -1,24 +1,38 @@
 import React from 'react';
-import { ChevronUpDownIcon } from '../icons';
+import { ChevronDownIcon } from '../icons';
+import { controlFrame, cx } from '../ui/cx';
 
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   wrapperClassName?: string;
+  /** Red frame; pair with a Field error message. */
+  error?: boolean;
 }
 
-const Select: React.FC<SelectProps> = ({ className, wrapperClassName, children, ...props }) => {
-  return (
-    <div className={`relative ${wrapperClassName || ''}`}>
+/**
+ * Native <select> on the shared control frame: best on phones, keyboard and
+ * screen readers work as the platform intends. For long or growing lists use
+ * a combobox instead.
+ */
+const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
+  ({ className, wrapperClassName, children, error, disabled, ...props }, ref) => (
+    <div className={cx(controlFrame({ error: error || props['aria-invalid'] === true || props['aria-invalid'] === 'true', disabled }), wrapperClassName)}>
       <select
+        ref={ref}
+        disabled={disabled}
         {...props}
-        className={`block w-full appearance-none bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500 ${className || ''}`}
+        className={cx(
+          'block w-full min-w-0 flex-1 cursor-pointer appearance-none rounded-[inherit] border-0 bg-transparent py-3 ps-3.5 pe-11 text-base leading-snug text-ink',
+          'focus-visible:outline-none disabled:cursor-not-allowed disabled:text-ink-3',
+          '[&>option]:bg-surface [&>option]:text-ink',
+          className,
+        )}
       >
         {children}
       </select>
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-        <ChevronUpDownIcon className="h-5 w-5" />
-      </div>
+      <ChevronDownIcon className="pointer-events-none absolute end-3 h-5 w-5 text-ink-2" />
     </div>
-  );
-};
+  ),
+);
+Select.displayName = 'Select';
 
 export default Select;

@@ -2,7 +2,9 @@ import React, { useMemo } from 'react';
 import { Customer } from '../../types';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { XMarkIcon, DocumentTextIcon } from '../icons';
+import { ChevronRightIcon, DocumentTextIcon } from '../icons';
+import { Badge, Button, EmptyState } from '../ui';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from '../crm/SheetParts';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 
 interface CustomerDetailViewProps {
@@ -20,48 +22,51 @@ const CustomerDetailView = ({ customer }: CustomerDetailViewProps) => {
     }, [jobInvoices, customer.id]);
 
     return (
-        <div className="w-full flex flex-col h-full max-h-[90vh]">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <div>
-                    <h2 className="text-lg font-bold text-white">{customer.name}</h2>
-                    <p className="text-sm text-gray-400">Customer History</p>
-                </div>
-                <button onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+        <SheetFrame className="max-h-[90vh]">
+            <SheetHeader title={customer.name} description="Quotes and invoices, newest first" onClose={closeModal} />
+            <SheetBody>
                 {customerHistory.length > 0 ? (
-                    <ul className="space-y-3">
+                    <ul role="list" className="m-0 list-none overflow-hidden rounded-card border border-line bg-surface p-0">
                         {customerHistory.map(invoice => (
-                            <li key={invoice.id}>
+                            <li key={invoice.id} className="border-b border-line last:border-b-0">
                                 <button
+                                    type="button"
                                     onClick={() => openModal('jobInvoice', { viewOnly: true, invoice })}
-                                    className="w-full text-left p-3 bg-gray-900/50 rounded-md hover:bg-gray-700/50 transition-colors"
+                                    className="flex min-h-[56px] w-full items-center gap-3 px-4 py-3 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <p className="font-semibold text-white">{invoice.status} #{invoice.invoiceNumber}</p>
-                                        <p className={`text-sm font-bold ${invoice.status === 'Invoice' ? 'text-green-400' : 'text-yellow-400'}`}>{formatCurrency(invoice.total)}</p>
-                                    </div>
-                                    <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
-                                        <span>{formatDate(invoice.invoiceDate)}</span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex items-center gap-2">
+                                            <Badge variant={invoice.status === 'Invoice' ? 'info' : 'default'}>{invoice.status}</Badge>
+                                            <span className="num font-semibold text-ink">#{invoice.invoiceNumber}</span>
+                                        </span>
+                                        <span className="num mt-1 block text-sm text-ink-3">{formatDate(invoice.invoiceDate)}</span>
+                                    </span>
+                                    <span className="flex flex-none flex-col items-end gap-0.5">
+                                        <span className="num text-base font-semibold text-ink">{formatCurrency(invoice.total)}</span>
                                         {invoice.status === 'Invoice' && (
-                                            <span>Balance: {formatCurrency(invoice.balance)}</span>
+                                            <span className={`num text-xs ${invoice.balance > 0.005 ? 'font-semibold text-warning' : 'text-ink-3'}`}>
+                                                Balance {formatCurrency(invoice.balance)}
+                                            </span>
                                         )}
-                                    </div>
+                                    </span>
+                                    <ChevronRightIcon className="h-5 w-5 flex-none text-ink-3 rtl:-scale-x-100" aria-hidden="true" />
                                 </button>
                             </li>
                         ))}
                     </ul>
                 ) : (
-                    <div className="text-center py-10">
-                        <DocumentTextIcon className="h-10 w-10 text-gray-500 mx-auto" />
-                        <p className="mt-2 text-gray-400">No quotes or invoices found for this customer.</p>
-                    </div>
+                    <EmptyState
+                        icon={<DocumentTextIcon />}
+                        title="Nothing for this customer yet"
+                        description="Quotes and invoices you write for them show up here."
+                        className="px-0"
+                    />
                 )}
-            </div>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end bg-gray-800">
-                <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-md">Close</button>
-            </footer>
-        </div>
+            </SheetBody>
+            <SheetFooter>
+                <Button type="button" variant="secondary" onClick={closeModal}>Close</Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

@@ -2,8 +2,10 @@ import React from 'react';
 import type { ProfitAndLoss } from '../../utils/accounting/profitAndLoss';
 import type { CorporationTaxEstimate } from '../../utils/accounting/corporationTax';
 import { formatDayShort } from '../../utils/accounting/yearEnd';
-import { HubCard, CsvButton, money, downloadCsv, fix2 } from './hubShared';
-import { ChevronRightIcon } from '../icons';
+import { HubCard, CsvButton, money, downloadCsv, fix2, Money, Eyebrow } from './hubShared';
+import { ChevronRightIcon, CheckIcon } from '../icons';
+import { Button } from '../ui';
+import { cx } from '../ui/cx';
 
 // Headline figures for the period, then a "data health" list the accountant can trust:
 // each line says what is missing and jumps to where it is fixed.
@@ -26,22 +28,33 @@ interface Props {
     health: HealthItem[];
 }
 
-const Stat = ({ label, value, sub, tone = 'plain', onClick }: { label: string; value: string; sub?: string; tone?: 'plain' | 'good' | 'bad'; onClick?: () => void }) => {
+const Stat = ({ label, value, sub, tone = 'plain', onClick }: { label: string; value: number; sub?: string; tone?: 'plain' | 'good' | 'bad'; onClick?: () => void }) => {
     const Tag = onClick ? 'button' : 'div';
     return (
         <Tag
             {...(onClick ? { type: 'button' as const, onClick } : {})}
-            className={`group min-w-0 rounded-xl border border-gray-700/70 bg-gray-800 px-4 py-3.5 text-left shadow-md ${onClick ? 'transition-colors hover:border-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400' : ''}`}
+            className={cx(
+                'group flex min-h-[96px] min-w-0 flex-col bg-surface px-4 py-3.5 text-start',
+                onClick && 'transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3',
+            )}
         >
-            <p className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                {label}
-                {onClick && <ChevronRightIcon className="h-3.5 w-3.5 text-gray-600 transition-colors group-hover:text-gray-300" />}
-            </p>
-            <p className={`mt-1.5 truncate text-xl font-semibold tabular-nums sm:text-2xl ${tone === 'good' ? 'text-emerald-300' : tone === 'bad' ? 'text-red-300' : 'text-white'}`}>{value}</p>
-            {sub && <p className="mt-0.5 truncate text-xs text-gray-400">{sub}</p>}
+            <span className="flex items-center justify-between gap-2">
+                <Eyebrow as="span">{label}</Eyebrow>
+                {onClick && <ChevronRightIcon className="h-4 w-4 flex-none text-ink-3 transition-colors group-hover:text-ink-2 rtl:rotate-180" />}
+            </span>
+            <span className={cx('mt-1.5 truncate text-xl font-bold sm:text-2xl', tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-danger' : 'text-ink')}>
+                <Money value={value} brackets />
+            </span>
+            {sub && <span className="mt-0.5 line-clamp-2 text-sm leading-5 text-ink-3">{sub}</span>}
         </Tag>
     );
 };
+
+const TONE = {
+    ok: { tile: 'bg-success-soft text-success-ink', word: 'Done' },
+    warn: { tile: 'bg-warning-soft text-warning-ink', word: 'Check' },
+    info: { tile: 'bg-info-soft text-info-ink', word: 'Note' },
+} as const;
 
 const OverviewTab = ({ pnl, vatDue, ct, health, onOpen }: Props & { onOpen: (tab: 'pnl' | 'vat' | 'ct' | 'expenses') => void }) => {
     const margin = pnl.revenue.total ? (pnl.grossProfit / pnl.revenue.total) * 100 : 0;
@@ -63,13 +76,14 @@ const OverviewTab = ({ pnl, vatDue, ct, health, onOpen }: Props & { onOpen: (tab
 
     return (
         <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
-                <Stat label="Turnover" value={money(pnl.revenue.total)} sub={pnl.isVatRegistered ? 'Net of VAT' : undefined} onClick={() => onOpen('pnl')} />
-                <Stat label="Gross profit" value={money(pnl.grossProfit, true)} sub={`${margin.toFixed(1)}% margin`} onClick={() => onOpen('pnl')} />
-                <Stat label="Overheads" value={money(pnl.expenses.total)} sub={`${pnl.expenses.byCategory.length} categories`} onClick={() => onOpen('expenses')} />
-                <Stat label="Net profit" value={money(pnl.netProfit, true)} tone={pnl.netProfit >= 0 ? 'good' : 'bad'} onClick={() => onOpen('pnl')} />
-                {vatDue !== null && <Stat label={vatDue >= 0 ? 'VAT due' : 'VAT reclaim'} value={money(Math.abs(vatDue))} sub="Same maths as VAT Summary" onClick={() => onOpen('vat')} />}
-                <Stat label="Corp. tax (est.)" value={money(ct.tax)} sub={`This period only, on ${money(ct.taxableProfit)}. Full year on the Corporation Tax tab`} onClick={() => onOpen('ct')} />
+            {/* Hairline grid of headline figures: the gaps between cells are the rules. */}
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line lg:grid-cols-3 2xl:grid-cols-6">
+                <Stat label="Turnover" value={pnl.revenue.total} sub={pnl.isVatRegistered ? 'Net of VAT' : undefined} onClick={() => onOpen('pnl')} />
+                <Stat label="Gross profit" value={pnl.grossProfit} sub={`${margin.toFixed(1)}% margin`} onClick={() => onOpen('pnl')} />
+                <Stat label="Overheads" value={pnl.expenses.total} sub={`${pnl.expenses.byCategory.length} categories`} onClick={() => onOpen('expenses')} />
+                <Stat label="Net profit" value={pnl.netProfit} sub={pnl.netProfit < 0 ? 'Loss for the period' : undefined} tone={pnl.netProfit >= 0 ? 'good' : 'bad'} onClick={() => onOpen('pnl')} />
+                {vatDue !== null && <Stat label={vatDue >= 0 ? 'VAT to pay' : 'VAT to reclaim'} value={Math.abs(vatDue)} sub="Same figures as the VAT return" onClick={() => onOpen('vat')} />}
+                <Stat label="Corp. tax (est.)" value={ct.tax} sub={`This period only, on ${money(ct.taxableProfit)}`} onClick={() => onOpen('ct')} />
             </div>
 
             <HubCard
@@ -78,22 +92,23 @@ const OverviewTab = ({ pnl, vatDue, ct, health, onOpen }: Props & { onOpen: (tab
                 actions={<CsvButton onClick={handleCsv} />}
                 bodyClassName=""
             >
-                <ul className="divide-y divide-gray-700/60">
+                <ul>
                     {health.map(h => (
-                        <li key={h.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+                        <li key={h.id} className="flex flex-col gap-2 border-b border-line px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
                             <div className="flex min-w-0 flex-1 items-start gap-3">
-                                <span aria-hidden className={`mt-0.5 inline-flex h-7 min-w-[1.75rem] shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold tabular-nums ${h.tone === 'ok' ? 'bg-emerald-500/15 text-emerald-300' : h.tone === 'warn' ? 'bg-amber-500/15 text-amber-300' : 'bg-gray-700 text-gray-300'}`}>
-                                    {h.tone === 'ok' ? '✓' : h.count}
+                                <span className={cx('mt-0.5 inline-flex h-8 min-w-[2rem] flex-none items-center justify-center rounded-control px-1.5 text-sm font-bold', TONE[h.tone].tile)}>
+                                    {h.tone === 'ok' ? <CheckIcon className="h-5 w-5" aria-hidden="true" /> : <span className="num">{h.count}</span>}
+                                    <span className="sr-only">{TONE[h.tone].word}:</span>
                                 </span>
                                 <div className="min-w-0">
-                                    <p className="text-sm font-medium text-white">{h.label}</p>
-                                    <p className="text-xs text-gray-400">{h.detail}</p>
+                                    <p className="text-sm font-semibold leading-5 text-ink">{h.label}</p>
+                                    <p className="text-sm leading-5 text-ink-3">{h.detail}</p>
                                 </div>
                             </div>
                             {h.onAction && h.actionLabel && (
-                                <button type="button" onClick={h.onAction} className="inline-flex shrink-0 items-center gap-1 self-start rounded-md px-2.5 py-1.5 text-sm font-medium text-brand-300 transition-colors hover:bg-brand-500/15 hover:text-brand-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 sm:self-auto">
-                                    {h.actionLabel}<ChevronRightIcon className="h-4 w-4" />
-                                </button>
+                                <Button variant="ghost" size="sm" onClick={h.onAction} iconEnd={<ChevronRightIcon className="rtl:rotate-180" />} className="self-start ps-11 sm:self-auto sm:ps-3">
+                                    {h.actionLabel}
+                                </Button>
                             )}
                         </li>
                     ))}

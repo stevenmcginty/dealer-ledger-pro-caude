@@ -1,7 +1,10 @@
 import React from 'react';
-import { Card, Avatar } from '../ui';
-import { Lead, LeadStage } from '../../types';
-import { PhoneIcon, EnvelopeIcon } from '../icons';
+import { IconButton } from '../ui';
+import { cx } from '../ui/cx';
+import { Lead } from '../../types';
+import { PhoneIcon, EnvelopeIcon, ClockIcon } from '../icons';
+import { formatCurrency } from '../../utils/helpers';
+import { daysInStage, fullName, STALE_DAYS } from './leadStage';
 
 interface LeadCardProps {
     lead: Lead;
@@ -9,99 +12,70 @@ interface LeadCardProps {
     isDragging?: boolean;
 }
 
-const STAGE_COLORS: Record<LeadStage, 'default' | 'primary' | 'success' | 'warning' | 'danger'> = {
-    [LeadStage.NEW]: 'primary',
-    [LeadStage.QUALIFIED]: 'primary',
-    [LeadStage.TEST_DRIVE]: 'warning',
-    [LeadStage.NEGOTIATION]: 'warning',
-    [LeadStage.WON]: 'success',
-    [LeadStage.LOST]: 'danger',
-};
-
-const getDaysInStage = (lead: Lead): number => {
-    const lastStageChange = lead.history.find(h => h.type === 'SYSTEM' && h.content.includes('stage'));
-    const referenceDate = lastStageChange ? new Date(lastStageChange.timestamp) : new Date(lead.createdAt);
-    const now = new Date();
-    return Math.floor((now.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24));
-};
-
+/**
+ * A lead on the desktop board: who, which car, what it's worth. Flat surface
+ * on a hairline; the name is the keyboard target, the whole card takes a click.
+ */
 const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, isDragging }) => {
-    const daysInStage = getDaysInStage(lead);
-    const fullName = `${lead.firstName} ${lead.lastName}`;
+    const days = daysInStage(lead);
+    const stale = days > STALE_DAYS;
+    const name = fullName(lead);
 
     return (
         <div
             onClick={() => onClick?.(lead)}
-            draggable
-            className={`
-                cursor-pointer select-none
-                transition-all duration-200
-                ${isDragging ? 'opacity-50 scale-105 rotate-2' : 'opacity-100'}
-            `}
+            className={cx(
+                'group cursor-pointer select-none rounded-card border bg-surface p-3 text-ink',
+                'transition-[border-color,background-color,opacity] duration-quick ease-out hover:border-line-strong hover:bg-surface-2 active:bg-surface-3',
+                isDragging ? 'border-accent opacity-40' : 'border-line',
+            )}
         >
-            <Card className="hover:border-brand-500/50 hover:shadow-lg hover:shadow-brand-500/10 transition-all">
-                <Card.Body className="p-3 space-y-2">
-                    {/* Header with avatar and name */}
-                    <div className="flex items-center gap-2">
-                        <Avatar name={fullName} size="sm" />
-                        <div className="flex-1 min-w-0">
-                            <p className="font-medium text-white text-sm truncate">
-                                {fullName}
-                            </p>
-                            <p className="text-xs text-gray-500">{lead.source}</p>
-                        </div>
-                    </div>
-
-                    {/* Vehicle of interest */}
-                    {lead.vehicleOfInterest && (
-                        <p className="text-xs text-gray-400 truncate bg-gray-800/50 px-2 py-1 rounded">
-                            {lead.vehicleOfInterest}
-                        </p>
-                    )}
-
-                    {/* Footer with value and days */}
-                    <div className="flex items-center justify-between pt-1">
-                        {lead.value ? (
-                            <span className="text-sm font-semibold text-green-400">
-                                £{lead.value.toLocaleString()}
-                            </span>
-                        ) : (
-                            <span className="text-xs text-gray-600">No value set</span>
-                        )}
-                        <span className={`text-xs ${daysInStage > 7 ? 'text-amber-400' : 'text-gray-500'}`}>
-                            {daysInStage}d
-                        </span>
-                    </div>
-
-                    {/* Quick contact icons */}
-                    <div className="flex items-center gap-2 pt-1 border-t border-gray-800">
-                        {lead.email && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.location.href = `mailto:${encodeURIComponent(lead.email)}`;
-                                }}
-                                className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-                                title={lead.email}
-                            >
-                                <EnvelopeIcon className="w-4 h-4" />
-                            </button>
-                        )}
-                        {lead.phone && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.location.href = `tel:${encodeURIComponent(lead.phone!)}`;
-                                }}
-                                className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-                                title={lead.phone}
-                            >
-                                <PhoneIcon className="w-4 h-4" />
-                            </button>
-                        )}
-                    </div>
-                </Card.Body>
-            </Card>
+            <div className="flex items-start gap-2">
+                <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onClick?.(lead); }}
+                    className="min-w-0 flex-1 truncate rounded-chip text-start text-base font-semibold leading-snug text-ink"
+                >
+                    {name}
+                </button>
+                <span className={cx('flex flex-none items-center gap-1 pt-0.5 text-xs font-semibold', stale ? 'text-warning' : 'text-ink-3')}>
+                    {stale && <ClockIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                    <span className="num">{days}d</span>
+                    <span className="sr-only">{days === 1 ? 'day' : 'days'} in this stage</span>
+                </span>
+            </div>
+            <p className={cx('mt-0.5 truncate text-sm', lead.vehicleOfInterest ? 'text-ink-2' : 'text-ink-3')}>
+                {lead.vehicleOfInterest || 'No car yet'}
+            </p>
+            <div className="mt-2 flex items-center gap-1">
+                {lead.value
+                    ? <span className="num min-w-0 flex-1 text-sm font-semibold text-ink">{formatCurrency(lead.value)}</span>
+                    : <span className="min-w-0 flex-1 truncate text-xs text-ink-3">No value · {lead.source}</span>}
+                {lead.email && (
+                    <IconButton
+                        size="sm"
+                        label={`Email ${lead.email}`}
+                        icon={<EnvelopeIcon />}
+                        className="-my-1 [&_svg]:h-5 [&_svg]:w-5"
+                        onClick={e => {
+                            e.stopPropagation();
+                            window.location.href = `mailto:${encodeURIComponent(lead.email)}`;
+                        }}
+                    />
+                )}
+                {lead.phone && (
+                    <IconButton
+                        size="sm"
+                        label={`Call ${lead.phone}`}
+                        icon={<PhoneIcon />}
+                        className="-my-1 -me-1.5 [&_svg]:h-5 [&_svg]:w-5"
+                        onClick={e => {
+                            e.stopPropagation();
+                            window.location.href = `tel:${encodeURIComponent(lead.phone!)}`;
+                        }}
+                    />
+                )}
+            </div>
         </div>
     );
 };

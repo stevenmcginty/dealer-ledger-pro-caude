@@ -387,6 +387,7 @@ const handleEmailBounce = async (
         mode: 'human',
         lastInboundAt: msg.receivedAt || Date.now(),
         unread: (conversation.unread || 0) + 1,
+        inboundCount: (conversation.inboundCount || 0) + 1,
     };
 
     if (e164) {
@@ -531,6 +532,7 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
             await updateConversation(companyId, conversation.id, {
                 lastInboundAt: msg.receivedAt || Date.now(),
                 unread: (conversation.unread || 0) + 1,
+                inboundCount: (conversation.inboundCount || 0) + 1,
             });
         }
         return;
@@ -551,6 +553,7 @@ export const handleInbound = async (msg: InboundMessage, options: InboundOptions
     const patch: Record<string, unknown> = {
         lastInboundAt: msg.receivedAt || Date.now(),
         unread: (conversation.unread || 0) + 1,
+        inboundCount: (conversation.inboundCount || 0) + 1,
     };
 
     // Meta's 24h free-text window is opened by a WhatsApp message and nothing else.

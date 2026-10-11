@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { StatementTransaction, SalesDocument, Payment, PaymentMethod } from '../../types';
-import { XMarkIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import Spinner from '../common/Spinner';
+import { Button, DocChip, Plate, Search } from '../ui';
+import { cx } from '../ui/cx';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from '../crm/SheetParts';
+import { DOC_KIND } from './docMeta';
 import { useData } from '../../hooks/useData';
 
 interface SalesReconcilerModalProps {
@@ -53,57 +55,74 @@ const SalesReconcilerModal = ({ transaction, salesDocs, onReconcile, onCreateMis
     };
 
     return (
-        <div className="w-full flex flex-col h-full max-h-[90vh]">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <h2 className="text-lg font-bold text-white">Reconcile Income</h2>
-                <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-                <div className="bg-gray-900/50 p-4 rounded-lg">
-                    <div className="flex justify-between items-center">
-                        <p className="text-sm text-gray-400">{formatDate(transaction.date)}</p>
-                        <p className="text-xl font-bold text-green-400">{formatCurrency(transaction.amount)}</p>
+        <SheetFrame className="max-h-[90vh]">
+            <SheetHeader title="Match money in" description="Pick the unpaid document this payment settles." onClose={onClose} />
+            <SheetBody className="space-y-4">
+                {/* The bank line */}
+                <div className="rounded-card border border-line bg-surface-2 p-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                        <p className="num text-sm text-ink-3">{formatDate(transaction.date)}</p>
+                        <p className="num text-xl font-bold text-success">{formatCurrency(transaction.amount)}</p>
                     </div>
-                    <p className="text-white mt-1 truncate">{transaction.description}</p>
+                    <p className="mt-1 truncate text-ink">{transaction.description}</p>
                 </div>
-                <div>
-                    <input 
-                        type="text"
-                        placeholder="Search by Reg, Customer, or Invoice #"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                    />
-                </div>
-                <div className="space-y-2 pr-2 -mr-2 max-h-64 overflow-y-auto">
+
+                <Search
+                    value={searchTerm}
+                    onChange={setSearchTerm}
+                    label="Search unpaid documents"
+                    placeholder="Reg, customer or invoice no."
+                />
+
+                <div role="radiogroup" aria-label="Unpaid documents" className="max-h-72 space-y-1.5 overflow-y-auto">
                     {filteredDocs.length > 0 ? filteredDocs.map(doc => {
                         const carDetails = doc.carDetails || vehicles.find(v => v.id === doc.vehicleId);
+                        const on = selectedDocId === doc.id;
+                        const exact = Math.abs(transactionAmount - doc.balance) < 0.01;
                         return (
-                            <div key={doc.id} onClick={() => setSelectedDocId(doc.id)} className={`p-3 rounded-lg cursor-pointer transition-all border ${selectedDocId === doc.id ? 'bg-brand-900/70 border-brand-600' : 'bg-gray-700 border-gray-600 hover:border-gray-500'}`}>
-                                <div className="flex justify-between items-center">
-                                    <p className="font-semibold text-white">{doc.customerName}</p>
-                                    <p className="font-bold text-white">{formatCurrency(doc.balance)}</p>
-                                </div>
-                                <div className="flex justify-between items-center text-xs text-gray-400 mt-1">
-                                    <span>{carDetails?.reg} - {doc.documentType}</span>
-                                    <span>#{doc.invoiceNumber}</span>
-                                </div>
-                            </div>
-                        )
+                            <button
+                                key={doc.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={on}
+                                onClick={() => setSelectedDocId(doc.id)}
+                                className={cx(
+                                    'block w-full rounded-control border p-3 text-start transition-colors duration-quick ease-out',
+                                    on ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:border-line-strong hover:bg-surface-2 active:bg-surface-3',
+                                )}
+                            >
+                                <span className="flex items-center justify-between gap-3">
+                                    <span className="truncate font-semibold text-ink">{doc.customerName}</span>
+                                    <span className="num flex-none font-bold text-ink">{formatCurrency(doc.balance)}</span>
+                                </span>
+                                <span className="mt-1.5 flex items-center gap-2 text-sm text-ink-3">
+                                    <DocChip kind={DOC_KIND[doc.documentType]} label={null} />
+                                    {carDetails?.reg && <Plate reg={carDetails.reg} size="sm" />}
+                                    <span className="num">#{doc.invoiceNumber}</span>
+                                    {exact && <span className="ms-auto text-xs font-semibold text-success">Amount matches</span>}
+                                </span>
+                            </button>
+                        );
                     }) : (
-                        <p className="text-center text-gray-400 py-4">No matching unpaid invoices found.</p>
+                        <p className="rounded-control border border-line px-4 py-5 text-sm text-ink-3">No unpaid documents match. Try the reg or the customer's surname.</p>
                     )}
                 </div>
-            </div>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 grid grid-cols-2 gap-3 bg-gray-800">
-                <button type="button" onClick={handleCreateInvoice} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
-                    New Misc. Invoice
-                </button>
-                <button onClick={handleReconcile} disabled={!canReconcile || isSubmitting} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : 'Confirm Match'}
-                </button>
-            </footer>
-        </div>
+
+                {selectedDoc && !canReconcile && (
+                    <p role="status" className="rounded-control bg-warning-soft px-3.5 py-3 text-sm text-warning-ink">
+                        This payment is <span className="num font-semibold">{formatCurrency(transactionAmount)}</span> but the balance is <span className="num font-semibold">{formatCurrency(selectedDoc.balance)}</span>. Only an exact match can be ticked off here.
+                    </p>
+                )}
+            </SheetBody>
+            <SheetFooter>
+                <Button type="button" variant="secondary" onClick={handleCreateInvoice}>
+                    New misc. invoice
+                </Button>
+                <Button onClick={handleReconcile} disabled={!canReconcile} loading={isSubmitting}>
+                    Match payment
+                </Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

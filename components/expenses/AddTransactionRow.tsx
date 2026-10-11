@@ -5,8 +5,8 @@ import { toYYYYMMDD } from '../../utils/helpers';
 import UkDateInput from '../common/UkDateInput';
 import CurrencyInput from '../common/CurrencyInput';
 import InlineCategoryCombobox from './InlineCategoryCombobox';
-import Spinner from '../common/Spinner';
-import { useToast } from '../ui';
+import { useToast, Button, IconButton, Segmented, Field, Checkbox } from '../ui';
+import { controlFrame, controlInput } from '../ui/cx';
 import { XMarkIcon, CheckCircleIcon } from '../icons';
 
 interface AddTransactionRowProps {
@@ -98,68 +98,75 @@ const AddTransactionRow = ({ account, categories, onAddCategory, onClose }: AddT
     };
 
     return (
-        <div onKeyDown={onKeyDown} className="bg-gray-800 border border-brand-700/50 rounded-lg p-4 mb-3 shadow-lg animate-in fade-in-0 slide-in-from-top-2 duration-200">
-            <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-white">Add a transaction to {account.name}</h3>
-                <button type="button" onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700" aria-label="Close">
-                    <XMarkIcon className="h-5 w-5" />
-                </button>
+        <div onKeyDown={onKeyDown} className="rounded-card border border-line-strong bg-surface p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-base font-bold text-ink">Add a transaction to {account.name}</h3>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} className="-me-2 -mt-1" />
             </div>
 
-            <div className="flex items-center gap-1 rounded-lg bg-gray-700 p-1 mb-3 w-full sm:w-72">
-                <button type="button" onClick={() => setDirection('out')} className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${direction === 'out' ? 'bg-red-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Money out (−)</button>
-                <button type="button" onClick={() => setDirection('in')} className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${direction === 'in' ? 'bg-green-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Money in (+)</button>
-            </div>
+            <Segmented
+                ariaLabel="Money in or out"
+                value={direction}
+                onChange={setDirection}
+                options={[
+                    { value: 'out', label: 'Money out (−)' },
+                    { value: 'in', label: 'Money in (+)' },
+                ]}
+                full
+                className="mb-4 sm:w-80"
+            />
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
-                <div className="sm:col-span-3">
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Date</label>
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-12">
+                <Field label="Date" htmlFor="add-tx-date" className="sm:col-span-3">
                     <UkDateInput id="add-tx-date" value={date} onChange={e => setDate(e.target.value)} />
-                </div>
-                <div className="sm:col-span-5">
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
-                    <input ref={descRef} type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Cash sale — AB12 CDE" className="block w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white text-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500" />
-                </div>
-                <div className="sm:col-span-4">
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Amount</label>
+                </Field>
+                <Field label="Description" htmlFor="add-tx-desc" className="sm:col-span-5">
+                    {ids => (
+                        <div className={controlFrame()}>
+                            <input id={ids.id} ref={descRef} type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Cash sale — AB12 CDE" className={controlInput} />
+                        </div>
+                    )}
+                </Field>
+                <Field label="Amount" htmlFor="add-tx-amount" className="sm:col-span-4">
                     <CurrencyInput id="add-tx-amount" value={amountStr} onChange={e => setAmountStr(e.target.value)} />
-                </div>
+                </Field>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-                <label className="inline-flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
-                    <input type="checkbox" checked={isTransfer} onChange={e => setIsTransfer(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-500" />
-                    Transfer between own accounts
-                </label>
+            <div className="mt-3 flex flex-wrap items-end gap-x-4 gap-y-3">
+                <Checkbox label="Transfer between own accounts" checked={isTransfer} onChange={e => setIsTransfer(e.target.checked)} />
 
                 {!isTransfer && direction === 'out' && (
                     <>
-                        <div className="w-44">
-                            <label className="block text-xs font-medium text-gray-400 mb-1">Category (optional)</label>
-                            <InlineCategoryCombobox categories={categories} value={category || undefined} recentFirst={[]} onSelect={setCategory} onAddCategory={onAddCategory} />
+                        <div className="flex w-52 flex-col gap-1.5">
+                            <span className="text-sm font-semibold leading-5 text-ink">Category <span className="font-normal text-ink-3">(optional)</span></span>
+                            <InlineCategoryCombobox categories={categories} value={category || undefined} recentFirst={[]} onSelect={setCategory} onAddCategory={onAddCategory} placeholder="Choose…" />
                         </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-400 mb-1">VAT</label>
-                            <div className="flex items-center gap-1 rounded-lg bg-gray-700 p-0.5">
-                                <button type="button" onClick={() => setVatRate(0)} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${vatRate === 0 ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>0%</button>
-                                <button type="button" onClick={() => setVatRate(20)} className={`px-3 py-1.5 text-xs font-semibold rounded-md ${vatRate === 20 ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}>20%</button>
-                            </div>
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-sm font-semibold leading-5 text-ink">VAT</span>
+                            <Segmented
+                                ariaLabel="VAT rate"
+                                value={String(vatRate) as '0' | '20'}
+                                onChange={v => setVatRate(v === '20' ? 20 : 0)}
+                                options={[{ value: '0', label: '0%' }, { value: '20', label: '20%' }]}
+                            />
                         </div>
                     </>
                 )}
 
-                <div className="ml-auto flex items-center gap-3">
-                    {justSaved && <span className="inline-flex items-center gap-1 text-xs text-green-400"><CheckCircleIcon className="h-4 w-4" /> Added</span>}
-                    <button type="button" onClick={handleSave} disabled={!canSave} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-md text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {isSaving ? <Spinner className="h-4 w-4" /> : 'Add'}
-                    </button>
+                <div className="ms-auto flex items-center gap-3">
+                    {justSaved && (
+                        <span role="status" className="inline-flex items-center gap-1 text-sm font-semibold text-success">
+                            <CheckCircleIcon className="h-5 w-5" /> Added
+                        </span>
+                    )}
+                    <Button onClick={handleSave} disabled={!canSave} loading={isSaving}>Add</Button>
                 </div>
             </div>
 
-            <p className="mt-3 text-[11px] text-gray-500">
+            <p className="mt-3 text-sm text-ink-3">
                 {direction === 'in' && !isTransfer
-                    ? 'Money-in is added to the list below so you can categorise it (Car Sale, etc.) with the right controls.'
-                    : 'Manually-added rows aren’t matched against statement uploads, so avoid re-entering a line that will also import from your bank.'}
+                    ? 'Money in goes to the list below, where you pick what it was (car sale and so on).'
+                    : 'Lines you add by hand are not matched against statement uploads, so don’t add a line that will also come in from the bank.'}
             </p>
         </div>
     );

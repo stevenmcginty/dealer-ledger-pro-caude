@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Button, Badge, useToast } from '../ui';
-import { XMarkIcon, CurrencyPoundIcon, TruckIcon } from '../icons';
+import { Button, Plate, StatusChip, useToast } from '../ui';
+import { cx, eyebrow } from '../ui/cx';
+import Select from '../common/Select';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from './SheetParts';
+import { VEHICLE_CHIP } from '../sales/docMeta';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import { Lead, LeadStage, Vehicle } from '../../types';
@@ -65,7 +68,7 @@ const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }
             });
         } catch (error) {
             console.error('Error initiating sale:', error);
-            toast.error("Could not start the sale. Please try again.");
+            toast.error("Couldn't start the sale. Check your signal and try again.");
         } finally {
             setIsProcessing(false);
         }
@@ -83,161 +86,132 @@ const ConvertToSaleModal: React.FC<ConvertToSaleModalProps> = ({ lead, onClose }
             onClose();
         } catch (error) {
             console.error('Error marking lead as lost:', error);
-            toast.error("Could not mark the lead as lost. Please try again.");
+            toast.error("Couldn't mark the lead as lost. Check your signal and try again.");
         } finally {
             setIsProcessing(false);
         }
     };
 
+    const vehicleChip = selectedVehicle ? VEHICLE_CHIP[selectedVehicle.status] : null;
+
     return (
-        <div className="flex flex-col w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg bg-emerald-500/20">
-                        <CurrencyPoundIcon className="w-5 h-5 text-emerald-400" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-white">Convert to Sale</h2>
-                        <p className="text-xs text-gray-400">
-                            {lead.firstName} {lead.lastName}
-                        </p>
-                    </div>
-                </div>
-                <button
-                    onClick={onClose}
-                    className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                    <XMarkIcon className="w-5 h-5" />
-                </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-4 space-y-4">
-                {/* Lead Summary */}
-                <div className="p-4 bg-gray-800/50 rounded-lg space-y-2">
-                    <h3 className="text-sm font-medium text-gray-300">Lead Details</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        <div>
-                            <span className="text-gray-500">Customer:</span>
-                            <span className="ml-2 text-white">{customerName}</span>
-                        </div>
-                        <div>
-                            <span className="text-gray-500">Email:</span>
-                            <span className="ml-2 text-white">{lead.email}</span>
-                        </div>
-                        {lead.phone && (
-                            <div>
-                                <span className="text-gray-500">Phone:</span>
-                                <span className="ml-2 text-white">{lead.phone}</span>
-                            </div>
-                        )}
-                        <div>
-                            <span className="text-gray-500">Source:</span>
-                            <span className="ml-2 text-white">{lead.source}</span>
-                        </div>
-                        {lead.value && (
-                            <div>
-                                <span className="text-gray-500">Est. Value:</span>
-                                <span className="ml-2 text-emerald-400 font-medium">{formatCurrency(lead.value)}</span>
-                            </div>
-                        )}
-                        {lead.vehicleOfInterest && (
-                            <div className="col-span-2">
-                                <span className="text-gray-500">Interest:</span>
-                                <span className="ml-2 text-white">{lead.vehicleOfInterest}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Vehicle Selection */}
+        <SheetFrame>
+            <SheetHeader
+                title="Start sale"
+                description={<>{customerName} · {lead.source} lead</>}
+                onClose={onClose}
+            />
+            <SheetBody className="space-y-5">
+                {/* Which car */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Select Vehicle to Sell
-                    </label>
+                    <label htmlFor="sale-vehicle" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Which car are they buying?</label>
                     {availableVehicles.length > 0 ? (
-                        <select
+                        <Select
+                            id="sale-vehicle"
                             value={selectedVehicleId}
                             onChange={(e) => setSelectedVehicleId(e.target.value)}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                         >
-                            <option value="">Choose a vehicle...</option>
+                            <option value="">Choose a car</option>
                             {availableVehicles.map(vehicle => (
                                 <option key={vehicle.id} value={vehicle.id}>
-                                    {vehicle.make} {vehicle.model} - {vehicle.reg} ({vehicle.year})
+                                    {vehicle.reg} · {vehicle.make} {vehicle.model} ({vehicle.year})
                                 </option>
                             ))}
-                        </select>
+                        </Select>
                     ) : (
-                        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-sm">
-                            No vehicles available for sale. Add vehicles to stock first.
-                        </div>
+                        <p className="rounded-control bg-warning-soft px-3.5 py-3 text-sm text-warning-ink">
+                            No cars for sale right now. Add the car to stock first, then start the sale.
+                        </p>
                     )}
                 </div>
 
-                {/* Selected Vehicle Preview */}
                 {selectedVehicle && (
-                    <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                        <div className="flex items-start gap-3">
-                            <div className="p-2 rounded-lg bg-blue-500/20">
-                                <TruckIcon className="w-5 h-5 text-blue-400" />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="font-medium text-white">
-                                    {selectedVehicle.make} {selectedVehicle.model}
-                                </h4>
-                                <div className="mt-1 text-sm text-gray-400 space-y-0.5">
-                                    <p>Reg: {selectedVehicle.reg} | Year: {selectedVehicle.year}</p>
-                                    {selectedVehicle.mileage && <p>Mileage: {selectedVehicle.mileage.toLocaleString()} miles</p>}
-                                    {selectedVehicle.color && <p>Colour: {selectedVehicle.color}</p>}
-                                </div>
-                                <div className="mt-2 flex items-center gap-3">
-                                    {selectedVehicle.purchasePrice && (
-                                        <Badge variant="default" size="sm">
-                                            Cost: {formatCurrency(selectedVehicle.purchasePrice)}
-                                        </Badge>
-                                    )}
-                                    <Badge variant={selectedVehicle.status === 'Available' ? 'success' : 'warning'} size="sm">
-                                        {selectedVehicle.status}
-                                    </Badge>
-                                </div>
-                            </div>
+                    <div className="rounded-card border border-line bg-surface-2 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Plate reg={selectedVehicle.reg} />
+                            {vehicleChip && <StatusChip status={vehicleChip.status} className="ms-auto">{vehicleChip.label}</StatusChip>}
                         </div>
+                        <p className="mt-3 text-base font-bold text-ink">{selectedVehicle.make} {selectedVehicle.model}</p>
+                        <p className="num mt-0.5 text-sm text-ink-3">
+                            {selectedVehicle.year}
+                            {selectedVehicle.mileage ? ` · ${selectedVehicle.mileage.toLocaleString()} mi` : ''}
+                            {selectedVehicle.color ? ` · ${selectedVehicle.color}` : ''}
+                        </p>
+                        {selectedVehicle.purchasePrice ? (
+                            <p className="mt-3 flex items-baseline justify-between border-t border-line pt-3 text-sm">
+                                <span className="text-ink-2">Bought for</span>
+                                <span className="num font-semibold text-ink">{formatCurrency(selectedVehicle.purchasePrice)}</span>
+                            </p>
+                        ) : null}
                     </div>
                 )}
 
-                {/* Info Note */}
-                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-300 text-sm">
-                    Clicking "Create Sale" will open the invoice creator with customer details pre-filled.
-                    Complete the sale to mark this lead as Won.
+                {/* Who's buying */}
+                <div>
+                    <h3 className={cx(eyebrow, 'mb-2')}>The buyer</h3>
+                    <dl className="m-0 divide-y divide-line rounded-card border border-line text-sm">
+                        <div className="flex justify-between gap-4 px-4 py-2.5">
+                            <dt className="text-ink-3">Name</dt>
+                            <dd className="m-0 truncate text-ink">{customerName}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4 px-4 py-2.5">
+                            <dt className="text-ink-3">Email</dt>
+                            <dd className="m-0 truncate text-ink">{lead.email}</dd>
+                        </div>
+                        {lead.phone && (
+                            <div className="flex justify-between gap-4 px-4 py-2.5">
+                                <dt className="text-ink-3">Phone</dt>
+                                <dd className="num m-0 truncate text-ink">{lead.phone}</dd>
+                            </div>
+                        )}
+                        {lead.value && (
+                            <div className="flex justify-between gap-4 px-4 py-2.5">
+                                <dt className="text-ink-3">Estimated value</dt>
+                                <dd className="num m-0 font-semibold text-ink">{formatCurrency(lead.value)}</dd>
+                            </div>
+                        )}
+                        {lead.vehicleOfInterest && (
+                            <div className="flex justify-between gap-4 px-4 py-2.5">
+                                <dt className="flex-none text-ink-3">Asked about</dt>
+                                <dd className="m-0 min-w-0 truncate text-end text-ink">{lead.vehicleOfInterest}</dd>
+                            </div>
+                        )}
+                    </dl>
                 </div>
-            </div>
 
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-700 flex justify-between">
-                <Button
-                    variant="ghost"
-                    onClick={handleMarkAsLost}
-                    disabled={isProcessing}
-                    className="text-red-400 hover:text-red-300"
-                >
-                    Mark as Lost
-                </Button>
-                <div className="flex gap-3">
-                    <Button variant="ghost" onClick={onClose} disabled={isProcessing}>
-                        Cancel
-                    </Button>
+                <p className="text-sm text-ink-3">
+                    Next you write the sales invoice with their details filled in. Finish the sale to mark this lead Sold.
+                </p>
+
+                {/* Kept away from the primary, out of the thumb zone. */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4">
+                    <p className="text-sm text-ink-2">Not buying after all?</p>
                     <Button
-                        variant="primary"
-                        onClick={handleProceedToSale}
-                        disabled={isProcessing || !selectedVehicleId}
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleMarkAsLost}
+                        disabled={isProcessing}
+                        className="text-danger hover:bg-danger-soft"
                     >
-                        {isProcessing ? 'Processing...' : 'Create Sale'}
+                        Mark as lost
                     </Button>
                 </div>
-            </div>
-        </div>
+            </SheetBody>
+
+            <SheetFooter>
+                <Button variant="secondary" onClick={onClose} disabled={isProcessing}>
+                    Keep lead open
+                </Button>
+                <Button
+                    variant="primary"
+                    onClick={handleProceedToSale}
+                    loading={isProcessing}
+                    disabled={!selectedVehicleId}
+                >
+                    Write invoice
+                </Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

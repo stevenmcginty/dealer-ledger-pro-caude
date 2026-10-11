@@ -40,7 +40,7 @@ const PrintableJobInvoice = ({ invoice, businessDetails, onClose, isPreview, onC
             </header>
 
             <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
-              <div id="printable-job-invoice" className="p-10 bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0">
+              <div id="printable-job-invoice" className="p-10 bg-white w-full max-w-4xl mx-auto text-black font-paper text-sm print:shadow-none print:p-0">
                     <header className="flex justify-between items-start mb-4">
                         <h1 className="text-3xl font-bold uppercase text-black">{invoice.status}</h1>
                         <div className="text-right">

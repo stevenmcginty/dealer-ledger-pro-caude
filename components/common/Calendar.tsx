@@ -46,22 +46,22 @@ const Calendar = ({ events, selectedDate, onDateSelect }: CalendarProps) => {
     }
 
     return (
-        <div className="text-white">
+        <div className="text-ink">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">{monthName} {year}</h3>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-gray-700"><ChevronLeftIcon className="h-5 w-5" /></button>
-                    <button onClick={() => setCurrentDate(new Date())} className="text-sm px-3 py-1 rounded-md hover:bg-gray-700">Today</button>
-                    <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-gray-700"><ChevronRightIcon className="h-5 w-5" /></button>
+                <h3 className="text-lg font-bold tracking-[-0.01em]">{monthName} <span className="num font-semibold text-ink-2">{year}</span></h3>
+                <div className="flex items-center gap-1">
+                    <button type="button" aria-label="Previous month" onClick={() => changeMonth(-1)} className="inline-grid h-12 w-12 md:[@media(pointer:fine)]:h-10 md:[@media(pointer:fine)]:w-10 place-items-center rounded-control text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink active:bg-surface-3"><ChevronLeftIcon className="h-5 w-5" /></button>
+                    <button type="button" onClick={() => setCurrentDate(new Date())} className="min-h-[48px] md:[@media(pointer:fine)]:min-h-[40px] rounded-control px-3 text-sm font-semibold text-accent-text transition-colors duration-quick ease-out hover:bg-accent-soft">Today</button>
+                    <button type="button" aria-label="Next month" onClick={() => changeMonth(1)} className="inline-grid h-12 w-12 md:[@media(pointer:fine)]:h-10 md:[@media(pointer:fine)]:w-10 place-items-center rounded-control text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink active:bg-surface-3"><ChevronRightIcon className="h-5 w-5" /></button>
                 </div>
             </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-400 mb-2">
+            <div className="mb-2 grid grid-cols-7 sm:gap-1 text-center font-mono text-xs font-semibold uppercase tracking-[0.06em] text-ink-3">
                 <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 sm:gap-1">
                 {calendarDays.map((d, index) => {
                     if (!d.isCurrentMonth) {
-                        return <div key={`pad-${index}`} className="p-2 rounded-lg"></div>;
+                        return <div key={`pad-${index}`} aria-hidden="true"></div>;
                     }
                     
                     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), d.day);
@@ -71,22 +71,22 @@ const Calendar = ({ events, selectedDate, onDateSelect }: CalendarProps) => {
                     const isSelected = dateStr === selectedDate;
                     const hasEvent = eventSet.has(dateStr);
                     
-                    let dayClasses = "relative w-full h-10 flex items-center justify-center rounded-lg cursor-pointer transition-colors text-sm ";
+                    let dayClasses = "num relative flex h-12 md:[@media(pointer:fine)]:h-10 w-full cursor-pointer items-center justify-center rounded-control text-sm transition-colors duration-quick ease-out ";
                     if (isSelected) {
-                        dayClasses += "bg-brand-600 text-white font-bold";
+                        dayClasses += "bg-accent font-semibold text-on-accent hover:bg-accent-hover";
                     } else if (isToday && hasEvent) {
-                        dayClasses += "bg-yellow-600 text-white font-semibold";
+                        dayClasses += "bg-warning-soft font-semibold text-warning-ink ring-1 ring-inset ring-warning";
                     } else if (isToday) {
-                        dayClasses += "bg-gray-600 text-white";
+                        dayClasses += "font-semibold text-accent-text ring-1 ring-inset ring-accent/50 hover:bg-accent-soft";
                     } else {
-                        dayClasses += "hover:bg-gray-700";
+                        dayClasses += "text-ink hover:bg-surface-2";
                     }
 
                     return (
                         <div key={dateStr} className="flex justify-center items-center">
-                            <button onClick={() => onDateSelect(dateStr)} className={dayClasses}>
+                            <button type="button" onClick={() => onDateSelect(dateStr)} aria-pressed={isSelected} aria-current={isToday ? 'date' : undefined} className={dayClasses}>
                                 {d.day}
-                                {hasEvent && <span className="absolute bottom-1.5 h-1.5 w-1.5 rounded-full bg-brand-400"></span>}
+                                {hasEvent && <span aria-hidden="true" className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-on-accent' : 'bg-accent'}`}></span>}
                             </button>
                         </div>
                     );

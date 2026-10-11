@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>UI gallery · Dealer Ledger Pro (dev)</title>
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0B1117">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=Atkinson+Hyperlegible+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script>
+      // Dev gallery: theme and brand from ?theme=&brand=, else the app's saved
+      // theme, before first paint. Nothing is written back to storage.
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var mode = q.get('theme');
+        if (mode !== 'light' && mode !== 'dark') {
+          try { mode = localStorage.getItem('dlp.themeMode') || 'dark'; } catch (e) { mode = 'dark'; }
+          if (mode === 'system') mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          if (mode !== 'light') mode = 'dark';
+        }
+        var brand = q.get('brand') || 'green';
+        if (!/^(blue|green|red|purple|pink|yellow)$/.test(brand)) brand = 'green';
+        var html = document.documentElement;
+        html.setAttribute('data-theme', mode);
+        html.classList.add('theme-' + brand);
+      })();
+    </script>
+  </head>
+  <body class="bg-bg font-sans text-ink antialiased">
+    <div id="root"></div>
+    <script type="module" src="/dev/UiGallery.tsx"></script>
+  </body>
+</html>

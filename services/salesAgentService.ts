@@ -158,7 +158,12 @@ export interface Conversation {
     lastCustomerMessageAt: number;
     createdAt: number;
     updatedAt: number;
+    /** Legacy shared count. Read it through `unreadFor`, which is per person. */
     unread: number;
+    /** Inbound customer messages ever received here. Only goes up; never reset. */
+    inboundCount?: number;
+    /** Per person (auth uid): the inboundCount they had seen when they last opened the thread. */
+    readBy?: Record<string, { count: number; at: number }>;
     emailThreadId?: string;
     emailSubject?: string;
     /** Set when a Delivery Status Notification came back for this thread. */
@@ -546,9 +551,13 @@ export const setConnectionFlag = (
     value: boolean
 ) => db.ref(`${agentRoot(companyId)}/settings/connections/${key}`).set(value);
 
-/** Opening a conversation clears its unread count. */
-export const markConversationRead = (companyId: string, convId: string) =>
-    db.ref(`${agentRoot(companyId)}/conversations/${convId}/unread`).set(0);
+/**
+ * Opening a conversation marks it read for this person only. Steve and Chris
+ * share the inbox, so the shared `unread` is left alone: reading it here must
+ * not clear it for the other one.
+ */
+export const markConversationRead = (companyId: string, convId: string, uid: string, inboundCount?: number) =>
+    db.ref(`${agentRoot(companyId)}/conversations/${convId}/readBy/${uid}`).set({ count: inboundCount ?? 0, at: Date.now() });
 
 /** Keep a mobile on an email lead so WhatsApp follow-up has somewhere to go. */
 export const saveConversationPhone = (companyId: string, convId: string, phone: string) =>

@@ -1,25 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { CanvasItem, CanvasItemUpdate } from '../../types';
-import { XMarkIcon, TrashIcon, ArrowTopRightOnSquareIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { XMarkIcon, TrashIcon, ArrowTopRightOnSquareIcon, CheckIcon } from '../icons';
+import { IconButton } from '../ui';
+import { buttonClasses } from '../ui/Button';
+import { cx, eyebrow } from '../ui/cx';
+import { NOTE_PAPER } from './CanvasCard';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 
 const noteColors: Array<NonNullable<CanvasItem['color']>> = ['yellow', 'pink', 'blue', 'green'];
-
-const modalColorClasses: Record<NonNullable<CanvasItem['color']>, { bg: string, text: string, placeholder: string, border: string }> = {
-    yellow: { bg: 'bg-yellow-200', text: 'text-yellow-900', placeholder: 'placeholder-yellow-700/80', border: 'border-yellow-300/50' },
-    pink: { bg: 'bg-pink-200', text: 'text-pink-900', placeholder: 'placeholder-pink-700/80', border: 'border-pink-300/50' },
-    blue: { bg: 'bg-sky-200', text: 'text-sky-900', placeholder: 'placeholder-sky-700/80', border: 'border-sky-300/50' },
-    green: { bg: 'bg-green-200', text: 'text-green-900', placeholder: 'placeholder-green-700/80', border: 'border-green-300/50' },
-};
-
-const paletteColorClasses: Record<NonNullable<CanvasItem['color']>, string> = {
-    yellow: 'bg-yellow-300 hover:ring-yellow-400',
-    pink: 'bg-pink-300 hover:ring-pink-400',
-    blue: 'bg-sky-300 hover:ring-sky-400',
-    green: 'bg-green-300 hover:ring-green-400',
-};
 
 const CanvasItemModal = ({ item }: { item: CanvasItem }) => {
     const { closeModal } = useUI();
@@ -66,78 +55,112 @@ const CanvasItemModal = ({ item }: { item: CanvasItem }) => {
 
 
     const handleDelete = async () => {
-        if (window.confirm("Are you sure you want to delete this canvas item and its file permanently?")) {
+        if (window.confirm(itemType === 'note' ? "Delete this note? You can't undo this." : "Delete this card and its file? You can't undo this.")) {
             setIsDeleting(true);
             await deleteCanvasItem(item);
             closeModal();
         }
     };
     
-    const currentNoteColors = itemType === 'note' ? modalColorClasses[color] : { bg: 'bg-gray-800', text: 'text-white', placeholder: 'placeholder-gray-400', border: 'border-gray-700' };
+    const isNote = itemType === 'note';
+    const paper = NOTE_PAPER[color] || NOTE_PAPER.yellow;
+    const saveLabel = saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : 'Saves as you type';
 
     return (
-        <div className={`w-full flex flex-col h-full max-h-[90vh] ${currentNoteColors.bg}`}>
-            <header className={`p-4 border-b flex items-center justify-between flex-shrink-0 ${currentNoteColors.border}`}>
-                <input 
-                    type="text"
-                    value={headline}
-                    onChange={e => setHeadline(e.target.value)}
-                    className={`text-lg font-bold bg-transparent w-full focus:outline-none focus:ring-0 border-none p-0 ${currentNoteColors.text} ${currentNoteColors.placeholder}`}
-                    placeholder="Untitled Note"
-                />
-                <div className="flex items-center gap-2 pl-4">
-                    {itemType === 'file' && isSafeFileUrl && (
-                        <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Open in new tab"><ArrowTopRightOnSquareIcon className="h-5 w-5"/></a>
-                    )}
-                    <button onClick={handleDelete} className={`p-2 rounded-full ${itemType === 'note' ? 'text-gray-600 hover:bg-black/10' : 'text-gray-400 hover:bg-gray-700'}`} title="Delete Item">{isDeleting ? <Spinner className="h-5 w-5"/> : <TrashIcon className="h-5 w-5"/>}</button>
-                    <button onClick={closeModal} className={`p-2 rounded-full ${itemType === 'note' ? 'text-gray-600 hover:bg-black/10' : 'text-gray-400 hover:bg-gray-700'}`}><XMarkIcon className="h-6 w-6" /></button>
-                </div>
+        <div className="flex min-h-0 w-full flex-1 flex-col">
+            <header className="flex flex-none items-center gap-1 px-5 pb-2 pt-1 sm:pt-4">
+                <p className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className={eyebrow}>{isNote ? 'Note' : 'File'}</span>
+                    {!isNote && item.fileName && <span className="min-w-0 truncate font-mono text-xs text-ink-3">{item.fileName}</span>}
+                </p>
+                {!isNote && isSafeFileUrl && (
+                    <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className={cx(buttonClasses('ghost', 'sm'), 'px-2.5')}>
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4" /> Open file
+                    </a>
+                )}
+                <IconButton label={isNote ? 'Delete note' : 'Delete card'} icon={<TrashIcon />} onClick={handleDelete} disabled={isDeleting} />
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={closeModal} className="-me-2" />
             </header>
-            <div className={`flex-1 overflow-y-auto p-4 md:p-6 grid grid-cols-1 ${itemType === 'file' ? 'md:grid-cols-2' : ''} gap-6 min-h-0`}>
-                {itemType === 'file' && (
-                    <div className="bg-gray-900/50 rounded-lg flex items-center justify-center p-2 min-h-[300px]">
+
+            <div className={`grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-5 pb-4 ${!isNote ? 'md:grid-cols-2' : ''}`}>
+                {!isNote && (
+                    <div className="flex min-h-[240px] items-center justify-center rounded-control border border-line bg-bg p-2">
                         {isImage && item.fileUrl ? (
-                            <img src={item.fileUrl} alt={item.fileName} className="max-h-full max-w-full object-contain rounded" />
+                            <img src={item.fileUrl} alt={item.fileName} className="max-h-[60dvh] max-w-full rounded-[6px] object-contain" />
                         ) : (
-                            <div className="text-center text-gray-400">
-                                <p>Cannot preview this file type.</p>
+                            <div className="space-y-2 p-4 text-center text-sm text-ink-3">
+                                <p>No preview for this kind of file.</p>
                                 {isSafeFileUrl ? (
-                                    <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">Open file</a>
+                                    <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent-text underline underline-offset-[3px]">Open the file</a>
                                 ) : item.fileUrl ? (
-                                    <span className="break-all">{item.fileUrl}</span>
+                                    <span className="break-all font-mono text-xs">{item.fileUrl}</span>
                                 ) : null}
                             </div>
                         )}
                     </div>
                 )}
-                 <div className="flex flex-col">
-                    <label htmlFor="notes" className="block text-sm font-medium text-gray-300 sr-only">Notes & Comments</label>
+
+                {/* The writing surface: the note's own paper, or a plain sheet for a file's notes. */}
+                <div
+                    className={cx(
+                        'flex min-h-[260px] flex-col rounded-control p-4 transition-colors duration-quick ease-out focus-within:outline focus-within:outline-[3px] focus-within:outline-offset-2 focus-within:outline-focus',
+                        isNote ? `${paper.paper} text-plate-ink` : 'border border-line bg-bg text-ink',
+                    )}
+                >
+                    <label htmlFor="canvas-headline" className="sr-only">Headline</label>
+                    <input
+                        id="canvas-headline"
+                        type="text"
+                        value={headline}
+                        onChange={e => setHeadline(e.target.value)}
+                        className={cx(
+                            'w-full border-0 bg-transparent p-0 text-xl font-bold leading-7 focus-visible:outline-none',
+                            isNote ? 'placeholder:text-plate-ink/60' : 'placeholder:text-ink-3',
+                        )}
+                        placeholder="Untitled note"
+                    />
+                    <label htmlFor="notes" className="sr-only">Notes</label>
                     <textarea
                         id="notes"
                         value={notes}
                         onChange={e => setNotes(e.target.value)}
-                        placeholder="Add your notes here..."
-                        className={`mt-1 block w-full flex-1 bg-transparent resize-none focus:outline-none text-base leading-relaxed ${currentNoteColors.text} ${currentNoteColors.placeholder}`}
+                        placeholder="Write here…"
+                        className={cx(
+                            'mt-2 block min-h-[180px] w-full flex-1 resize-none border-0 bg-transparent p-0 text-base leading-relaxed focus-visible:outline-none',
+                            isNote ? 'placeholder:text-plate-ink/60' : 'placeholder:text-ink-3',
+                        )}
                     />
                 </div>
             </div>
-            <footer className={`flex-shrink-0 p-4 border-t flex justify-between items-center text-xs ${currentNoteColors.border} ${currentNoteColors.text}`}>
-                {itemType === 'note' && (
-                    <div className="flex items-center gap-2">
-                        {noteColors.map(c => (
-                            <button
-                                key={c}
-                                type="button"
-                                onClick={() => setColor(c)}
-                                className={`w-6 h-6 rounded-full ${paletteColorClasses[c]} transition-all ring-2 ring-offset-2 ring-offset-current ${color === c ? 'ring-gray-900/50' : 'ring-transparent'}`}
-                                aria-label={`Set color to ${c}`}
-                            />
-                        ))}
+
+            <footer className="flex flex-none flex-wrap items-center gap-3 border-t border-line px-4 py-3 sm:px-5">
+                {isNote && (
+                    <div role="radiogroup" aria-label="Note colour" className="flex items-center gap-1">
+                        {noteColors.map(c => {
+                            const checked = color === c;
+                            return (
+                                <button
+                                    key={c}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={checked}
+                                    aria-label={NOTE_PAPER[c].name}
+                                    onClick={() => setColor(c)}
+                                    className="grid h-11 w-11 place-items-center rounded-full"
+                                >
+                                    <span className={cx(
+                                        'grid h-7 w-7 place-items-center rounded-full text-plate-ink transition-shadow duration-quick ease-out',
+                                        NOTE_PAPER[c].paper,
+                                        checked ? 'shadow-[0_0_0_2px_rgb(var(--c-surface)),0_0_0_4px_rgb(var(--c-ink))]' : 'shadow-[inset_0_0_0_1px_rgb(var(--c-line-strong))]',
+                                    )}>
+                                        {checked && <CheckIcon className="h-4 w-4" />}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
-                 <div className="flex-1 text-right opacity-70">
-                    {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : ''}
-                </div>
+                <p className="ms-auto text-sm text-ink-3" role="status" aria-live="polite">{saveLabel}</p>
             </footer>
         </div>
     );

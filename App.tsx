@@ -8,6 +8,7 @@ import LedgerCore from './LedgerCore';
 import Spinner from './components/common/Spinner';
 import { DataProvider } from './contexts/DataContext';
 import { UIProvider } from './contexts/UIContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -33,7 +34,7 @@ const getInitialRoute = (): Route => {
     return 'landing';
 };
 
-const App = () => {
+const AppRoutes = () => {
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
     const [route, setRoute] = useState<Route>(getInitialRoute);
@@ -109,13 +110,13 @@ const App = () => {
     }, [authLoading, user, route]);
 
     if (authLoading) {
-        return <div className="bg-gray-950 flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-white" /></div>;
+        return <div className="bg-bg flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-ink" /></div>;
     }
 
     // Demo video page - no auth required
     if (route === 'demo-video') {
         return (
-            <Suspense fallback={<div className="bg-gray-950 flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-white" /></div>}>
+            <Suspense fallback={<div className="bg-bg flex items-center justify-center h-screen"><Spinner className="h-10 w-10 text-ink" /></div>}>
                 <DemoVideoPage />
             </Suspense>
         );
@@ -148,7 +149,7 @@ const App = () => {
             <div className="relative">
                 <button
                     onClick={handleBackToLanding}
-                    className="absolute top-4 left-4 z-50 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                    className="absolute top-4 start-4 z-50 inline-flex min-h-[48px] items-center rounded-control px-4 text-sm font-semibold text-ink-2 transition-colors duration-quick hover:bg-surface-2 hover:text-ink"
                 >
                     &larr; Back to Home
                 </button>
@@ -167,7 +168,7 @@ const App = () => {
                 <div className="relative">
                     <button
                         onClick={handleBackToLanding}
-                        className="absolute top-4 left-4 z-50 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                        className="absolute top-4 start-4 z-50 inline-flex min-h-[48px] items-center rounded-control px-4 text-sm font-semibold text-ink-2 transition-colors duration-quick hover:bg-surface-2 hover:text-ink"
                     >
                         &larr; Back to Home
                     </button>
@@ -192,5 +193,12 @@ const App = () => {
 
     return null;
 }
+
+// Light / dark mode wraps every route (landing, login and the app).
+const App = () => (
+    <ThemeProvider>
+        <AppRoutes />
+    </ThemeProvider>
+);
 
 export default App;

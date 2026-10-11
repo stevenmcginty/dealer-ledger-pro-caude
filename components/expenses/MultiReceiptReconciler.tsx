@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { StatementTransaction, Receipt } from '../../types';
-import { XMarkIcon, BanknotesIcon } from '../icons';
+import { XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import Spinner from '../common/Spinner';
+import { Button, IconButton, Checkbox } from '../ui';
+import { cx } from '../ui/cx';
+import { Money } from './ledgerUi';
 
 interface MultiReceiptReconcilerProps {
     transaction: StatementTransaction;
@@ -46,63 +48,79 @@ const MultiReceiptReconciler = ({ transaction, receipts, onReconcile, onReconcil
     };
 
     return (
-        <div className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <h2 className="text-lg font-bold text-white">Reconcile Supplier Payment</h2>
-                <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
+        <div className="flex h-full w-full flex-col">
+            <header className="flex flex-shrink-0 items-start gap-3 border-b border-line px-4 pb-3 pt-1 sm:px-5 sm:pt-5">
+                <div className="min-w-0 flex-1 pt-1.5">
+                    <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Match supplier payment</h2>
+                    <p className="mt-1 text-sm text-ink-2">Tick the bills this payment covers.</p>
+                </div>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} className="-me-2" />
             </header>
-            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-                <div className="bg-gray-900/50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-400">Payment to <span className="font-bold text-white">{receipts[0]?.vendor}</span></p>
-                    <div className="flex justify-between items-center mt-1">
-                        <p className="text-white truncate">{transaction.description}</p>
-                        <p className="text-xl font-bold text-orange-400">{formatCurrency(transactionAmount)}</p>
+            <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
+                <div className="rounded-card border border-line bg-surface-2 px-4 py-3">
+                    <p className="text-sm text-ink-3">Payment to <span className="font-semibold text-ink">{receipts[0]?.vendor}</span></p>
+                    <div className="mt-1 flex items-baseline justify-between gap-3">
+                        <p className="min-w-0 truncate text-base font-semibold text-ink">{transaction.description}</p>
+                        <Money amount={transactionAmount} className="text-xl font-bold text-ink" />
                     </div>
                 </div>
 
                 <div>
-                    <h3 className="text-base font-semibold text-white">Select Invoices to Pay</h3>
-                    <div className="mt-2 space-y-2 max-h-60 overflow-y-auto pr-2">
-                        {sortedReceipts.map(receipt => (
-                            <label key={receipt.id} htmlFor={`receipt-${receipt.id}`} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${selectedIds.includes(receipt.id) ? 'bg-brand-600/70 border-brand-500' : 'bg-gray-700 border-gray-600'} border`}>
-                                <div className="flex items-center">
-                                    <input id={`receipt-${receipt.id}`} type="checkbox" checked={selectedIds.includes(receipt.id)} onChange={() => handleToggle(receipt.id)} className="h-5 w-5 rounded border-gray-500 bg-gray-800 text-brand-600 focus:ring-brand-500" />
-                                    <div className="ml-3">
-                                        <p className="font-medium text-white">{formatDate(receipt.date)}</p>
-                                        <p className="text-xs text-gray-400">{receipt.category}</p>
-                                    </div>
-                                </div>
-                                <p className="font-semibold text-white">{formatCurrency(receipt.amount)}</p>
-                            </label>
-                        ))}
-                    </div>
+                    <h3 className="text-base font-bold text-ink">Bills on account</h3>
+                    <ul className="m-0 mt-2 max-h-72 list-none overflow-y-auto rounded-card border border-line bg-surface p-0">
+                        {sortedReceipts.map(receipt => {
+                            const on = selectedIds.includes(receipt.id);
+                            return (
+                                <li key={receipt.id} className={cx('border-b border-line px-3 last:border-b-0', on && 'bg-accent-soft')}>
+                                    <Checkbox
+                                        id={`receipt-${receipt.id}`}
+                                        checked={on}
+                                        onChange={() => handleToggle(receipt.id)}
+                                        className="w-full py-1 [&>span:last-child]:flex-1"
+                                        label={
+                                            <span className="flex w-full items-center justify-between gap-3">
+                                                <span className="min-w-0">
+                                                    <span className="num block text-base font-semibold text-ink">{formatDate(receipt.date)}</span>
+                                                    <span className="block truncate text-sm text-ink-3">{receipt.category}</span>
+                                                </span>
+                                                <Money amount={receipt.amount} className="text-base font-semibold text-ink" />
+                                            </span>
+                                        }
+                                    />
+                                </li>
+                            );
+                        })}
+                    </ul>
                 </div>
 
-                 <div className="space-y-3 pt-4 border-t border-gray-700">
-                    <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Payment Amount</span><span className="font-medium text-white">{formatCurrency(transactionAmount)}</span></div>
-                    <div className="flex justify-between items-center text-sm"><span className="text-gray-400">Selected Invoices Total</span><span className="font-medium text-white">{formatCurrency(selectedTotal)}</span></div>
-                    <div className={`flex justify-between items-center text-lg font-bold p-3 rounded-lg ${
-                        isMatched ? 'bg-green-800/50 text-green-300' 
-                        : selectedIds.length > 0 ? 'bg-yellow-800/50 text-yellow-300'
-                        : 'bg-red-800/50 text-red-300'}`}>
-                        <span>{isMatched ? 'Matched' : (difference > 0 ? 'Overpaid by' : 'Credit/Shortfall')}</span>
-                        <span>{formatCurrency(Math.abs(difference))}</span>
+                <dl className="m-0 space-y-2 border-t border-line pt-4 text-sm">
+                    <div className="flex items-baseline justify-between"><dt className="text-ink-3">Payment</dt><dd className="m-0"><Money amount={transactionAmount} className="font-semibold text-ink" /></dd></div>
+                    <div className="flex items-baseline justify-between"><dt className="text-ink-3">Bills ticked</dt><dd className="m-0"><Money amount={selectedTotal} className="font-semibold text-ink" /></dd></div>
+                    <div className={cx(
+                        'flex items-center justify-between rounded-control px-3 py-2.5 text-base font-bold',
+                        isMatched ? 'bg-success-soft text-success-ink'
+                        : selectedIds.length > 0 ? 'bg-warning-soft text-warning-ink'
+                        : 'bg-surface-2 text-ink-2')}>
+                        <dt className="flex items-center gap-2">
+                            {isMatched ? <CheckCircleIcon className="h-5 w-5" /> : <ExclamationTriangleIcon className="h-5 w-5" />}
+                            {isMatched ? 'Matched' : (difference > 0 ? 'Overpaid by' : 'Credit/Shortfall')}
+                        </dt>
+                        <dd className="m-0"><Money amount={Math.abs(difference)} /></dd>
                     </div>
-                </div>
-
+                </dl>
             </div>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 grid grid-cols-2 gap-3 bg-gray-800">
-                <button type="button" onClick={() => onCategorizeManually(transaction)} className="w-full px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
-                    Categorize Manually
-                </button>
+            <footer className="flex flex-shrink-0 flex-col-reverse gap-2 border-t border-line bg-surface px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+                <Button variant="secondary" onClick={() => onCategorizeManually(transaction)}>
+                    Categorise instead
+                </Button>
                 {isMatched ? (
-                    <button onClick={handleReconcile} disabled={!isMatched || isSubmitting} className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {isSubmitting ? <Spinner /> : `Reconcile ${formatCurrency(selectedTotal)}`}
-                    </button>
+                    <Button onClick={handleReconcile} disabled={!isMatched} loading={isSubmitting}>
+                        Match {formatCurrency(selectedTotal)}
+                    </Button>
                 ) : (
-                    <button onClick={handleForceReconcile} disabled={selectedIds.length === 0 || isSubmitting} className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50">
-                        {isSubmitting ? <Spinner /> : `Reconcile Payment of ${formatCurrency(transactionAmount)}`}
-                    </button>
+                    <Button onClick={handleForceReconcile} disabled={selectedIds.length === 0} loading={isSubmitting}>
+                        Match payment of {formatCurrency(transactionAmount)}
+                    </Button>
                 )}
             </footer>
         </div>

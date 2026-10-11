@@ -1,5 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { CheckCircleIcon, ExclamationTriangleIcon, InformationCircleIcon, WhatsAppIcon, XMarkIcon } from '../icons';
+import { createPortal } from 'react-dom';
+import './primitives.css';
+import { CheckIcon, ExclamationCircleIcon, InformationCircleIcon, WhatsAppIcon, XMarkIcon } from '../icons';
 
 type ToastVariant = 'success' | 'error' | 'info';
 
@@ -33,7 +35,8 @@ export interface WhatsAppToastOptions {
 }
 
 interface ToastContextState {
-    success: (message: string) => void;
+    /** Past-tense result. Pass an action for Undo. */
+    success: (message: string, action?: ToastAction) => void;
     error: (message: string) => void;
     info: (message: string, action?: ToastAction) => void;
     whatsapp: (message: string, action?: ToastAction, title?: string, opts?: WhatsAppToastOptions) => void;
@@ -49,17 +52,25 @@ export const useToast = (): ToastContextState => {
     return context;
 };
 
+// Six seconds for all (paused on hover or focus), so Undo is reachable by
+// keyboard before the toast goes.
 const DISMISS_AFTER_MS: Record<ToastVariant, number> = {
-    success: 4000,
-    info: 4000,
+    success: 6000,
+    info: 6000,
     error: 6000,
 };
 
-const VARIANT_STYLES: Record<ToastVariant, { icon: React.ComponentType<{ className?: string }>; iconClass: string; borderClass: string; role: string }> = {
-    success: { icon: CheckCircleIcon, iconClass: 'text-emerald-400', borderClass: 'border-l-emerald-500', role: 'status' },
-    error: { icon: ExclamationTriangleIcon, iconClass: 'text-red-400', borderClass: 'border-l-red-500', role: 'alert' },
-    info: { icon: InformationCircleIcon, iconClass: 'text-brand-400', borderClass: 'border-l-brand-500', role: 'status' },
+// Inverse card (ink on surface flips per theme); the status dot uses the
+// soft/ink pair, which reads on both the dark light-theme toast and the light
+// dark-theme one.
+const VARIANT_STYLES: Record<ToastVariant, { icon: React.ComponentType<{ className?: string }>; dot: string; role: 'status' | 'alert' }> = {
+    success: { icon: CheckIcon, dot: 'bg-success-soft text-success-ink', role: 'status' },
+    error: { icon: ExclamationCircleIcon, dot: 'bg-danger-soft text-danger-ink', role: 'alert' },
+    info: { icon: InformationCircleIcon, dot: 'bg-info-soft text-info-ink', role: 'status' },
 };
+
+/** How long a toast takes to leave (matches --dur-2). */
+const LEAVE_MS = 160;
 
 const MAX_VISIBLE = 4;
 const MAX_WHATSAPP = 3;
@@ -71,23 +82,112 @@ const MAX_WHATSAPP = 3;
 export const whatsAppName = (title?: string, fallback = 'WhatsApp message'): string =>
     (title || '').replace(/(^|\s*·\s*)WhatsApp\s*$/i, '').trim() || fallback;
 
-// Drop-in and a green glow that pulses three times then settles. Only used
-// behind `motion-safe:`, so reduced-motion gets the static card.
-const WHATSAPP_KEYFRAMES = `
-@keyframes wa-drop-in {
-  from { opacity: 0; transform: translateY(-1.25rem) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+export interface ToastProps {
+    variant?: ToastVariant;
+    message: React.ReactNode;
+    action?: ToastAction;
+    /** Shows the X. */
+    onDismiss?: () => void;
+    /** Plays the leave animation. */
+    leaving?: boolean;
+    className?: string;
 }
-@keyframes wa-glow {
-  0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.75); }
-  100% { box-shadow: 0 0 0 16px rgba(37, 211, 102, 0); }
-}`;
+
+/**
+ * The toast card on its own: an inverse bar with a status dot, the message,
+ * one action and a close button. ToastProvider shows these for you; render
+ * one directly only for a preview.
+ */
+export const Toast: React.FC<ToastProps & Omit<React.HTMLAttributes<HTMLDivElement>, 'role'>> = ({
+    variant = 'success', message, action, onDismiss, leaving, className, ...rest
+}) => {
+    const { icon: Icon, dot, role } = VARIANT_STYLES[variant];
+    return (
+        <div
+            role={role}
+            {...rest}
+            className={`${leaving ? 'fl-toast-out' : 'fl-toast-in'} pointer-events-auto flex items-center gap-3 rounded-control bg-ink py-1 pe-0 ps-3.5 text-sm leading-5 text-surface shadow-e3 ${className ?? ''}`}
+        >
+            <span className={`grid h-[22px] w-[22px] flex-none place-items-center rounded-full ${dot}`} aria-hidden="true">
+                <Icon className="h-3.5 w-3.5" />
+            </span>
+            <p className="min-w-0 flex-1 break-words py-2">{message}</p>
+            {action && (
+                <button
+                    type="button"
+                    onClick={action.onClick}
+                    className="min-h-[48px] min-w-[48px] flex-none rounded-chip px-2.5 text-sm font-bold underline decoration-1 underline-offset-[3px] hover:decoration-2 focus-visible:outline-surface"
+                >
+                    {action.label}
+                </button>
+            )}
+            {onDismiss && (
+                <button
+                    type="button"
+                    onClick={onDismiss}
+                    aria-label="Dismiss notification"
+                    className="group/x grid h-12 w-12 flex-none place-items-center rounded-control text-surface/70 hover:text-surface focus-visible:outline-surface focus-visible:outline-offset-[-3px]"
+                >
+                    <span className="grid h-9 w-9 place-items-center rounded-chip transition-colors duration-quick ease-out group-hover/x:bg-surface/10">
+                        <XMarkIcon className="h-[18px] w-[18px]" />
+                    </span>
+                </button>
+            )}
+        </div>
+    );
+};
+
+/** One toast. Owns its timer so hover or focus can pause it. */
+const ToastCard: React.FC<{ item: ToastItem; onDismiss: (id: number) => void }> = ({ item, onDismiss }) => {
+    const { id, variant, message, action } = item;
+    const [leaving, setLeaving] = useState(false);
+    const remaining = useRef(DISMISS_AFTER_MS[variant]);
+    const startedAt = useRef(0);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const leave = useCallback(() => {
+        if (timer.current) clearTimeout(timer.current);
+        setLeaving(true);
+        timer.current = setTimeout(() => onDismiss(id), LEAVE_MS);
+    }, [id, onDismiss]);
+
+    const run = useCallback(() => {
+        startedAt.current = Date.now();
+        timer.current = setTimeout(leave, remaining.current);
+    }, [leave]);
+
+    const pause = () => {
+        if (leaving || !timer.current) return;
+        clearTimeout(timer.current);
+        timer.current = null;
+        remaining.current = Math.max(1500, remaining.current - (Date.now() - startedAt.current));
+    };
+    const resume = () => { if (!leaving && !timer.current) run(); };
+
+    useEffect(() => {
+        run();
+        return () => { if (timer.current) clearTimeout(timer.current); };
+    }, [run]);
+
+    return (
+        <Toast
+            variant={variant}
+            message={message}
+            action={action && { label: action.label, onClick: () => { action.onClick(); leave(); } }}
+            onDismiss={leave}
+            leaving={leaving}
+            onMouseEnter={pause}
+            onMouseLeave={resume}
+            onFocus={pause}
+            onBlur={resume}
+        />
+    );
+};
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [toasts, setToasts] = useState<ToastItem[]>([]);
     const [waToasts, setWaToasts] = useState<WhatsAppItem[]>([]);
     const nextId = useRef(0);
-    const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
     const dismiss = useCallback((id: number) => {
         setToasts(prev => prev.filter(t => t.id !== id));
@@ -102,8 +202,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Newest first: the container is a column-reverse stack, so the newest
         // toast renders closest to the bottom edge.
         setToasts(prev => [{ id, variant, message, action }, ...prev].slice(0, MAX_VISIBLE));
-        timers.current.push(setTimeout(() => dismiss(id), DISMISS_AFTER_MS[variant]));
-    }, [dismiss]);
+    }, []);
 
     const showWhatsApp = useCallback((message: string, action?: ToastAction, title?: string, opts?: WhatsAppToastOptions) => {
         const pulse = ++nextId.current;
@@ -119,95 +218,62 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
     }, []);
 
-    useEffect(() => () => {
-        timers.current.forEach(clearTimeout);
-    }, []);
-
     const value: ToastContextState = {
-        success: useCallback((message: string) => show('success', message), [show]),
+        success: useCallback((message: string, action?: ToastAction) => show('success', message, action), [show]),
         error: useCallback((message: string) => show('error', message), [show]),
         info: useCallback((message: string, action?: ToastAction) => show('info', message, action), [show]),
         whatsapp: showWhatsApp,
     };
 
-    return (
-        <ToastContext.Provider value={value}>
-            {children}
-            {/* Stacked bottom-right; on mobile it clears the floating bottom nav bar. */}
-            <div className="fixed z-[70] bottom-28 right-4 md:bottom-6 flex flex-col-reverse gap-2.5 w-[calc(100%-2rem)] max-w-sm pointer-events-none print:hidden">
-                {toasts.map(({ id, variant, message, action }) => {
-                    const { icon: Icon, iconClass, borderClass, role } = VARIANT_STYLES[variant];
-                    return (
-                        <div
-                            key={id}
-                            role={role}
-                            className={`animate-toast-in pointer-events-auto flex items-start gap-3 rounded-xl shadow-2xl shadow-black/50 px-4 py-3.5 transition-all bg-gray-800/95 backdrop-blur-sm border border-gray-700/60 border-l-4 ${borderClass}`}
-                        >
-                            <Icon className={`h-5 w-5 flex-shrink-0 mt-0.5 ${iconClass}`} />
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm text-gray-100 break-words leading-snug">{message}</p>
-                                {action && (
-                                    <button
-                                        type="button"
-                                        onClick={() => { action.onClick(); dismiss(id); }}
-                                        className="mt-1.5 text-sm font-semibold text-brand-400 hover:text-brand-300 transition-colors"
-                                    >
-                                        {action.label}
-                                    </button>
-                                )}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => dismiss(id)}
-                                aria-label="Dismiss notification"
-                                className="p-0.5 -m-0.5 rounded-md text-gray-400 hover:text-white transition-colors"
-                            >
-                                <XMarkIcon className="h-4 w-4" />
-                            </button>
-                        </div>
-                    );
-                })}
+    // Both regions live straight under <body> and opt out of a modal's inert
+    // background, so a toast raised from inside a sheet is still seen, heard
+    // and tappable.
+    const regions = (
+        <>
+            {/* Phone: centred above the bottom tab bar. Desktop: bottom-right. */}
+            <div
+                data-modal-exempt=""
+                aria-live="polite"
+                className="pointer-events-none fixed inset-x-4 bottom-[calc(7rem+env(safe-area-inset-bottom))] z-toast mx-auto flex max-w-[420px] flex-col-reverse gap-2 md:inset-x-auto md:bottom-6 md:end-6 md:mx-0 md:w-[420px] print:hidden"
+            >
+                {toasts.map(item => <ToastCard key={item.id} item={item} onDismiss={dismiss} />)}
             </div>
 
             {/* WhatsApp: the app is the only place these can be read, so they
                 drop in at the top, glow, and stay until dealt with. Phone: full
                 width at the top. Desktop: top-right, under the header. */}
-            <style>{WHATSAPP_KEYFRAMES}</style>
             <div
+                data-modal-exempt=""
                 role="alert"
                 aria-live="assertive"
-                className="fixed z-[75] top-3 inset-x-3 md:inset-x-auto md:top-20 md:right-4 md:w-full md:max-w-md flex flex-col gap-3 pointer-events-none print:hidden"
+                className="pointer-events-none fixed inset-x-3 top-[calc(0.75rem+env(safe-area-inset-top))] z-toast flex flex-col gap-3 md:inset-x-auto md:end-4 md:top-20 md:w-full md:max-w-md print:hidden"
             >
                 {waToasts.map(({ id, pulse, message, name, action }) => (
-                    <div key={id} className="relative pointer-events-auto motion-safe:animate-[wa-drop-in_0.35s_cubic-bezier(0.22,1,0.36,1)_both]">
-                        <span
-                            key={pulse}
-                            aria-hidden="true"
-                            className="absolute inset-0 rounded-2xl pointer-events-none motion-safe:animate-[wa-glow_1s_ease-out_3]"
-                        />
-                        <div className="relative overflow-hidden rounded-2xl bg-[#1f2c34] ring-2 ring-[#25d366] shadow-2xl shadow-black/60">
-                            <div className="flex items-center gap-2 bg-[#25d366] px-4 py-2 text-white">
-                                <WhatsAppIcon className="h-5 w-5 flex-shrink-0" />
-                                <span className="text-sm font-bold tracking-wide">WhatsApp</span>
-                                <span className="text-xs font-medium text-white/85">· now</span>
+                    <div key={id} className="fl-drop-in pointer-events-auto relative">
+                        <span key={pulse} aria-hidden="true" className="fl-glow pointer-events-none absolute inset-0 rounded-card" />
+                        <div className="relative overflow-hidden rounded-card border border-line bg-surface shadow-e3 ring-2 ring-success">
+                            <div className="flex items-center gap-2 border-b border-line bg-success-soft py-1 pe-0 ps-4 text-success-ink">
+                                <WhatsAppIcon className="h-[18px] w-[18px] flex-none" />
+                                <span className="text-sm font-bold">WhatsApp</span>
+                                <span className="text-xs font-semibold opacity-80">· now</span>
                                 <button
                                     type="button"
                                     onClick={() => dismissWhatsApp(id)}
                                     aria-label="Dismiss WhatsApp message"
-                                    className="ml-auto -mr-1 p-1 rounded-md text-white/90 hover:text-white hover:bg-white/15 transition-colors"
+                                    className="-my-1 ms-auto grid h-12 w-12 place-items-center rounded-control transition-colors duration-quick ease-out hover:bg-success/15"
                                 >
-                                    <XMarkIcon className="h-4 w-4" />
+                                    <XMarkIcon className="h-[18px] w-[18px]" />
                                 </button>
                             </div>
-                            <div className="px-4 pt-3 pb-3.5">
-                                <p className="text-base font-semibold text-white truncate">{name}</p>
-                                <p className="mt-1 text-sm text-gray-200 leading-snug break-words line-clamp-3">{message}</p>
+                            <div className="px-4 pb-3.5 pt-3">
+                                <p className="truncate text-base font-bold text-ink">{name}</p>
+                                <p className="mt-1 line-clamp-3 break-words text-sm leading-5 text-ink-2">{message}</p>
                                 <div className="mt-3 flex items-center gap-2">
                                     {action && (
                                         <button
                                             type="button"
                                             onClick={() => { action.onClick(); dismissWhatsApp(id); }}
-                                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#25d366] hover:bg-[#20ba5a] px-4 py-2 text-sm font-semibold text-white shadow-md shadow-[#25d366]/25 transition-colors active:scale-95"
+                                            className="inline-flex min-h-[48px] items-center gap-2 rounded-control bg-success px-4 text-sm font-semibold text-surface transition-[background-color,transform] duration-quick ease-out hover:bg-success-ink active:scale-[.97]"
                                         >
                                             <WhatsAppIcon className="h-4 w-4" />
                                             {action.label}
@@ -216,7 +282,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                                     <button
                                         type="button"
                                         onClick={() => dismissWhatsApp(id)}
-                                        className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+                                        className="min-h-[48px] rounded-control px-4 text-sm font-semibold text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink"
                                     >
                                         Later
                                     </button>
@@ -226,6 +292,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     </div>
                 ))}
             </div>
+        </>
+    );
+
+    return (
+        <ToastContext.Provider value={value}>
+            {children}
+            {typeof document !== 'undefined' ? createPortal(regions, document.body) : regions}
         </ToastContext.Provider>
     );
 };

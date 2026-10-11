@@ -1,37 +1,15 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { EmptyState, Input } from '../components/ui';
-import { ViewColumnsIcon, PlusIcon, MagnifyingGlassIcon, FunnelIcon, XMarkIcon } from '../components/icons';
+import { Avatar, Button, Checkbox, EmptyState, Input, List, ListRow, Search, StatusChip } from '../components/ui';
+import { cx, eyebrow } from '../components/ui/cx';
+import Select from '../components/common/Select';
+import { ViewColumnsIcon, PlusIcon, FunnelIcon, ClockIcon } from '../components/icons';
 import { useData } from '../hooks/useData';
 import { useUI } from '../hooks/useUI';
 import { LeadStage, Lead, LeadSource } from '../types';
 import LeadCard from '../components/crm/LeadCard';
-
-const STAGE_ORDER: LeadStage[] = [
-    LeadStage.NEW,
-    LeadStage.QUALIFIED,
-    LeadStage.TEST_DRIVE,
-    LeadStage.NEGOTIATION,
-    LeadStage.WON,
-    LeadStage.LOST,
-];
-
-const STAGE_COLORS: Record<LeadStage, string> = {
-    [LeadStage.NEW]: 'bg-blue-500',
-    [LeadStage.QUALIFIED]: 'bg-purple-500',
-    [LeadStage.TEST_DRIVE]: 'bg-amber-500',
-    [LeadStage.NEGOTIATION]: 'bg-orange-500',
-    [LeadStage.WON]: 'bg-green-500',
-    [LeadStage.LOST]: 'bg-gray-500',
-};
-
-const STAGE_BORDER_COLORS: Record<LeadStage, string> = {
-    [LeadStage.NEW]: 'border-blue-500/50',
-    [LeadStage.QUALIFIED]: 'border-purple-500/50',
-    [LeadStage.TEST_DRIVE]: 'border-amber-500/50',
-    [LeadStage.NEGOTIATION]: 'border-orange-500/50',
-    [LeadStage.WON]: 'border-green-500/50',
-    [LeadStage.LOST]: 'border-gray-500/50',
-};
+import { STAGE_ORDER, STAGE_CHIP, STAGE_LABEL, daysInStage, fullName, STALE_DAYS } from '../components/crm/leadStage';
+import StageMark from '../components/crm/StageMark';
+import { formatCurrency } from '../utils/helpers';
 
 const LEAD_SOURCES: LeadSource[] = [
     'Website',
@@ -42,6 +20,18 @@ const LEAD_SOURCES: LeadSource[] = [
     'AutoTrader',
     'eBay',
 ];
+
+/** One stage at a glance: shape + name, the count large, the money under it. */
+const StageTally: React.FC<{ stage: LeadStage; count: number; value: number; className?: string }> = ({ stage, count, value, className }) => (
+    <span className={cx('flex min-w-0 flex-col items-start gap-1', className)}>
+        <span className="flex w-full min-w-0 items-center gap-1.5 text-xs font-semibold text-ink-2">
+            <StageMark stage={stage} />
+            <span className="truncate">{STAGE_LABEL[stage]}</span>
+        </span>
+        <span className="num text-2xl font-bold leading-none text-ink">{count}</span>
+        <span className="num w-full truncate text-xs text-ink-3">{formatCurrency(value)}</span>
+    </span>
+);
 
 const PipelinePage: React.FC = () => {
     const { leads, updateLeadStage, setSelectedLeadId } = useData();
@@ -57,6 +47,8 @@ const PipelinePage: React.FC = () => {
     const [maxValue, setMaxValue] = useState('');
     const [hiddenStages, setHiddenStages] = useState<Set<LeadStage>>(new Set([LeadStage.LOST]));
     const [showFilters, setShowFilters] = useState(false);
+    // Phone and tablet: which stage the list shows. null = every open lead.
+    const [focusStage, setFocusStage] = useState<LeadStage | null>(null);
 
     const toggleStageVisibility = useCallback((stage: LeadStage) => {
         setHiddenStages(prev => {
@@ -126,6 +118,13 @@ const PipelinePage: React.FC = () => {
         }, {} as Record<LeadStage, Lead[]>);
     }, [filteredLeads]);
 
+    const valueByStage = useMemo(() => {
+        return STAGE_ORDER.reduce((acc, stage) => {
+            acc[stage] = leadsByStage[stage].reduce((sum, l) => sum + (l.value || 0), 0);
+            return acc;
+        }, {} as Record<LeadStage, number>);
+    }, [leadsByStage]);
+
     const handleDragStart = useCallback((e: React.DragEvent, lead: Lead) => {
         setDraggedLead(lead);
         e.dataTransfer.effectAllowed = 'move';
@@ -175,6 +174,8 @@ const PipelinePage: React.FC = () => {
     }, []);
 
     const hasActiveFilters = searchQuery || sourceFilter || dateFilter !== 'all' || minValue || maxValue;
+    // Search has its own clear button; the Filters button counts the rest.
+    const panelFilterCount = [sourceFilter, dateFilter !== 'all', minValue, maxValue].filter(Boolean).length;
 
     // Visible stages (excluding hidden ones)
     const visibleStages = useMemo(() =>
@@ -187,242 +188,287 @@ const PipelinePage: React.FC = () => {
         .filter(l => l.stage !== LeadStage.LOST)
         .reduce((sum, l) => sum + (l.value || 0), 0);
 
+    const openCount = filteredLeads.filter(l => l.stage !== LeadStage.WON && l.stage !== LeadStage.LOST).length;
+
+    // The phone list: one stage, or every open lead in board order.
+    const listLeads = focusStage
+        ? leadsByStage[focusStage]
+        : STAGE_ORDER.slice(0, 4).flatMap(stage => leadsByStage[stage]);
+
     if (leads.length === 0) {
         return (
             <EmptyState
-                icon={<ViewColumnsIcon className="w-12 h-12" />}
+                icon={<ViewColumnsIcon />}
                 title="No leads yet"
-                description="Start building your pipeline by adding your first lead."
-                actionLabel="Add Lead"
+                description="Leads from Auto Trader and your website land here, and Dave answers them. You can add a walk-in by hand."
+                actionLabel="Add a lead"
                 onAction={handleAddLead}
+                className="px-0"
             />
         );
     }
 
     return (
-        <div className="h-full flex flex-col">
-            {/* Pipeline Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-400">
-                        {filteredLeads.length} lead{filteredLeads.length !== 1 ? 's' : ''}
-                        {hasActiveFilters && ` (filtered from ${leads.length})`}
-                    </span>
-                    <span className="text-sm text-gray-600">|</span>
-                    <span className="text-sm text-green-400">
-                        Pipeline: £{totalValue.toLocaleString()}
-                    </span>
-                </div>
+        <div className="flex h-full flex-col gap-4">
+            {/* Summary: what's open and what it's worth */}
+            <p className="text-sm text-ink-2">
+                <span className="font-semibold text-ink">{openCount} open</span>
+                {hasActiveFilters && <span> · {filteredLeads.length} of {leads.length} leads match</span>}
+                <span> · pipeline </span>
+                <span className="num font-semibold text-ink">{formatCurrency(totalValue)}</span>
+            </p>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {/* Search */}
-                    <div className="relative flex-1 sm:flex-initial">
-                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                        <input
-                            type="text"
-                            placeholder="Search leads..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 pr-3 py-1.5 w-full sm:w-48 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                        />
-                    </div>
-
-                    {/* Filter Toggle */}
-                    <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`p-2 rounded-lg transition-colors ${
-                            showFilters || hasActiveFilters
-                                ? 'bg-brand-600 text-white'
-                                : 'bg-gray-800 text-gray-400 hover:text-white'
-                        }`}
-                        title="Toggle filters"
-                    >
-                        <FunnelIcon className="w-4 h-4" />
-                    </button>
-
-                    {/* Clear Filters */}
-                    {hasActiveFilters && (
-                        <button
-                            onClick={clearFilters}
-                            className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition-colors"
-                            title="Clear filters"
-                        >
-                            <XMarkIcon className="w-4 h-4" />
-                        </button>
+            {/* Toolbar */}
+            <div className="flex items-center gap-2">
+                <Search
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    label="Search leads"
+                    placeholder="Search leads"
+                    className="min-w-0 flex-1 lg:max-w-sm"
+                />
+                <button
+                    type="button"
+                    onClick={() => setShowFilters(!showFilters)}
+                    aria-expanded={showFilters}
+                    aria-controls="pipeline-filters"
+                    aria-label={panelFilterCount ? `Filters, ${panelFilterCount} on` : 'Filters'}
+                    className={cx(
+                        'inline-flex min-h-[48px] min-w-[48px] flex-none items-center justify-center gap-2 rounded-control border px-3 text-sm font-semibold',
+                        'transition-colors duration-quick ease-out [&_svg]:h-5 [&_svg]:w-5',
+                        showFilters || panelFilterCount
+                            ? 'border-accent bg-accent-soft text-accent-soft-ink'
+                            : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink active:bg-surface-3',
                     )}
-
-                    {/* Add Lead Button */}
-                    <button
-                        onClick={handleAddLead}
-                        className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 rounded-lg transition-colors flex-shrink-0"
-                    >
-                        <PlusIcon className="w-4 h-4" />
-                        <span className="hidden sm:inline">Add Lead</span>
-                    </button>
-                </div>
+                >
+                    <FunnelIcon aria-hidden="true" />
+                    <span className="hidden sm:inline">Filters</span>
+                    {panelFilterCount > 0 && <span aria-hidden="true" className="num">{panelFilterCount}</span>}
+                </button>
+                <Button onClick={handleAddLead} icon={<PlusIcon />} className="flex-none px-4 lg:ms-auto">
+                    Add lead
+                </Button>
             </div>
 
-            {/* Filter Panel */}
+            {/* Filter panel */}
             {showFilters && (
-                <div className="mb-4 p-4 bg-gray-900/50 rounded-xl border border-gray-800 animate-in slide-in-from-top-2 duration-200">
-                    <div className="flex flex-wrap items-end gap-4">
-                        {/* Source Filter */}
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Source</label>
-                            <select
+                <section id="pipeline-filters" aria-label="Filters" className="rounded-card border border-line bg-surface p-4">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <div className="min-w-0">
+                            <label htmlFor="pipeline-source" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Source</label>
+                            <Select
+                                id="pipeline-source"
                                 value={sourceFilter}
                                 onChange={(e) => setSourceFilter(e.target.value as LeadSource | '')}
-                                className="px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                             >
-                                <option value="">All Sources</option>
+                                <option value="">All sources</option>
                                 {LEAD_SOURCES.map(source => (
                                     <option key={source} value={source}>{source}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </div>
-
-                        {/* Date Filter */}
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Created</label>
-                            <select
+                        <div className="min-w-0">
+                            <label htmlFor="pipeline-created" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Created</label>
+                            <Select
+                                id="pipeline-created"
                                 value={dateFilter}
                                 onChange={(e) => setDateFilter(e.target.value as 'all' | '7days' | '30days' | '90days')}
-                                className="px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                             >
-                                <option value="all">All Time</option>
-                                <option value="7days">Last 7 Days</option>
-                                <option value="30days">Last 30 Days</option>
-                                <option value="90days">Last 90 Days</option>
-                            </select>
+                                <option value="all">Any time</option>
+                                <option value="7days">Last 7 days</option>
+                                <option value="30days">Last 30 days</option>
+                                <option value="90days">Last 90 days</option>
+                            </Select>
                         </div>
-
-                        {/* Value Range */}
-                        <div className="flex items-end gap-2">
-                            <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Min Value</label>
-                                <input
-                                    type="number"
-                                    placeholder="0"
-                                    value={minValue}
-                                    onChange={(e) => setMinValue(e.target.value)}
-                                    className="w-24 px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                />
-                            </div>
-                            <span className="text-gray-500 pb-1.5">-</span>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Max Value</label>
-                                <input
-                                    type="number"
-                                    placeholder="Any"
-                                    value={maxValue}
-                                    onChange={(e) => setMaxValue(e.target.value)}
-                                    className="w-24 px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                />
-                            </div>
-                        </div>
+                        <Input
+                            id="pipeline-min"
+                            label="Value from"
+                            type="number"
+                            inputMode="decimal"
+                            affix="£"
+                            placeholder="0"
+                            value={minValue}
+                            onChange={(e) => setMinValue(e.target.value)}
+                            className="num"
+                        />
+                        <Input
+                            id="pipeline-max"
+                            label="Value up to"
+                            type="number"
+                            inputMode="decimal"
+                            affix="£"
+                            placeholder="Any"
+                            value={maxValue}
+                            onChange={(e) => setMaxValue(e.target.value)}
+                            className="num"
+                        />
                     </div>
 
-                    {/* Stage Visibility */}
-                    <div className="mt-4 pt-4 border-t border-gray-800">
-                        <label className="block text-xs font-medium text-gray-500 mb-2">Show Stages</label>
-                        <div className="flex flex-wrap gap-2">
+                    {/* Board columns only exist on wide screens. */}
+                    <fieldset className="mt-4 hidden border-t border-line pt-3 lg:block">
+                        <legend className={cx(eyebrow, 'float-left mb-1 w-full pt-1')}>Columns on the board</legend>
+                        <div className="clear-left flex flex-wrap gap-x-6">
                             {STAGE_ORDER.map(stage => (
-                                <button
+                                <Checkbox
                                     key={stage}
-                                    onClick={() => toggleStageVisibility(stage)}
-                                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                                        !hiddenStages.has(stage)
-                                            ? `${STAGE_COLORS[stage]} border-transparent text-white`
-                                            : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'
-                                    }`}
-                                >
-                                    {stage}
-                                </button>
+                                    label={STAGE_LABEL[stage]}
+                                    checked={!hiddenStages.has(stage)}
+                                    onChange={() => toggleStageVisibility(stage)}
+                                />
                             ))}
                         </div>
-                    </div>
-                </div>
+                    </fieldset>
+
+                    {hasActiveFilters && (
+                        <div className="mt-3 flex justify-end border-t border-line pt-3">
+                            <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>
+                        </div>
+                    )}
+                </section>
             )}
 
             {/* No Results */}
             {filteredLeads.length === 0 && hasActiveFilters && (
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                        <p className="text-gray-400">No leads match your filters</p>
-                        <button
-                            onClick={clearFilters}
-                            className="mt-2 text-sm text-brand-400 hover:text-brand-300"
-                        >
-                            Clear filters
-                        </button>
-                    </div>
-                </div>
+                <EmptyState
+                    icon={<FunnelIcon />}
+                    title="No leads match"
+                    description="Nothing fits the search and filters you've set. Clear them to see every lead again."
+                    actionLabel="Clear filters"
+                    onAction={clearFilters}
+                    className="rounded-card border border-line bg-surface"
+                />
             )}
 
-            {/* Kanban Board */}
             {filteredLeads.length > 0 && (
-                <div className="flex-1 overflow-x-auto pb-4">
-                    <div
-                        className="grid gap-4 min-w-max xl:min-w-0"
-                        style={{
-                            gridTemplateColumns: `repeat(${visibleStages.length}, minmax(280px, 1fr))`
-                        }}
-                    >
-                        {visibleStages.map(stage => (
-                            <div
-                                key={stage}
-                                className="flex flex-col min-w-[280px] xl:min-w-0"
-                                onDragOver={(e) => handleDragOver(e, stage)}
-                                onDragLeave={handleDragLeave}
-                                onDrop={(e) => handleDrop(e, stage)}
-                            >
-                                {/* Stage Header */}
-                                <div className="flex items-center gap-2 mb-3 px-1">
-                                    <div className={`w-3 h-3 rounded-full ${STAGE_COLORS[stage]}`} />
-                                    <h3 className="text-sm font-semibold text-gray-300 truncate">{stage}</h3>
-                                    <span className="ml-auto text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full flex-shrink-0">
-                                        {leadsByStage[stage].length}
-                                    </span>
-                                </div>
+                <>
+                    {/* Phone + tablet: stage tallies that filter the list below */}
+                    <div className="lg:hidden">
+                        <div role="group" aria-label="Show one stage" className="grid grid-cols-3 gap-1.5 md:grid-cols-6">
+                            {STAGE_ORDER.map(stage => {
+                                const active = focusStage === stage;
+                                return (
+                                    <button
+                                        key={stage}
+                                        type="button"
+                                        aria-pressed={active}
+                                        onClick={() => setFocusStage(active ? null : stage)}
+                                        className={cx(
+                                            'min-h-[48px] min-w-0 rounded-card border p-2.5 text-start transition-colors duration-quick ease-out',
+                                            active
+                                                ? 'border-accent bg-accent-soft'
+                                                : 'border-line bg-surface hover:bg-surface-2 active:bg-surface-3',
+                                        )}
+                                    >
+                                        <StageTally stage={stage} count={leadsByStage[stage].length} value={valueByStage[stage]} />
+                                    </button>
+                                );
+                            })}
+                        </div>
 
-                                {/* Stage Column */}
-                                <div
-                                    className={`
-                                        flex-1 space-y-2 min-h-[300px] rounded-xl p-2 transition-all duration-200
-                                        ${dragOverStage === stage
-                                            ? `bg-gray-800/80 border-2 border-dashed ${STAGE_BORDER_COLORS[stage]}`
-                                            : 'bg-gray-900/50 border-2 border-transparent'
-                                        }
-                                    `}
-                                >
-                                    {leadsByStage[stage].map(lead => (
-                                        <div
+                        <div className="mb-2 mt-5 flex min-h-[32px] items-center justify-between gap-3">
+                            <h2 className="text-lg font-bold text-ink">
+                                {focusStage ? STAGE_LABEL[focusStage] : 'All open leads'}
+                                <span className="num ms-2 text-base font-semibold text-ink-3">{listLeads.length}</span>
+                            </h2>
+                            {focusStage && (
+                                <Button variant="ghost" size="sm" onClick={() => setFocusStage(null)}>Show all open</Button>
+                            )}
+                        </div>
+
+                        {listLeads.length > 0 ? (
+                            <List ariaLabel={focusStage ? `${STAGE_LABEL[focusStage]} leads` : 'Open leads'}>
+                                {listLeads.map(lead => {
+                                    const days = daysInStage(lead);
+                                    const stale = days > STALE_DAYS && lead.stage !== LeadStage.WON && lead.stage !== LeadStage.LOST;
+                                    return (
+                                        <ListRow
                                             key={lead.id}
-                                            draggable
-                                            onDragStart={(e) => handleDragStart(e, lead)}
-                                            onDragEnd={handleDragEnd}
-                                        >
-                                            <LeadCard
-                                                lead={lead}
-                                                onClick={handleLeadClick}
-                                                isDragging={draggedLead?.id === lead.id}
-                                            />
-                                        </div>
-                                    ))}
+                                            onClick={() => handleLeadClick(lead)}
+                                            leading={<Avatar name={fullName(lead)} size="md" />}
+                                            title={fullName(lead)}
+                                            meta={
+                                                <>
+                                                    {/* Waiting over a week comes first, in amber; otherwise the car. */}
+                                                    {stale && (
+                                                        <span className="font-semibold text-warning">
+                                                            <ClockIcon className="-mt-0.5 me-0.5 inline h-3.5 w-3.5" aria-hidden="true" />
+                                                            <span className="num">{days}d</span>
+                                                            <span className="sr-only"> in this stage</span>
+                                                            {' · '}
+                                                        </span>
+                                                    )}
+                                                    {lead.vehicleOfInterest || lead.source}
+                                                </>
+                                            }
+                                            amount={lead.value ? formatCurrency(lead.value) : undefined}
+                                            end={focusStage ? undefined : <StatusChip status={STAGE_CHIP[lead.stage]}>{STAGE_LABEL[lead.stage]}</StatusChip>}
+                                        />
+                                    );
+                                })}
+                            </List>
+                        ) : (
+                            <p className="rounded-card border border-line bg-surface px-4 py-5 text-sm text-ink-3">
+                                {focusStage ? `No leads in ${STAGE_LABEL[focusStage]} right now.` : 'No open leads right now.'}
+                            </p>
+                        )}
+                    </div>
 
-                                    {leadsByStage[stage].length === 0 && (
-                                        <div className="flex flex-col items-center justify-center h-24 text-gray-600 text-xs">
-                                            <p>No leads</p>
-                                            {dragOverStage === stage && (
-                                                <p className="mt-1 text-brand-400">Drop here</p>
+                    {/* Desktop: the board. Drag a card to move it between stages. */}
+                    <div className="hidden min-h-0 flex-1 overflow-x-auto pb-2 lg:block" role="region" aria-label="Pipeline board" tabIndex={0}>
+                        <div
+                            className="grid min-h-full gap-3"
+                            style={{ gridTemplateColumns: `repeat(${visibleStages.length}, minmax(208px, 1fr))` }}
+                        >
+                            {visibleStages.map(stage => {
+                                const over = dragOverStage === stage;
+                                return (
+                                    <section
+                                        key={stage}
+                                        aria-label={`${STAGE_LABEL[stage]}, ${leadsByStage[stage].length} leads`}
+                                        className="flex min-w-0 flex-col"
+                                        onDragOver={(e) => handleDragOver(e, stage)}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={(e) => handleDrop(e, stage)}
+                                    >
+                                        <StageTally
+                                            stage={stage}
+                                            count={leadsByStage[stage].length}
+                                            value={valueByStage[stage]}
+                                            className="mb-2 border-b border-line px-1 pb-3"
+                                        />
+                                        <div
+                                            className={cx(
+                                                'flex flex-1 flex-col gap-2 rounded-card border p-1.5 transition-colors duration-quick ease-out',
+                                                over ? 'border-dashed border-accent bg-accent-soft' : 'border-transparent bg-surface-2',
+                                            )}
+                                        >
+                                            {leadsByStage[stage].map(lead => (
+                                                <div
+                                                    key={lead.id}
+                                                    draggable
+                                                    onDragStart={(e) => handleDragStart(e, lead)}
+                                                    onDragEnd={handleDragEnd}
+                                                >
+                                                    <LeadCard
+                                                        lead={lead}
+                                                        onClick={handleLeadClick}
+                                                        isDragging={draggedLead?.id === lead.id}
+                                                    />
+                                                </div>
+                                            ))}
+
+                                            {leadsByStage[stage].length === 0 && (
+                                                <p className={cx('flex h-24 items-center justify-center text-center text-sm', over ? 'font-semibold text-accent-text' : 'text-ink-3')}>
+                                                    {over ? 'Drop here' : 'No leads'}
+                                                </p>
                                             )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                                    </section>
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

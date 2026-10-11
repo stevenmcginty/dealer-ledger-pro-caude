@@ -1,0 +1,36 @@
+/* Expenses: the "reading the receipt" sweep over the photo while it scans.
+   A soft accent band travels down the receipt and back. Under reduced motion it
+   stays still as a faint tint, and the words beside it say what is happening. */
+
+.exp-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: rgb(var(--c-accent) / .06);
+}
+
+.exp-scan::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 28%;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--c-accent) / 0) 0%,
+    rgb(var(--c-accent) / .22) 85%,
+    rgb(var(--c-accent) / .9) 100%
+  );
+  animation: exp-scan-sweep 1400ms cubic-bezier(.45, 0, .55, 1) infinite alternate;
+}
+
+@keyframes exp-scan-sweep {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(360%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exp-scan::after { animation: none; display: none; }
+  .exp-scan { background: rgb(var(--c-accent) / .12); }
+}

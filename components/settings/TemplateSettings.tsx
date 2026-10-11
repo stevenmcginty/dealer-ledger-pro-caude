@@ -152,8 +152,8 @@ const TemplateSettings: React.FC = () => {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h3 className="text-lg font-semibold text-white">Email Templates</h3>
-                    <p className="text-sm text-gray-400">
+                    <h3 className="text-lg font-semibold text-ink">Email Templates</h3>
+                    <p className="text-sm text-ink-3">
                         Create reusable templates for common email responses
                     </p>
                 </div>
@@ -177,8 +177,8 @@ const TemplateSettings: React.FC = () => {
                     onClick={() => setSelectedCategory('all')}
                     className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                         selectedCategory === 'all'
-                            ? 'bg-brand-600 text-white'
-                            : 'bg-gray-800 text-gray-400 hover:text-white'
+                            ? 'bg-accent text-on-accent'
+                            : 'bg-surface text-ink-3 hover:text-ink'
                     }`}
                 >
                     All ({emailTemplates.length})
@@ -192,8 +192,8 @@ const TemplateSettings: React.FC = () => {
                             onClick={() => setSelectedCategory(cat)}
                             className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                                 selectedCategory === cat
-                                    ? 'bg-brand-600 text-white'
-                                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                                    ? 'bg-accent text-on-accent'
+                                    : 'bg-surface text-ink-3 hover:text-ink'
                             }`}
                         >
                             {cat} ({count})
@@ -204,12 +204,12 @@ const TemplateSettings: React.FC = () => {
 
             {/* Template Editor */}
             {(isCreating || isEditing) && (
-                <Card className="border-brand-500/50">
+                <Card className="border-accent/50">
                     <Card.Header>{isCreating ? 'Create Template' : 'Edit Template'}</Card.Header>
                     <Card.Body className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">
+                                <label className="block text-sm font-medium text-ink-3 mb-1">
                                     Template Name
                                 </label>
                                 <Input
@@ -219,13 +219,13 @@ const TemplateSettings: React.FC = () => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-400 mb-1">
+                                <label className="block text-sm font-medium text-ink-3 mb-1">
                                     Category
                                 </label>
                                 <select
                                     value={formData.category || 'Custom'}
                                     onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                                    className="w-full px-3 py-2 bg-surface border border-line rounded-lg text-ink"
                                 >
                                     {TEMPLATE_CATEGORIES.map(cat => (
                                         <option key={cat} value={cat}>{cat}</option>
@@ -235,7 +235,7 @@ const TemplateSettings: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">
+                            <label className="block text-sm font-medium text-ink-3 mb-1">
                                 Subject Line
                             </label>
                             <Input
@@ -246,20 +246,20 @@ const TemplateSettings: React.FC = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-1">
+                            <label className="block text-sm font-medium text-ink-3 mb-1">
                                 Email Body
                             </label>
                             <textarea
                                 value={formData.body || ''}
                                 onChange={(e) => setFormData(prev => ({ ...prev, body: e.target.value }))}
                                 placeholder="Enter your email template..."
-                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 h-48 resize-none font-mono text-sm"
+                                className="w-full px-3 py-2 bg-surface border border-line rounded-lg text-ink placeholder:text-ink-3 h-48 resize-none font-mono text-sm"
                             />
                         </div>
 
                         {/* Variables */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-2">
+                            <label className="block text-sm font-medium text-ink-3 mb-2">
                                 Insert Variable
                             </label>
                             <div className="flex flex-wrap gap-2">
@@ -267,7 +267,7 @@ const TemplateSettings: React.FC = () => {
                                     <button
                                         key={v.key}
                                         onClick={() => insertVariable(v.key)}
-                                        className="px-2 py-1 text-xs bg-gray-800 text-brand-400 rounded hover:bg-gray-700"
+                                        className="px-2 py-1 text-xs bg-surface text-accent-text rounded hover:bg-surface-2"
                                         title={v.description}
                                     >
                                         {v.key}
@@ -276,7 +276,7 @@ const TemplateSettings: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-4 border-t border-gray-700">
+                        <div className="flex justify-end gap-2 pt-4 border-t border-line">
                             <Button
                                 variant="ghost"
                                 onClick={() => {
@@ -307,27 +307,27 @@ const TemplateSettings: React.FC = () => {
             ) : (
                 <div className="space-y-3">
                     {filteredTemplates.map(template => (
-                        <Card key={template.id} className="hover:border-gray-600 transition-colors">
+                        <Card key={template.id} className="hover:border-line-strong transition-colors">
                             <Card.Body className="p-4">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <h4 className="font-medium text-white">{template.name}</h4>
+                                            <h4 className="font-medium text-ink">{template.name}</h4>
                                             <Badge variant="default" size="sm">{template.category}</Badge>
                                         </div>
-                                        <p className="text-sm text-gray-400 truncate">{template.subject}</p>
-                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{template.body}</p>
+                                        <p className="text-sm text-ink-3 truncate">{template.subject}</p>
+                                        <p className="text-xs text-ink-3 mt-1 line-clamp-2">{template.body}</p>
                                     </div>
                                     <div className="flex items-center gap-1 flex-shrink-0">
                                         <button
                                             onClick={() => handleEditClick(template)}
-                                            className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700"
+                                            className="p-2 text-ink-3 hover:text-ink rounded-lg hover:bg-surface-2"
                                         >
                                             <PencilIcon className="w-4 h-4" />
                                         </button>
                                         <button
                                             onClick={() => handleDeleteTemplate(template.id)}
-                                            className="p-2 text-gray-400 hover:text-red-400 rounded-lg hover:bg-gray-700"
+                                            className="p-2 text-ink-3 hover:text-danger rounded-lg hover:bg-surface-2"
                                         >
                                             <TrashIcon className="w-4 h-4" />
                                         </button>

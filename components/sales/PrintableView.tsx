@@ -6,7 +6,8 @@ import { downloadPrintablePdf } from './printablePdf';
 import { showsTermsPage, includesTermsPage, cancellationFormGoods, cancellationFormRecipient, oneLine } from '../../utils/salesTermsPage';
 import SendDocumentPanel from './SendDocumentPanel';
 import { useData } from '../../hooks/useData';
-import { useToast } from '../ui';
+import { Button, Checkbox, DocChip, IconButton, useToast } from '../ui';
+import { DOC_KIND, DOC_NAME } from './docMeta';
 
 interface PrintableViewProps {
     document: SalesDocument;
@@ -129,30 +130,44 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
     );
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/80 backdrop-blur-sm print:bg-white">
-            <header className="bg-gray-800 p-2 flex justify-between items-center print:hidden flex-shrink-0">
-                <h3 className="font-bold text-white ml-2">{isPreview ? 'Invoice Preview' : `${doc.documentType} #${doc.invoiceNumber}`}</h3>
-                <div className="flex items-center">
-                    {termsPageAvailable && (
-                        <label className="flex items-center gap-1.5 mr-3 text-sm text-gray-300 cursor-pointer select-none" title="Add the terms and cancellation page as page 2">
-                            <input type="checkbox" checked={addTermsPage} onChange={e => setAddTermsPage(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600" />
-                            Add terms page
-                        </label>
-                    )}
-                    {!isPreview && (
-                        <>
-                            <button onClick={handleDownloadPdf} className="p-2 mr-1 rounded-full text-gray-300 hover:bg-gray-700" title="Download PDF"><ArrowDownTrayIcon className="h-5 w-5" /></button>
-                            <button onClick={() => window.print()} className="p-2 mr-1 rounded-full text-gray-300 hover:bg-gray-700" title="Print"><PrinterIcon className="h-5 w-5" /></button>
-                        </>
-                    )}
-                    <button onClick={onClose} className="p-2 rounded-full text-gray-300 hover:bg-gray-700" title="Close"><XMarkIcon className="h-5 w-5" /></button>
+        <div className="fixed inset-0 z-50 flex flex-col bg-surface-3 print:bg-white">
+            {/* Viewer chrome (screen only). Phones: title + close, then the terms
+                tick box with download and print. Wider: one bar. */}
+            <header className="flex flex-none flex-wrap items-center gap-x-1 border-b border-line bg-surface px-2 py-1 text-ink sm:flex-nowrap sm:px-3 print:hidden">
+                <div className="order-1 flex min-w-0 flex-1 items-center gap-2.5 ps-2">
+                    <DocChip kind={DOC_KIND[doc.documentType]} label={null} />
+                    <h3 className="min-w-0 truncate text-base font-bold leading-tight">
+                        {isPreview
+                            ? <>Preview <span className="font-normal text-ink-3">· not saved yet</span></>
+                            : <>{DOC_NAME[doc.documentType]} <span className="num">#{doc.invoiceNumber}</span></>}
+                    </h3>
                 </div>
+                {(termsPageAvailable || !isPreview) && (
+                    <div className="order-3 flex basis-full items-center justify-between gap-1 border-t border-line ps-2 sm:order-2 sm:basis-auto sm:justify-end sm:border-t-0 sm:ps-0">
+                        {termsPageAvailable ? (
+                            <Checkbox
+                                checked={addTermsPage}
+                                onChange={e => setAddTermsPage(e.target.checked)}
+                                label="Add terms page"
+                                title="Add the terms and cancellation page as page 2"
+                                className="me-2 text-sm font-semibold text-ink-2"
+                            />
+                        ) : <span />}
+                        {!isPreview && (
+                            <span className="flex items-center">
+                                <IconButton label="Download PDF" icon={<ArrowDownTrayIcon />} onClick={handleDownloadPdf} />
+                                <IconButton label="Print" icon={<PrinterIcon />} onClick={() => window.print()} />
+                            </span>
+                        )}
+                    </div>
+                )}
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClose} className="order-2 sm:order-3" />
             </header>
 
             {canSendToCustomer && <SendDocumentPanel doc={doc} />}
 
-            <main className="flex-1 overflow-y-auto p-4 sm:p-8 bg-gray-500">
-                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-sans text-sm print:shadow-none print:p-0 relative" style={{ padding: '6mm 10mm 70mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
+            <main className="flex-1 overflow-y-auto bg-surface-3 p-4 sm:p-8">
+                <div id="printable-content" className="bg-white w-full max-w-4xl mx-auto text-black font-paper text-sm print:shadow-none print:p-0 relative" style={{ padding: '6mm 10mm 70mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
                     <header className="flex justify-between items-start pb-2">
                         <div className="text-black">
                             <h1 className="text-2xl font-bold uppercase text-black">{docTitles[doc.documentType]} #{doc.invoiceNumber}</h1>
@@ -281,7 +296,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                     </footer>
                 </div>
                 {showTermsPage && (
-                    <div id="printable-terms" className="bg-white w-full max-w-4xl mx-auto mt-6 text-black font-sans text-sm print:shadow-none print:p-0 print:mt-0 print:break-before-page relative" style={{ padding: '6mm 10mm 30mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
+                    <div id="printable-terms" className="bg-white w-full max-w-4xl mx-auto mt-6 text-black font-paper text-sm print:shadow-none print:p-0 print:mt-0 print:break-before-page relative" style={{ padding: '6mm 10mm 30mm 10mm', minHeight: '277mm', maxHeight: '277mm', overflow: 'hidden' }}>
                         <header className="flex justify-between items-start border-b-2 border-black pb-1 mb-3">
                             <div className="text-black">
                                 <h1 className="text-lg font-bold uppercase text-black">Terms and your right to cancel</h1>
@@ -314,13 +329,13 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
             </main>
             
             {isPreview && onConfirm && onBack && (
-                <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800 print:hidden">
-                    <button type="button" onClick={onBack} disabled={isSubmitting} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md disabled:opacity-50">
-                        Back to Edit
-                    </button>
-                    <button type="button" onClick={onConfirm} disabled={isSubmitting} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {isSubmitting ? 'Saving…' : 'Confirm & Save'}
-                    </button>
+                <footer className="flex flex-none items-center justify-between gap-2 border-t border-line bg-surface px-4 py-3 print:hidden [&>*]:flex-1 sm:[&>*]:flex-none">
+                    <Button type="button" variant="secondary" onClick={onBack} disabled={isSubmitting}>
+                        Back to edit
+                    </Button>
+                    <Button type="button" onClick={onConfirm} loading={isSubmitting}>
+                        Save {DOC_NAME[doc.documentType].toLowerCase()}
+                    </Button>
                 </footer>
             )}
         </div>

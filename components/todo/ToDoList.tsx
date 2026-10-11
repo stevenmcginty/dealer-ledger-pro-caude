@@ -1,11 +1,11 @@
-
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { ToDoItem } from '../../types';
-import { TrashIcon, EditIcon, PlusIcon } from '../icons';
-import { formatDate } from '../../utils/helpers';
+import { TrashIcon, PlusIcon } from '../icons';
+import { formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
+import { Button, Checkbox, IconButton } from '../ui';
+import { cx } from '../ui/cx';
 
 const isToday = (dateStr?: string): boolean => {
     if (!dateStr) return false;
@@ -20,6 +20,8 @@ const isToday = (dateStr?: string): boolean => {
 interface ToDoItemRowProps {
     item: ToDoItem;
 }
+
+/** One task: tick it off, tap the words to edit, delete on the end. Nothing hides behind hover. */
 export const ToDoItemRow: React.FC<ToDoItemRowProps> = ({ item }) => {
     const { updateToDo } = useData();
     const { openModal } = useUI();
@@ -28,36 +30,32 @@ export const ToDoItemRow: React.FC<ToDoItemRowProps> = ({ item }) => {
         updateToDo(item.id, { isComplete: !item.isComplete });
     };
 
+    const dueToday = isToday(item.dueDate);
+
     return (
-        <div className="flex items-start p-3 transition-colors group">
-            <input
-                type="checkbox"
-                checked={item.isComplete}
-                onChange={onToggleComplete}
-                className="h-5 w-5 rounded border-gray-500 bg-gray-900 text-brand-500 focus:ring-brand-500 mt-0.5"
-                aria-label={`Mark task "${item.description}" as ${item.isComplete ? 'incomplete' : 'complete'}`}
-            />
-            <div className="ml-3 flex-1">
-                <p className={`text-sm ${item.isComplete ? 'line-through text-gray-500' : 'text-gray-200'}`}>{item.description}</p>
+        <div className="flex items-center border-b border-line last:border-b-0">
+            <label className="grid h-14 w-12 flex-none cursor-pointer place-items-center">
+                <Checkbox
+                    checked={item.isComplete}
+                    onChange={onToggleComplete}
+                    aria-label={`Mark task "${item.description}" as ${item.isComplete ? 'not done' : 'done'}`}
+                />
+            </label>
+            <button
+                type="button"
+                onClick={() => openModal('todo', { type: 'general', editingTodo: item })}
+                title="Edit task"
+                className="flex min-h-[56px] min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-2 pe-2 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
+            >
+                <span className={cx('text-base leading-snug', item.isComplete ? 'text-ink-3 line-through' : 'text-ink')}>{item.description}</span>
                 {item.dueDate && (
-                     <p className={`text-xs mt-1 ${isToday(item.dueDate) ? 'text-yellow-400 font-semibold' : 'text-gray-400'}`}>
-                        {item.dueTime && <span className="font-semibold">{item.dueTime}, </span>}
-                        {formatDate(item.dueDate)}
-                    </p>
+                    <span className={cx('text-sm', dueToday && !item.isComplete ? 'font-semibold text-warning-ink' : 'text-ink-3')}>
+                        {item.dueTime && <span className="num">{item.dueTime} · </span>}
+                        {dueToday ? 'Today' : formatDate(item.dueDate, { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </span>
                 )}
-            </div>
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                    onClick={() => openModal('todo', { type: 'general', editingTodo: item })}
-                    className="p-2 text-gray-400 hover:text-white" title="Edit">
-                    <EditIcon className="h-4 w-4" />
-                </button>
-                <button 
-                    onClick={() => openModal('deleteTodoConfirm', item)} 
-                    className="p-2 text-gray-400 hover:text-red-400" title="Delete">
-                    <TrashIcon className="h-4 w-4" />
-                </button>
-            </div>
+            </button>
+            <IconButton label="Delete task" icon={<TrashIcon />} onClick={() => openModal('deleteTodoConfirm', item)} className="me-1 text-ink-3" />
         </div>
     );
 };
@@ -71,25 +69,28 @@ interface DayTasksListProps {
 const DayTasksList = ({ tasks, selectedDate }: DayTasksListProps) => {
     const { openModal } = useUI();
     const sortedTasks = [...tasks].sort((a, b) => (a.isComplete ? 1 : 0) - (b.isComplete ? 1 : 0) || a.createdAt - b.createdAt);
+    const isTodaySelected = selectedDate === toYYYYMMDD(new Date());
 
     return (
          <div>
-            <div className="flex justify-between items-center mb-2">
-                <h3 className="text-base font-semibold text-green-400">
-                    Tasks for {formatDate(selectedDate)}
+            <div className="flex items-center justify-between gap-2 ps-3.5 pe-2 pt-2">
+                <h3 className="text-sm font-semibold text-ink-2">
+                    {isTodaySelected ? 'Today' : formatDate(selectedDate, { weekday: 'long', day: 'numeric', month: 'long' })}
                 </h3>
-                <button 
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<PlusIcon />}
                     onClick={() => openModal('todo', { type: 'general', prefillData: { dueDate: selectedDate } })}
-                    className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-500"
                 >
-                    <PlusIcon className="h-4 w-4" /> Add Task
-                </button>
+                    Add task
+                </Button>
             </div>
-            <div className="divide-y divide-gray-700/50 max-h-60 overflow-y-auto bg-gray-900/50 rounded-lg">
+            <div className="max-h-60 overflow-y-auto">
                 {sortedTasks.length > 0 ? (
                     sortedTasks.map(item => <ToDoItemRow key={item.id} item={item} />)
                 ) : (
-                    <p className="p-4 text-sm text-center text-gray-400">No tasks for this day.</p>
+                    <p className="px-3.5 pb-4 pt-1 text-sm text-ink-3">No tasks on this day.</p>
                 )}
             </div>
         </div>

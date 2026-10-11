@@ -10,6 +10,7 @@ import CorporationTaxTab from '../components/accountant/CorporationTaxTab';
 import { PeriodBar, HubPeriod, money } from '../components/accountant/hubShared';
 import { useData } from '../hooks/useData';
 import { useUI } from '../hooks/useUI';
+import { Tabs } from '../components/ui';
 import { computeProfitAndLoss } from '../utils/accounting/profitAndLoss';
 import { estimateCorporationTax } from '../utils/accounting/corporationTax';
 import { periodKeyOf } from '../utils/accounting/yearEnd';
@@ -46,12 +47,12 @@ const AccountantPage = () => {
 
     const tabs = useMemo(() => [
         { id: 'overview' as const, label: 'Overview' },
-        { id: 'pnl' as const, label: 'Profit & Loss' },
-        isServiceBusiness ? { id: 'jobs_report' as const, label: 'Jobs Report' } : { id: 'margin' as const, label: 'Vehicle Margin' },
-        ...(isVatRegistered ? [{ id: 'vat' as const, label: 'VAT Summary' }] : []),
-        { id: 'expenses' as const, label: 'Expenses & VAT' },
+        { id: 'pnl' as const, label: 'Profit and loss' },
+        isServiceBusiness ? { id: 'jobs_report' as const, label: 'Jobs report' } : { id: 'margin' as const, label: 'Car margins' },
+        ...(isVatRegistered ? [{ id: 'vat' as const, label: 'VAT return' }] : []),
+        { id: 'expenses' as const, label: 'Expenses and VAT' },
         { id: 'ledger' as const, label: 'Ledger' },
-        { id: 'ct' as const, label: 'Corporation Tax' },
+        { id: 'ct' as const, label: 'Corporation tax' },
     ], [isServiceBusiness, isVatRegistered]);
     const activeTab: HubTab = tabs.some(t => t.id === tab) ? tab : 'overview';
 
@@ -100,7 +101,7 @@ const AccountantPage = () => {
             id: 'nocost', count: noCost, tone: noCost ? 'warn' : 'ok',
             label: noCost ? `${noCost} car${noCost === 1 ? '' : 's'} sold with no cost` : 'Every car sold has a cost',
             detail: noCost ? 'Cost of sale is counted as £0, so gross profit is overstated.' : 'Purchase prices are in for every sale in the period.',
-            ...(noCost ? { actionLabel: 'Vehicle Margin', onAction: () => openTab('margin') } : {}),
+            ...(noCost ? { actionLabel: 'Car margins', onAction: () => openTab('margin') } : {}),
         });
         for (const w of pnl.warnings) {
             if (['unreconciled_bank_lines', 'zero_cost', 'sale_without_vehicle'].includes(w.code)) continue;
@@ -111,7 +112,7 @@ const AccountantPage = () => {
                 id: `salary-${l.name}`, count: 1, tone: 'warn',
                 label: `Unpaid director's salary: the business owes ${l.name} ${money(l.balance)}`,
                 detail: "Record it as a credit on the director's loan account. It must match the payroll (accountant). Salary still unpaid 9 months after the year end is not deductible for corporation tax in that year.",
-                actionLabel: 'Corporation Tax', onAction: () => openTab('ct'),
+                actionLabel: 'Corporation tax', onAction: () => openTab('ct'),
             } : l.status === 'overdrawn' ? {
                 id: `salary-${l.name}`, count: 1, tone: 'warn',
                 label: `${l.name} has taken ${money(-l.balance)} more than salary`,
@@ -135,9 +136,9 @@ const AccountantPage = () => {
 
     // Keep the active tab in view on phones (moves the strip only).
     const stripRef = useRef<HTMLDivElement>(null);
-    const activeRef = useRef<HTMLButtonElement>(null);
     useEffect(() => {
-        const s = stripRef.current, b = activeRef.current;
+        const s = stripRef.current?.querySelector<HTMLElement>('[role="tablist"]');
+        const b = s?.querySelector<HTMLElement>('[aria-selected="true"]');
         if (!s || !b) return;
         s.scrollTo({ left: Math.max(0, b.offsetLeft - (s.clientWidth - b.offsetWidth) / 2), behavior: 'smooth' });
     }, [activeTab]);
@@ -148,26 +149,18 @@ const AccountantPage = () => {
         <div className="min-w-0 space-y-5">
             <PeriodBar period={period} yearEnd={businessDetails?.yearEnd} onChange={setPeriod} />
 
-            <div ref={stripRef} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-                <div className="min-w-max border-b border-gray-700 sm:min-w-0">
-                    <nav className="-mb-px flex space-x-5 sm:space-x-7" aria-label="Accountant tabs">
-                        {tabs.map(t => (
-                            <button
-                                key={t.id}
-                                ref={t.id === activeTab ? activeRef : undefined}
-                                type="button"
-                                onClick={() => openTab(t.id)}
-                                aria-current={t.id === activeTab ? 'page' : undefined}
-                                className={`${t.id === activeTab ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300'} inline-flex items-center whitespace-nowrap border-b-2 px-1 py-3.5 text-sm font-medium`}
-                            >
-                                {t.label}
-                            </button>
-                        ))}
-                    </nav>
-                </div>
+            <div ref={stripRef} className="min-w-0 border-b border-line pb-4 print:hidden">
+                <Tabs
+                    variant="pills"
+                    idPrefix="hub"
+                    ariaLabel="Accountant reports"
+                    tabs={tabs}
+                    activeTab={activeTab}
+                    onChange={id => openTab(id as HubTab)}
+                />
             </div>
 
-            <div className="min-w-0">
+            <div className="min-w-0" role="tabpanel" id={`hub-panel-${activeTab}`} aria-labelledby={`hub-${activeTab}`}>
                 {activeTab === 'overview' && <OverviewTab pnl={pnl} vatDue={vatDue} ct={ct} health={health} onOpen={t => openTab(t)} />}
                 {activeTab === 'pnl' && <ProfitLossTab pnl={pnl} isServiceBusiness={isServiceBusiness} />}
                 {activeTab === 'margin' && <VehicleMarginReport {...controlled} />}

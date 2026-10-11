@@ -1,65 +1,81 @@
 import React from 'react';
 import { CanvasItem } from '../../types';
-import { PaperClipIcon } from '../icons';
+import { DocumentTextIcon, PaperClipIcon } from '../icons';
 
 interface CanvasCardProps {
     item: CanvasItem;
     onClick: () => void;
+    /** Position on the board; gives each note its own slight tilt. */
+    index?: number;
 }
 
-const noteColorClasses: Record<NonNullable<CanvasItem['color']>, { bg: string, text: string, ring: string }> = {
-    yellow: { bg: 'bg-yellow-300', text: 'text-yellow-900', ring: 'focus:ring-yellow-500' },
-    pink: { bg: 'bg-pink-300', text: 'text-pink-900', ring: 'focus:ring-pink-500' },
-    blue: { bg: 'bg-sky-300', text: 'text-sky-900', ring: 'focus:ring-sky-500' },
-    green: { bg: 'bg-green-300', text: 'text-green-900', ring: 'focus:ring-green-500' },
+type NoteColour = NonNullable<CanvasItem['color']>;
+
+/*
+ * Sticky notes are physical objects, like the number plate: the same paper in
+ * light and dark, with plate ink on top (well over 10:1 on every colour).
+ * Candidates for --c-note-* tokens in styles.css.
+ */
+export const NOTE_PAPER: Record<NoteColour, { paper: string; name: string }> = {
+    yellow: { paper: 'bg-[#F7E7A1]', name: 'Yellow' },
+    pink: { paper: 'bg-[#F5CADB]', name: 'Pink' },
+    blue: { paper: 'bg-[#C7DDF2]', name: 'Blue' },
+    green: { paper: 'bg-[#CDE8C6]', name: 'Green' },
 };
 
-const CanvasCard = ({ item, onClick }: CanvasCardProps) => {
+// A board, not a grid: notes sit a hair off square, and straighten when you reach for them.
+const TILT = ['-rotate-[0.6deg]', 'rotate-[0.5deg]', '-rotate-[0.3deg]', 'rotate-[0.7deg]', 'rotate-0'];
+
+const CanvasCard = ({ item, onClick, index = 0 }: CanvasCardProps) => {
     // Default to 'file' for old items that don't have itemType
     const itemType = item.itemType || 'file';
     const isImage = itemType === 'file' && item.fileType?.startsWith('image/');
 
     if (itemType === 'note') {
-        const color = item.color || 'yellow';
-        const colors = noteColorClasses[color];
+        const colour = NOTE_PAPER[item.color || 'yellow'] || NOTE_PAPER.yellow;
         return (
             <button
+                type="button"
                 onClick={onClick}
-                className={`w-full h-full text-left ${colors.bg} rounded-lg shadow-lg overflow-hidden block transition-transform transform hover:scale-[1.02] hover:shadow-xl focus:outline-none focus:ring-2 ${colors.ring} focus:ring-offset-2 focus:ring-offset-gray-950 p-4 flex flex-col`}
+                className={`flex w-full flex-col rounded-[6px] p-4 pb-5 text-start text-plate-ink ${colour.paper} ${TILT[index % TILT.length]} transition-transform duration-base ease-out motion-safe:hover:rotate-0 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[.98] motion-reduce:rotate-0`}
             >
-                <h3 className={`font-bold ${colors.text}`}>{item.headline}</h3>
+                <span className="text-base font-bold leading-6">{item.headline || 'Untitled note'}</span>
                 {item.notes && (
-                    <p className={`text-sm ${colors.text} mt-2 whitespace-pre-wrap flex-1 opacity-90`} style={{ display: '-webkit-box', WebkitLineClamp: 10, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    <span className="mt-1.5 line-clamp-[10] whitespace-pre-wrap text-sm leading-5 opacity-80">
                         {item.notes}
-                    </p>
+                    </span>
                 )}
             </button>
         );
     }
-    
-    // File type card (existing logic)
+
     return (
-        <button 
-            onClick={onClick} 
-            className="w-full text-left bg-gray-800 rounded-lg shadow-lg overflow-hidden block transition-transform transform hover:scale-[1.02] hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-gray-950"
+        <button
+            type="button"
+            onClick={onClick}
+            className="group block w-full overflow-hidden rounded-card border border-line bg-surface text-start transition-[border-color,background-color] duration-quick ease-out hover:border-line-strong hover:bg-surface-2 active:bg-surface-3"
         >
-            {isImage && item.fileUrl && (
-                <img src={item.fileUrl} alt={item.fileName || 'Canvas Image'} className="w-full h-auto object-cover" />
+            {isImage && item.fileUrl ? (
+                <img src={item.fileUrl} alt="" className="block h-auto w-full border-b border-line object-cover" />
+            ) : (
+                <span aria-hidden="true" className="flex h-20 items-center justify-center border-b border-line bg-bg text-ink-3">
+                    <DocumentTextIcon className="h-8 w-8" />
+                </span>
             )}
-            <div className="p-4">
-                <h3 className="font-bold text-white">{item.headline}</h3>
+            <span className="block p-4">
+                <span className="block text-base font-bold leading-6 text-ink">{item.headline}</span>
                 {item.notes && (
-                    <p className="text-sm text-gray-400 mt-2 whitespace-pre-wrap" style={{ display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    <span className="mt-1.5 line-clamp-[8] block whitespace-pre-wrap text-sm leading-5 text-ink-2">
                         {item.notes}
-                    </p>
+                    </span>
                 )}
                 {item.fileName && (
-                    <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
-                        <PaperClipIcon className="h-4 w-4" />
-                        <span className="truncate">{item.fileName}</span>
-                    </div>
+                    <span className="mt-3 flex items-center gap-1.5 text-sm text-ink-3">
+                        <PaperClipIcon className="h-4 w-4 flex-none" />
+                        <span className="truncate font-mono text-xs">{item.fileName}</span>
+                    </span>
                 )}
-            </div>
+            </span>
         </button>
     );
 };

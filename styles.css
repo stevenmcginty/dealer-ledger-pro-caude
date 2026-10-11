@@ -2,6 +2,198 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =====================================================================
+   Forecourt Ledger token layer.
+   Every colour is an "R G B" channel triplet so Tailwind opacity modifiers
+   work (bg-surface/50). Light values sit on :root; utils/themeMode.ts sets
+   data-theme on <html> to the RESOLVED theme ("light" | "dark"), so dark
+   needs no media query here.
+   ===================================================================== */
+/* Brand palettes: one per company (businessDetails.theme), stamped on <html>
+   as theme-<name> by LedgerCore. PDF code reads --color-brand-800/600 from
+   <html>, so these names and values must not change with light/dark.
+   Kept outside @layer on purpose: Tailwind drops layered class rules it cannot
+   find in the source, and theme-<name> is built at runtime. */
+:root, .theme-blue {
+  /* Professional Navy/Royal Blue Theme */
+  --color-brand-50: 240 249 255; --color-brand-100: 224 242 254; --color-brand-200: 186 230 253;
+  --color-brand-300: 125 211 252; --color-brand-400: 56 189 248; --color-brand-500: 14 165 233;
+  --color-brand-600: 2 132 199; --color-brand-700: 3 105 161; --color-brand-800: 7 89 133;
+  --color-brand-900: 12 74 110; --color-brand-950: 8 47 73;
+}
+.theme-green {
+  --color-brand-50: 240 253 244; --color-brand-100: 220 252 231; --color-brand-200: 187 247 208;
+  --color-brand-300: 134 239 172; --color-brand-400: 74 222 128; --color-brand-500: 34 197 94;
+  --color-brand-600: 22 163 74; --color-brand-700: 21 128 61; --color-brand-800: 22 101 52;
+  --color-brand-900: 20 83 45; --color-brand-950: 5 46 22;
+}
+.theme-red {
+  --color-brand-50: 254 242 242; --color-brand-100: 254 226 226; --color-brand-200: 254 202 202;
+  --color-brand-300: 252 165 165; --color-brand-400: 248 113 113; --color-brand-500: 239 68 68;
+  --color-brand-600: 220 38 38; --color-brand-700: 185 28 28; --color-brand-800: 153 27 27;
+  --color-brand-900: 127 29 29; --color-brand-950: 68 8 8;
+}
+.theme-purple {
+  --color-brand-50: 245 243 255; --color-brand-100: 237 233 254; --color-brand-200: 221 214 254;
+  --color-brand-300: 196 181 253; --color-brand-400: 167 139 250; --color-brand-500: 139 92 246;
+  --color-brand-600: 124 58 237; --color-brand-700: 109 40 217; --color-brand-800: 91 33 182;
+  --color-brand-900: 76 29 149; --color-brand-950: 46 16 101;
+}
+.theme-pink {
+  --color-brand-50: 253 242 248; --color-brand-100: 252 231 243; --color-brand-200: 251 207 232;
+  --color-brand-300: 249 168 212; --color-brand-400: 244 114 182; --color-brand-500: 236 72 153;
+  --color-brand-600: 219 39 119; --color-brand-700: 190 24 93; --color-brand-800: 157 23 77;
+  --color-brand-900: 131 24 67; --color-brand-950: 74 4 34;
+}
+.theme-yellow {
+  --color-brand-50: 254 252 232; --color-brand-100: 254 249 195; --color-brand-200: 254 240 138;
+  --color-brand-300: 253 224 71; --color-brand-400: 250 204 21; --color-brand-500: 234 179 8;
+  --color-brand-600: 202 138 4; --color-brand-700: 161 98 7; --color-brand-800: 133 77 14;
+  --color-brand-900: 113 63 18; --color-brand-950: 66 32 6;
+}
+
+@layer base {
+  /* ---- Light (default values) ---- */
+  :root {
+    /* neutrals: cool blue-grey */
+    --c-bg: 241 243 245;
+    --c-surface: 255 255 255;
+    --c-surface-2: 233 237 241;
+    --c-surface-3: 220 226 232;
+    --c-ink: 15 27 38;
+    --c-ink-2: 58 72 85;
+    --c-ink-3: 83 96 108;
+    --c-line: 213 220 226;
+    --c-line-strong: 116 129 141;
+
+    /* accent roles, from the company brand channels */
+    --c-accent: var(--color-brand-700);
+    --c-accent-hover: var(--color-brand-800);
+    --c-accent-press: var(--color-brand-900);
+    --c-on-accent: 255 255 255;
+    --c-accent-soft: var(--color-brand-50);
+    --c-accent-soft-ink: var(--color-brand-800);
+    --c-accent-text: var(--color-brand-800);
+    --c-focus: var(--color-brand-700);
+
+    /* semantic */
+    --c-success: 19 105 58; --c-success-soft: 225 242 231; --c-success-ink: 13 85 46;
+    --c-warning: 138 81 0; --c-warning-soft: 251 238 211; --c-warning-ink: 107 63 0;
+    --c-danger: 180 35 24; --c-danger-soft: 252 232 230; --c-danger-ink: 140 26 17;
+    --c-danger-hover: 140 26 17; --c-on-danger: 255 255 255;
+    --c-info: 55 70 163; --c-info-soft: 232 235 250; --c-info-ink: 43 56 136;
+
+    /* physical objects: identical in both themes */
+    --c-plate-yellow: 246 199 0;
+    --c-plate-white: 245 245 241;
+    --c-plate-ink: 17 20 24;
+
+    /* utility colours. The scrim carries its own per-theme opacity. */
+    --c-scrim: 8 14 20; --c-scrim-alpha: 0.5;
+    --c-shadow: 15 27 38;
+    --c-skel-1: 226 231 236;
+    --c-skel-2: 238 241 244;
+    --c-bubble-in: 233 237 241;
+    --c-bubble-out: var(--color-brand-50);
+
+    /* type */
+    --font-sans: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+
+    /* radii, by role */
+    --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 20px; --r-pill: 999px;
+
+    /* elevation: only overlays float; cards sit flat on hairlines */
+    --e-1: 0 1px 0 rgb(var(--c-shadow) / .06);
+    --e-2: 0 2px 6px rgb(var(--c-shadow) / .08), 0 10px 24px rgb(var(--c-shadow) / .10);
+    --e-3: 0 4px 12px rgb(var(--c-shadow) / .12), 0 24px 56px rgb(var(--c-shadow) / .18);
+
+    /* motion */
+    --dur-1: 90ms; --dur-2: 160ms; --dur-3: 240ms; --dur-4: 320ms;
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-in: cubic-bezier(.4, 0, 1, 1);
+    --ease-sheet: cubic-bezier(.32, .72, 0, 1);
+
+    /* z-index */
+    --z-sticky: 10; --z-nav: 20; --z-dropdown: 30; --z-sheet: 40; --z-dialog: 50; --z-toast: 60;
+
+    /* Height of the phone tab bar, safe area included. The shell's BottomTabs sets it
+       while the bar is on screen; 0px otherwise (tab bar hidden, tablet, desktop). */
+    --nav-h: 0px;
+
+    color-scheme: light;
+  }
+
+  /* ---- Dark ---- */
+  :root[data-theme="dark"] {
+    --c-bg: 11 17 23;
+    --c-surface: 19 27 34;
+    --c-surface-2: 27 37 46;
+    --c-surface-3: 37 49 60;
+    --c-ink: 232 238 243;
+    --c-ink-2: 183 194 204;
+    --c-ink-3: 144 157 169;
+    --c-line: 39 51 61;
+    --c-line-strong: 110 124 137;
+
+    --c-accent: var(--color-brand-400);
+    --c-accent-hover: var(--color-brand-300);
+    --c-accent-press: var(--color-brand-200);
+    --c-on-accent: var(--color-brand-950);
+    --c-accent-soft: var(--color-brand-950);
+    --c-accent-soft-ink: var(--color-brand-200);
+    --c-accent-text: var(--color-brand-300);
+    --c-focus: var(--color-brand-300);
+
+    --c-success: 102 209 147; --c-success-soft: 16 48 31; --c-success-ink: 163 233 191;
+    --c-warning: 242 182 82; --c-warning-soft: 51 38 11; --c-warning-ink: 248 213 146;
+    --c-danger: 255 143 134; --c-danger-soft: 59 22 19; --c-danger-ink: 255 189 182;
+    --c-danger-hover: 255 189 182; --c-on-danger: 43 8 5;
+    --c-info: 170 182 251; --c-info-soft: 27 33 73; --c-info-ink: 205 212 255;
+
+    --c-scrim: 0 0 0; --c-scrim-alpha: 0.64;
+    --c-shadow: 0 0 0;
+    --c-skel-1: 29 39 48;
+    --c-skel-2: 39 50 60;
+    --c-bubble-in: 27 37 46;
+    --c-bubble-out: var(--color-brand-950);
+
+    color-scheme: dark;
+  }
+
+  ::selection {
+    background: rgb(var(--c-accent-soft));
+    color: rgb(var(--c-ink));
+  }
+
+  :focus-visible {
+    outline: 3px solid rgb(var(--c-focus));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Money and other figures: mono, tabular, slashed zero. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
+    letter-spacing: -.01em;
+  }
+
+  /* Shell motion (spec S2): sheets rise 320ms on the sheet curve, scrims fade
+     240ms, popovers pop 160ms, side panels slide 240ms. Entrance only. */
+  .anim-sheet-in { animation: dlp-sheet-in var(--dur-4) var(--ease-sheet) both; }
+  .anim-fade-in { animation: dlp-fade-in var(--dur-3) var(--ease-out) both; }
+  .anim-pop-in { animation: dlp-pop-in var(--dur-2) var(--ease-out) both; }
+  .anim-panel-in { animation: dlp-panel-in var(--dur-3) var(--ease-sheet) both; }
+}
+
+@keyframes dlp-sheet-in { from { transform: translateY(100%); } }
+@keyframes dlp-fade-in { from { opacity: 0; } }
+@keyframes dlp-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@keyframes dlp-panel-in { from { transform: translateX(-24px); opacity: 0; } }
+[dir="rtl"] .anim-panel-in { animation-name: dlp-fade-in; }
+
 /* Toast entrance (components/ui/Toast.tsx) */
 @keyframes toast-in {
   from {
@@ -16,4 +208,19 @@
 
 .animate-toast-in {
   animation: toast-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Sheets and panels keep a short plain fade, so they don't just blink in. */
+  .anim-sheet-in, .anim-pop-in, .anim-panel-in, .anim-fade-in {
+    animation-name: dlp-fade-in !important;
+    animation-duration: 160ms !important;
+    animation-timing-function: linear !important;
+  }
 }

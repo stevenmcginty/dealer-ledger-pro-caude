@@ -10,7 +10,7 @@ import { XMarkIcon, ExclamationTriangleIcon, ArrowUpTrayIcon, CheckCircleIcon } 
 import { formatCurrency, formatDate, isLikelyOwnAccountTransfer } from '../../utils/helpers';
 import { isMatchableReceipt } from '../../utils/statementAutoMatch';
 import Spinner from '../common/Spinner';
-import { useToast } from '../ui';
+import { Button, IconButton, Plate, Segmented, useToast } from '../ui';
 
 interface ItemDisplayProps {
     item: any;
@@ -159,19 +159,21 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
 
     const ItemDisplay: React.FC<ItemDisplayProps> = ({ item, type, isSelected, onToggle }) => {
         return (
-             <button type="button" aria-pressed={isSelected} onClick={() => onToggle(item.id)} className={`block w-full text-left p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-brand-900/70 border-brand-500 shadow-inner' : 'bg-gray-700 border-gray-600 hover:border-gray-500'}`}>
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-brand-500 border-brand-500' : 'border-gray-500 bg-gray-800'}`}>
-                            {isSelected && <CheckCircleIcon className="w-4 h-4 text-white" />}
+             <button type="button" aria-pressed={isSelected} onClick={() => onToggle(item.id)} className={`block min-h-[48px] w-full cursor-pointer rounded-control border p-3 text-start transition-colors duration-quick ease-out ${isSelected ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:bg-surface-2 active:bg-surface-3'}`}>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div aria-hidden="true" className={`flex h-5 w-5 flex-none items-center justify-center rounded-chip border transition-colors duration-quick ${isSelected ? 'border-accent bg-accent' : 'border-line-strong bg-surface'}`}>
+                            {isSelected && <CheckCircleIcon className="h-4 w-4 text-on-accent" />}
                         </div>
-                        <p className="font-semibold text-white">{type === 'receipt' ? item.vendor : `${item.reg} - ${item.make}`}</p>
+                        {type === 'receipt'
+                            ? <p className="truncate font-semibold text-ink">{item.vendor}</p>
+                            : <p className="flex min-w-0 items-center gap-2 font-semibold text-ink">{item.reg && <Plate reg={item.reg} size="sm" />}<span className="truncate">{item.make}</span></p>}
                     </div>
-                    <p className="font-bold text-white">{formatCurrency(item.price)}</p>
+                    <p className="flex-none font-mono font-semibold tabular-nums text-ink">{formatCurrency(item.price)}</p>
                 </div>
-                <div className="flex justify-between items-center text-xs text-gray-400 mt-2 pl-8">
-                    <span>{formatDate(item.date)}</span>
-                    <span>{type === 'receipt' ? (item.status === 'Paid' ? `${item.category} · Paid, no bank line yet` : item.category) : 'Vehicle Purchase'}</span>
+                <div className="mt-1.5 flex items-center justify-between gap-3 ps-8 text-sm text-ink-3">
+                    <span className="font-mono tabular-nums">{formatDate(item.date)}</span>
+                    <span className="truncate text-end">{type === 'receipt' ? (item.status === 'Paid' ? `${item.category} · Paid, no bank line yet` : item.category) : 'Car purchase'}</span>
                 </div>
             </button>
         )
@@ -179,11 +181,11 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
 
     if (uploadStatus !== 'idle') {
         return (
-            <div className="p-6 text-center flex flex-col items-center justify-center h-full">
-                {uploadStatus === 'running' && <Spinner className="h-8 w-8 mb-4"/>}
-                {uploadStatus === 'error' && <ExclamationTriangleIcon className="h-8 w-8 text-red-400 mb-4"/>}
-                <p className="text-white font-semibold">{uploadMessage}</p>
-                {uploadStatus === 'error' && <button onClick={() => setUploadStatus('idle')} className="mt-6 px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">Try Again</button>}
+            <div role={uploadStatus === 'error' ? 'alert' : 'status'} className="flex h-full flex-col items-center justify-center p-6 text-center">
+                {uploadStatus === 'running' && <Spinner className="mb-4 h-8 w-8"/>}
+                {uploadStatus === 'error' && <ExclamationTriangleIcon className="mb-4 h-8 w-8 text-danger"/>}
+                <p className="font-semibold text-ink">{uploadMessage}</p>
+                {uploadStatus === 'error' && <Button type="button" variant="primary" onClick={() => setUploadStatus('idle')} className="mt-6">Try again</Button>}
             </div>
         )
     }
@@ -191,17 +193,17 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
     return (
         <div className="w-full flex flex-col h-full max-h-[90vh]">
             <input type="file" ref={fileInputRef} onChange={e => e.target.files && handleFileUpload(e.target.files[0])} className="hidden" accept="image/*,application/pdf" />
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Allocate Transaction</h2>
-                <button type="button" onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
+            <header className="flex items-center justify-between gap-3 border-b border-line py-2 pe-2 ps-5">
+                <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Match bank line</h2>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={closeModal} />
             </header>
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-                <div className="bg-gray-900/50 p-4 rounded-lg shadow-inner">
-                    <div className="flex justify-between items-center">
-                        <p className="text-sm text-gray-400">{formatDate(transaction.date)}</p>
-                        <p className="text-xl font-bold text-red-400">{formatCurrency(transaction.amount)}</p>
+            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                <div className="rounded-control border border-line bg-surface-2 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="font-mono text-sm tabular-nums text-ink-3">{formatDate(transaction.date)}</p>
+                        <p className="font-mono text-xl font-bold tabular-nums text-danger">{formatCurrency(transaction.amount)}</p>
                     </div>
-                    <p className="text-white mt-1 truncate">{transaction.description}</p>
+                    <p className="mt-1 truncate text-ink">{transaction.description}</p>
                 </div>
 
                 {/* Quick path: money moved between own accounts (e.g. a sweep to savings) */}
@@ -209,34 +211,37 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
                     type="button"
                     onClick={handleMarkAsTransfer}
                     disabled={isSubmitting}
-                    className={`w-full text-left p-3 rounded-lg border-2 transition-colors disabled:opacity-50 ${looksLikeTransfer ? 'bg-brand-900/50 border-brand-500 hover:bg-brand-900/70' : 'bg-gray-700/40 border-gray-600 hover:border-gray-500'}`}
+                    className={`min-h-[48px] w-full rounded-control border p-3 text-start transition-colors duration-quick ease-out disabled:cursor-not-allowed disabled:text-ink-3 ${looksLikeTransfer ? 'border-accent bg-accent-soft' : 'border-line-strong bg-surface hover:bg-surface-2 active:bg-surface-3'}`}
                 >
-                    <span className="block text-sm font-semibold text-white">Transfer between own accounts</span>
-                    <span className="block text-xs text-gray-400">{looksLikeTransfer ? 'This looks like a transfer to savings/another account. ' : ''}Not income or an expense — excluded from your expenses, profit &amp; VAT.</span>
+                    <span className="block text-base font-semibold text-ink">Transfer between own accounts</span>
+                    <span className="block text-sm text-ink-2">{looksLikeTransfer ? 'This looks like a transfer to savings or another account. ' : ''}Not income or an expense, so it stays out of your expenses, profit and VAT.</span>
                 </button>
 
                 {selectedIds.length > 0 && (
-                    <div className={`p-3 rounded-lg border flex justify-between items-center ${isExactMatch ? 'bg-green-900/40 border-green-700' : 'bg-yellow-900/40 border-yellow-700'}`}>
+                    <div className={`flex items-center justify-between rounded-control border p-3 ${isExactMatch ? 'border-success bg-success-soft text-success-ink' : 'border-warning bg-warning-soft text-warning-ink'}`}>
                         <div>
-                            <p className="text-xs text-gray-300">Selected Total</p>
-                            <p className={`font-bold ${isExactMatch ? 'text-green-400' : 'text-yellow-400'}`}>{formatCurrency(selectedTotal)}</p>
+                            <p className="text-sm">Selected total</p>
+                            <p className="font-mono font-bold tabular-nums">{formatCurrency(selectedTotal)}</p>
                         </div>
-                        <div className="text-right">
-                            <p className="text-xs text-gray-300">Difference</p>
-                            <p className={`font-bold ${isExactMatch ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(difference)}</p>
+                        <div className="text-end">
+                            <p className="text-sm">Difference</p>
+                            <p className="font-mono font-bold tabular-nums">{formatCurrency(difference)}</p>
                         </div>
                     </div>
                 )}
                 
-                <div className="flex items-center space-x-2 rounded-lg bg-gray-700/60 p-1">
-                    <button onClick={() => { setSelectedType('receipt'); setSelectedIds([]); }} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${selectedType === 'receipt' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Receipts</button>
-                    <button onClick={() => { setSelectedType('vehicle'); setSelectedIds([]); }} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${selectedType === 'vehicle' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Vehicle Purchases</button>
-                </div>
+                <Segmented
+                    ariaLabel="Match against"
+                    full
+                    options={[{ value: 'receipt', label: 'Receipts' }, { value: 'vehicle', label: 'Car purchases' }]}
+                    value={selectedType}
+                    onChange={v => { setSelectedType(v); setSelectedIds([]); }}
+                />
 
-                <div className="space-y-4 pr-2 -mr-2 max-h-80 overflow-y-auto">
+                <div className="-me-2 max-h-80 space-y-4 overflow-y-auto pe-2">
                     {timeSensitiveMatches.length > 0 && (
                         <div>
-                            <h3 className="text-sm font-semibold text-gray-300 mb-2">Suggested Matches</h3>
+                            <h3 className="mb-2 text-sm font-semibold text-ink-2">Suggested matches</h3>
                             <div className="space-y-2">
                                 {timeSensitiveMatches.map(item => (
                                     <ItemDisplay 
@@ -252,7 +257,7 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
                     )}
                      {otherMatches.length > 0 && (
                         <div>
-                            <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2"><ExclamationTriangleIcon className="h-4 w-4 text-yellow-400"/> Matches with Date Discrepancies</h3>
+                            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink-2"><ExclamationTriangleIcon className="h-4 w-4 text-warning"/> Dates more than 30 days apart</h3>
                             <div className="space-y-2">
                                 {otherMatches.map(item => (
                                     <ItemDisplay 
@@ -267,20 +272,20 @@ const TransactionAllocatorModal = ({ transaction }: { transaction: StatementTran
                         </div>
                     )}
                      {timeSensitiveMatches.length === 0 && otherMatches.length === 0 && (
-                        <p className="text-center text-gray-400 py-6">No unreconciled {selectedType === 'receipt' ? 'receipts' : 'vehicles'} found.</p>
+                        <p className="py-6 text-center text-ink-3">No unmatched {selectedType === 'receipt' ? 'receipts' : 'car purchases'} to choose from.</p>
                      )}
                 </div>
             </div>
-             <footer className="flex-shrink-0 p-4 border-t border-gray-700 grid grid-cols-3 gap-3 bg-gray-800">
-                <button type="button" onClick={handleCategorizeManually} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
-                    Categorize Manually
-                </button>
-                 <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">
-                    <ArrowUpTrayIcon className="h-5 w-5" /> Upload Receipt
-                </button>
-                <button onClick={handleReconcile} disabled={selectedIds.length === 0 || isSubmitting} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : 'Confirm Match'}
-                </button>
+             <footer className="flex flex-none flex-wrap gap-2 border-t border-line bg-surface px-4 py-3 sm:px-5 [&>*]:flex-1">
+                <Button type="button" variant="secondary" onClick={handleCategorizeManually}>
+                    Choose category
+                </Button>
+                <Button type="button" variant="secondary" icon={<ArrowUpTrayIcon />} onClick={() => fileInputRef.current?.click()}>
+                    Upload receipt
+                </Button>
+                <Button type="button" variant="primary" onClick={handleReconcile} disabled={selectedIds.length === 0} loading={isSubmitting} className="basis-full sm:basis-auto">
+                    Match bank line
+                </Button>
             </footer>
         </div>
     );

@@ -11,8 +11,8 @@
 import React, { useState } from 'react';
 import { SalesDocument } from '../../types';
 import { useData } from '../../hooks/useData';
-import { useToast } from '../ui';
-import Spinner from '../common/Spinner';
+import { Button, useToast } from '../ui';
+import { controlFrame, controlInput, cx, eyebrow } from '../ui/cx';
 import { EnvelopeIcon, WhatsAppIcon } from '../icons';
 import { updateSalesDocument, uploadInvoicePdf } from '../../services/dataService';
 import { sendInvoiceDocument } from '../../services/salesAgentService';
@@ -129,78 +129,72 @@ const SendDocumentPanel: React.FC<{ doc: SalesDocument }> = ({ doc }) => {
         }
     };
 
+    /** Type the missing address or number in place; Enter saves it. */
+    const contactField = (kind: 'email' | 'phone') => {
+        const isEmail = kind === 'email';
+        return (
+            <span className="flex basis-full items-center gap-1.5 sm:basis-auto">
+                <span className={cx(controlFrame(), 'min-h-[44px] min-w-0 flex-1 sm:w-60 sm:flex-none')}>
+                    <input
+                        type={isEmail ? 'email' : 'tel'}
+                        inputMode={isEmail ? 'email' : 'tel'}
+                        value={isEmail ? email : phone}
+                        onChange={e => (isEmail ? setEmail : setPhone)(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void saveContact(kind); } }}
+                        placeholder={isEmail ? 'name@example.com' : '07123 456789'}
+                        aria-label={isEmail ? 'Customer email' : 'Customer mobile'}
+                        autoFocus
+                        className={cx(controlInput, 'py-2', !isEmail && 'num')}
+                    />
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => void saveContact(kind)} loading={savingContact} disabled={isEmail ? !hasEmail : !hasPhone}>
+                    Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAdding(null)}>Cancel</Button>
+            </span>
+        );
+    };
+
     return (
-        <div className="bg-gray-800 border-b border-gray-700 px-4 py-2.5 print:hidden flex-shrink-0">
-            <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider mr-1">Send to customer</span>
-                <button
+        <div className="flex-none border-b border-line bg-surface px-3 py-2 sm:px-4 print:hidden">
+            <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2">
+                <span className={cx(eyebrow, 'me-1')}>Send to customer</span>
+                <Button
                     type="button"
+                    size="sm"
+                    variant="secondary"
+                    icon={<EnvelopeIcon />}
                     onClick={() => void send('email')}
+                    loading={sending === 'email'}
                     disabled={!!sending || !hasEmail}
                     title={hasEmail ? `Email to ${email.trim()}` : 'Add an email address first'}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-sky-600 text-white hover:bg-sky-500 disabled:opacity-35 disabled:cursor-not-allowed"
                 >
-                    <EnvelopeIcon className="h-3.5 w-3.5" aria-hidden />
-                    {sending === 'email' ? <Spinner className="h-3.5 w-3.5" /> : 'Email'}
-                </button>
-                <button
+                    Email
+                </Button>
+                <Button
                     type="button"
+                    size="sm"
+                    variant="secondary"
+                    icon={<WhatsAppIcon className={hasPhone && !sending ? 'text-[#25d366]' : undefined} />}
                     onClick={() => void send('whatsapp')}
+                    loading={sending === 'whatsapp'}
                     disabled={!!sending || !hasPhone}
                     title={hasPhone ? `WhatsApp to ${phone.trim()}` : 'Add a mobile number first'}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#25d366] text-[#111b21] hover:bg-[#20bd5a] disabled:opacity-35 disabled:cursor-not-allowed"
                 >
-                    <WhatsAppIcon className="h-3.5 w-3.5" aria-hidden />
-                    {sending === 'whatsapp' ? <Spinner className="h-3.5 w-3.5" /> : 'WhatsApp'}
-                </button>
+                    WhatsApp
+                </Button>
 
                 {!hasEmail && adding !== 'email' && (
-                    <button type="button" onClick={() => setAdding('email')} className="text-xs font-medium text-sky-400 hover:underline">
-                        Add email
-                    </button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setAdding('email')}>Add email</Button>
                 )}
                 {!hasPhone && adding !== 'phone' && (
-                    <button type="button" onClick={() => setAdding('phone')} className="text-xs font-medium text-[#25d366] hover:underline">
-                        Add mobile
-                    </button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setAdding('phone')}>Add mobile</Button>
                 )}
 
-                {adding === 'email' && (
-                    <span className="flex items-center gap-2">
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void saveContact('email'); } }}
-                            placeholder="name@example.com"
-                            aria-label="Customer email"
-                            className="h-8 rounded-full bg-gray-700 border border-gray-600 px-3 text-xs text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50"
-                        />
-                        <button type="button" onClick={() => void saveContact('email')} disabled={savingContact || !hasEmail} className="h-8 rounded-full bg-sky-600 px-3 text-xs font-semibold text-white disabled:opacity-40">
-                            {savingContact ? <Spinner className="h-3 w-3" /> : 'Save'}
-                        </button>
-                        <button type="button" onClick={() => setAdding(null)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
-                    </span>
-                )}
-                {adding === 'phone' && (
-                    <span className="flex items-center gap-2">
-                        <input
-                            type="tel"
-                            value={phone}
-                            onChange={e => setPhone(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void saveContact('phone'); } }}
-                            placeholder="07123 456789"
-                            aria-label="Customer mobile"
-                            className="h-8 rounded-full bg-gray-700 border border-gray-600 px-3 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#25d366]/40"
-                        />
-                        <button type="button" onClick={() => void saveContact('phone')} disabled={savingContact || !hasPhone} className="h-8 rounded-full bg-[#25d366] px-3 text-xs font-semibold text-[#111b21] disabled:opacity-40">
-                            {savingContact ? <Spinner className="h-3 w-3" /> : 'Save'}
-                        </button>
-                        <button type="button" onClick={() => setAdding(null)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
-                    </span>
-                )}
+                {adding === 'email' && contactField('email')}
+                {adding === 'phone' && contactField('phone')}
 
-                {error && <span className="text-xs text-red-400 basis-full sm:basis-auto">{error}</span>}
+                {error && <span role="alert" className="basis-full text-sm text-danger sm:basis-auto">{error}</span>}
             </div>
         </div>
     );

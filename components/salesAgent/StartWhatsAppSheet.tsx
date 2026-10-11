@@ -88,8 +88,8 @@ const StartWhatsAppSheet: React.FC<{
         <Modal onClose={() => { if (!busy) onClose(); }} size="md">
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <div>
-                    <h3 className="text-lg font-semibold text-white">New WhatsApp</h3>
-                    <p className="mt-1 text-sm text-gray-400">
+                    <h3 className="text-lg font-semibold text-ink">New WhatsApp</h3>
+                    <p className="mt-1 text-sm text-ink-3">
                         Sends from the shared Radlett number. The first message is the approved
                         follow-up template; free text waits until they reply. Nothing goes out
                         until WhatsApp is live.
@@ -105,16 +105,16 @@ const StartWhatsAppSheet: React.FC<{
                         autoComplete="off"
                     />
                     {suggestions.length > 0 && (
-                        <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-md border border-gray-600 bg-gray-800 shadow-lg">
+                        <ul className="absolute z-dropdown mt-1 max-h-56 w-full overflow-y-auto rounded-control border border-line bg-surface py-1 shadow-e2">
                             {suggestions.map(c => (
                                 <li key={c.id}>
                                     <button
                                         type="button"
                                         onClick={() => pickCustomer(c)}
-                                        className="w-full px-3 py-2 text-left hover:bg-gray-700"
+                                        className="flex min-h-[48px] w-full flex-col justify-center px-3.5 py-1.5 text-start transition-colors duration-quick ease-out hover:bg-surface-2 focus-visible:[outline-offset:-3px]"
                                     >
-                                        <span className="block text-sm text-white">{c.name}</span>
-                                        <span className="block text-xs text-gray-400">
+                                        <span className="block text-sm text-ink">{c.name}</span>
+                                        <span className="block text-xs text-ink-3">
                                             {[c.phone, c.email].filter(Boolean).join(' · ')}
                                         </span>
                                     </button>
@@ -123,7 +123,7 @@ const StartWhatsAppSheet: React.FC<{
                         </ul>
                     )}
                     {lookup.trim() && suggestions.length === 0 && (
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-ink-3">
                             No customer with a mobile on file matches that. Type the number below instead.
                         </p>
                     )}

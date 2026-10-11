@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDownTrayIcon, ArrowTopRightOnSquareIcon, DocumentTextIcon, XMarkIcon } from '../icons';
+import { IconButton, buttonClasses } from '../ui';
 
 // receiptUrl is a tokenised Firebase Storage download URL (dataService.uploadFile -> getDownloadURL).
 // The object path sits URL-encoded after /o/, e.g. .../o/company%2Fuser%2Freceipts%2F1712_scan.pdf?alt=media&token=…
@@ -29,9 +30,10 @@ interface ReceiptViewerProps {
     onClose: () => void;
 }
 
-const actionBtn = 'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-300 ring-1 ring-inset ring-gray-700 transition-colors hover:bg-gray-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400';
+// 48px secondary buttons; the words show from 640px, phones get the icon alone.
+const actionBtn = `${buttonClasses('secondary', 'md')} max-sm:px-3`;
 
-// A dark, full-attention viewer for one receipt file. Portalled to <body> above Modal (z-50),
+// A full-attention viewer for one receipt file. Portalled to <body> above Modal (z-dialog),
 // closes on Esc, a click on the backdrop, or the ✕. Images show inline; PDFs show in an iframe
 // (no PDF library in the app) with an Open-in-new-tab fallback.
 const ReceiptViewer = ({ url, label, onClose }: ReceiptViewerProps) => {
@@ -88,45 +90,43 @@ const ReceiptViewer = ({ url, label, onClose }: ReceiptViewerProps) => {
 
     const content = (
         <div
-            className={`fixed inset-0 z-[60] flex items-stretch sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-6 transition-opacity duration-150 ${shown ? 'opacity-100' : 'opacity-0'}`}
+            className={`fixed inset-0 z-toast flex items-stretch justify-center bg-scrim p-0 transition-opacity duration-quick ease-out sm:items-center sm:p-6 ${shown ? 'opacity-100' : 'opacity-0'}`}
             role="dialog"
             aria-modal="true"
             aria-label={label ? `Receipt: ${label}` : 'Receipt'}
             onClick={e => { e.stopPropagation(); onCloseRef.current(); }}
         >
             <div
-                className={`flex w-full max-w-5xl flex-col overflow-hidden bg-gray-900 shadow-2xl ring-1 ring-gray-700 sm:h-[88vh] sm:rounded-xl transition-transform duration-150 ${shown ? 'scale-100' : 'scale-[0.98]'}`}
+                className={`flex w-full max-w-5xl flex-col overflow-hidden bg-surface shadow-e3 transition-transform duration-quick ease-out sm:h-[88vh] sm:rounded-card sm:border sm:border-line ${shown ? 'scale-100' : 'scale-[0.98]'}`}
                 onClick={e => e.stopPropagation()}
             >
-                <div className="flex items-center gap-3 border-b border-gray-800 px-4 py-3">
+                <div className="flex items-center gap-2 border-b border-line py-2 pe-2 ps-4">
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-white">{label || 'Receipt'}</p>
-                        <p className="truncate text-xs text-gray-500">{fileName}</p>
+                        <p className="truncate text-sm font-semibold text-ink">{label || 'Receipt'}</p>
+                        <p className="truncate text-sm text-ink-3">{fileName}</p>
                     </div>
-                    <button type="button" onClick={handleDownload} disabled={downloading} className={`${actionBtn} disabled:opacity-50`} title="Download">
-                        <ArrowDownTrayIcon className="h-4 w-4" /><span className="hidden sm:inline">Download</span>
+                    <button type="button" onClick={handleDownload} disabled={downloading} className={actionBtn} title="Download" aria-label="Download">
+                        <ArrowDownTrayIcon aria-hidden="true" /><span className="hidden sm:inline">Download</span>
                     </button>
-                    <a href={url} target="_blank" rel="noopener noreferrer" className={actionBtn} title="Open in new tab">
-                        <ArrowTopRightOnSquareIcon className="h-4 w-4" /><span className="hidden sm:inline">Open in new tab</span>
+                    <a href={url} target="_blank" rel="noopener noreferrer" className={actionBtn} title="Open in new tab" aria-label="Open in new tab">
+                        <ArrowTopRightOnSquareIcon aria-hidden="true" /><span className="hidden sm:inline">Open in new tab</span>
                     </a>
-                    <button ref={closeRef} type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400" aria-label="Close">
-                        <XMarkIcon className="h-5 w-5" />
-                    </button>
+                    <IconButton ref={closeRef} label="Close" icon={<XMarkIcon />} onClick={onClose} />
                 </div>
 
-                <div className="relative flex min-h-0 flex-1 items-center justify-center bg-gray-950/60">
+                <div className="relative flex min-h-0 flex-1 items-center justify-center bg-bg">
                     {pdf ? (
                         <div className="flex h-full w-full flex-col">
                             <iframe src={url} title={label || fileName} className="min-h-0 w-full flex-1 bg-white" />
-                            <p className="border-t border-gray-800 px-4 py-2 text-center text-xs text-gray-500">
-                                PDF not showing? <a href={url} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-400 hover:text-brand-300">Open it in a new tab</a>.
+                            <p className="border-t border-line px-4 py-2 text-center text-sm text-ink-3">
+                                PDF not showing? <a href={url} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent-text underline underline-offset-2">Open it in a new tab</a>.
                             </p>
                         </div>
                     ) : imgFailed ? (
                         <div className="flex flex-col items-center gap-3 p-8 text-center">
-                            <DocumentTextIcon className="h-12 w-12 text-gray-600" />
-                            <p className="text-sm text-gray-400">This file can't be previewed here.</p>
-                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-400 hover:text-brand-300">Open in a new tab</a>
+                            <DocumentTextIcon className="h-12 w-12 text-ink-3" />
+                            <p className="text-sm text-ink-3">This file can't be previewed here.</p>
+                            <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center text-base font-semibold text-accent-text underline underline-offset-2">Open in a new tab</a>
                         </div>
                     ) : (
                         <img

@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Vehicle, NewWorkSheet, WorkSheet, BusinessDetails, WorkSheetUpdate, workSheetRecordType } from '../../types';
-import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { TrashIcon } from '../icons';
 import PrintableWorkSheet from './PrintableWorkSheet';
 import UkDateInput from '../common/UkDateInput';
 import CurrencyInput from '../common/CurrencyInput';
 import { formatCurrency } from '../../utils/helpers';
-import Select from '../common/Select';
-import { useToast } from '../ui';
+import { useToast, Button, Checkbox, Field, IconButton } from '../ui';
+import { cx } from '../ui/cx';
+import EditorFrame, { AddLineButton, FrameInput, TotalLine, VehicleSuggestions } from './EditorFrame';
 
 interface WorkSheetEditorProps {
     vehicles: Vehicle[];
@@ -231,154 +231,139 @@ const WorkSheetEditor = ({ vehicles, onSubmit, onCancel, businessDetails, editin
     }
 
     return (
-        <div className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <h2 className="text-lg font-bold text-white">{isEditing ? `Edit Work Sheet #${editingSheet.workSheetNumber}`: 'Create Work Sheet'}</h2>
-                <button type="button" onClick={onCancel} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <form id="worksheet-editor-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
-                <div>
-                    <span className="block text-sm font-medium text-gray-300">Record Type</span>
-                    <div className="mt-1 grid grid-cols-2 gap-2">
-                        {([
-                            { key: 'customer' as const, label: 'Chargeable Work', hint: 'Prints as a work receipt' },
-                            { key: 'internal' as const, label: 'Internal / In-House', hint: 'Prints as an internal record' },
-                        ]).map(option => (
+        <EditorFrame
+            title={isEditing ? <>Edit work sheet <span className="num">#{editingSheet.workSheetNumber}</span></> : 'New work sheet'}
+            onClose={onCancel}
+            formId="worksheet-editor-form"
+            onSubmit={handleGeneratePreview}
+            footer={<>
+                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" form="worksheet-editor-form" loading={isSubmitting} disabled={!selectedVehicleId}>
+                    {isEditing ? 'Preview changes' : 'Preview sheet'}
+                </Button>
+            </>}
+        >
+            <fieldset>
+                <legend className="mb-1.5 text-sm font-semibold text-ink">What kind of work</legend>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {([
+                        { key: 'customer' as const, label: 'Chargeable work', hint: 'Prints as a work receipt' },
+                        { key: 'internal' as const, label: 'Internal / in-house', hint: 'Prints as an internal record' },
+                    ]).map(option => {
+                        const on = recordType === option.key;
+                        return (
                             <button
                                 key={option.key}
                                 type="button"
                                 onClick={() => setRecordType(option.key)}
-                                aria-pressed={recordType === option.key}
-                                className={`rounded-md border px-3 py-2 text-left transition-colors ${
-                                    recordType === option.key
-                                        ? 'border-brand-500 bg-brand-600/20 text-white'
-                                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                }`}
+                                aria-pressed={on}
+                                className={cx(
+                                    'flex min-h-[56px] items-center gap-3 rounded-control border px-3.5 py-2.5 text-start transition-colors duration-quick ease-out',
+                                    on ? 'border-accent bg-accent-soft' : 'border-line-strong bg-surface hover:bg-surface-2',
+                                )}
                             >
-                                <span className="block text-sm font-semibold">{option.label}</span>
-                                <span className="block text-xs text-gray-400">{option.hint}</span>
+                                <span aria-hidden="true" className={cx('grid h-5 w-5 flex-none place-items-center rounded-full border-2', on ? 'border-accent' : 'border-line-strong')}>
+                                    {on && <span className="h-2.5 w-2.5 rounded-full bg-accent" />}
+                                </span>
+                                <span className="min-w-0">
+                                    <span className={cx('block text-base font-semibold', on ? 'text-accent-soft-ink' : 'text-ink')}>{option.label}</span>
+                                    <span className="block text-sm text-ink-3">{option.hint}</span>
+                                </span>
                             </button>
-                        ))}
-                    </div>
+                        );
+                    })}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="relative md:col-span-2" ref={suggestionBoxRef}>
-                        <label htmlFor="vehicleReg" className="block text-sm font-medium text-gray-300">Vehicle</label>
-                        <input 
+            </fieldset>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="relative md:col-span-2" ref={suggestionBoxRef}>
+                    <Field label="Vehicle" htmlFor="vehicleReg" hint={isEditing ? 'The vehicle stays the same on a saved sheet.' : undefined}>
+                        <FrameInput
                             type="text"
                             id="vehicleReg"
                             value={regInput}
                             onChange={handleRegInputChange}
                             required
                             disabled={isEditing}
-                            placeholder="Search by Reg, Make, Model..."
-                            className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase disabled:bg-gray-800 disabled:cursor-not-allowed"
+                            placeholder="Search reg, make or model"
+                            className="font-mono uppercase tracking-[0.06em]"
                             autoComplete="off"
                         />
-                         {showSuggestions && suggestions.length > 0 && (
-                            <ul className="absolute z-10 mt-1 w-full bg-gray-600 border border-gray-500 rounded-md shadow-lg max-h-60 overflow-auto">
-                                {suggestions.map(v => (
-                                    <li key={v.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSuggestionClick(v)}
-                                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-brand-600 flex justify-between items-center"
-                                        >
-                                            <div>
-                                                <span className="font-bold">{v.reg}</span> - {v.make} {v.model}
-                                            </div>
-                                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                                v.status === 'Sold' ? 'bg-red-800 text-red-200' :
-                                                v.status === 'Deposit Paid' ? 'bg-cyan-800 text-cyan-200' :
-                                                'bg-green-800 text-green-200'
-                                            }`}>
-                                                {v.status}
-                                            </span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                     <div>
-                        <label htmlFor="workDate" className="block text-sm font-medium text-gray-300">Date</label>
-                        <UkDateInput id="workDate" name="workDate" value={workDate} onChange={e => setWorkDate(e.target.value)} className="mt-1" required />
-                    </div>
-                    <div>
-                        <label htmlFor="serviceMileage" className="block text-sm font-medium text-gray-300">Mileage at Service (Optional)</label>
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            id="serviceMileage"
-                            value={mileageStr}
-                            onChange={e => setMileageStr(e.target.value)}
-                            placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString()} on record` : 'e.g., 44229'}
-                            className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                        />
-                    </div>
-                    {recordType === 'customer' && (
-                        <div className="md:col-span-2">
-                            <label htmlFor="customerName" className="block text-sm font-medium text-gray-300">Customer Name (Optional)</label>
-                            <input
-                                type="text"
-                                id="customerName"
-                                value={customerName}
-                                onChange={e => setCustomerName(e.target.value)}
-                                placeholder="e.g., John Smith"
-                                className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                            />
-                        </div>
+                    </Field>
+                    {showSuggestions && suggestions.length > 0 && (
+                        <VehicleSuggestions vehicles={suggestions} onPick={handleSuggestionClick} />
                     )}
                 </div>
-                <div>
-                    <h3 className="text-base font-semibold text-white">Work Carried Out</h3>
-                     <div className="mt-2 space-y-3">
-                        {items.map((item, index) => (
-                            <div key={index} className="flex items-start gap-2">
-                                <div className="flex-1">
-                                    <label htmlFor={`desc-${index}`} className="sr-only">Description</label>
-                                    <input id={`desc-${index}`} type="text" placeholder="e.g., Full Service, Replaced front tyres" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"/>
-                                </div>
-                                 <div className="w-36">
-                                     <label htmlFor={`amount-${index}`} className="sr-only">Amount</label>
-                                     <CurrencyInput id={`amount-${index}`} value={item.amountStr} onChange={e => handleItemChange(index, 'amountStr', e.target.value)} />
-                                </div>
-                                <button type="button" onClick={() => removeItem(index)} disabled={items.length <= 1} className="p-2 text-gray-400 hover:text-red-400 disabled:opacity-50 mt-1"><TrashIcon className="h-5 w-5"/></button>
-                            </div>
-                        ))}
-                        <button type="button" onClick={addItem} className="w-full text-sm font-semibold text-brand-400 hover:text-brand-300 flex items-center justify-center gap-2 p-2 border-2 border-dashed border-gray-600 rounded-lg hover:border-gray-500">
-                            <PlusIcon className="h-4 w-4"/> Add Line Item
-                        </button>
-                    </div>
-                </div>
+                <Field label="Date" htmlFor="workDate">
+                    <UkDateInput id="workDate" name="workDate" value={workDate} onChange={e => setWorkDate(e.target.value)} required />
+                </Field>
+                <Field label="Mileage at service" optional htmlFor="serviceMileage">
+                    <FrameInput
+                        type="text"
+                        inputMode="numeric"
+                        id="serviceMileage"
+                        value={mileageStr}
+                        onChange={e => setMileageStr(e.target.value)}
+                        placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString()} on record` : 'e.g. 44,229'}
+                        className="num"
+                    />
+                </Field>
                 {recordType === 'customer' && (
-                    <label className="flex items-start gap-3 rounded-md border border-gray-700 bg-gray-800/60 p-3 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={vatApplied}
-                            onChange={e => setVatApplied(e.target.checked)}
-                            className="mt-1 h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-500"
+                    <Field label="Customer name" optional htmlFor="customerName" className="md:col-span-2">
+                        <FrameInput
+                            type="text"
+                            id="customerName"
+                            value={customerName}
+                            onChange={e => setCustomerName(e.target.value)}
+                            placeholder="e.g. John Smith"
                         />
-                        <span>
-                            <span className="block text-sm font-medium text-gray-200">Add VAT (20%)</span>
-                            <span className="block text-xs text-gray-400">Adds VAT to the chargeable work subtotal on the receipt.</span>
-                        </span>
-                    </label>
+                    </Field>
                 )}
-                 {totalAmount > 0 && (
-                    <div className="pt-4 border-t border-gray-700 text-right">
-                        <p className="text-lg font-bold text-brand-400">{vatApplied && recordType === 'customer' ? 'Total including VAT' : 'Total'}</p>
-                        <p className="text-3xl font-bold text-white">{formatCurrency(totalDue)}</p>
-                    </div>
-                )}
-            </form>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end space-x-3 items-center bg-gray-800">
-                <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                <button type="submit" form="worksheet-editor-form" disabled={isSubmitting || !selectedVehicleId} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : (isEditing ? 'Update & Preview' : 'Generate Preview')}
-                </button>
-            </footer>
-        </div>
+            </div>
+
+            <fieldset>
+                <legend className="mb-2 text-base font-bold text-ink">Work carried out</legend>
+                <div className="divide-y divide-line rounded-card border border-line">
+                    {items.map((item, index) => (
+                        <div key={index} className="flex flex-wrap items-center gap-2 p-2.5 sm:flex-nowrap">
+                            <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                                <label htmlFor={`desc-${index}`} className="sr-only">Work done, line {index + 1}</label>
+                                <FrameInput id={`desc-${index}`} type="text" placeholder="e.g. Full service, front tyres" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} />
+                            </div>
+                            <div className="min-w-0 flex-1 sm:w-36 sm:flex-none">
+                                <label htmlFor={`amount-${index}`} className="sr-only">Amount, line {index + 1}</label>
+                                <CurrencyInput id={`amount-${index}`} value={item.amountStr} onChange={e => handleItemChange(index, 'amountStr', e.target.value)} />
+                            </div>
+                            <IconButton label={`Remove line ${index + 1}`} icon={<TrashIcon />} onClick={() => removeItem(index)} disabled={items.length <= 1} />
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-2">
+                    <AddLineButton onClick={addItem} />
+                </div>
+            </fieldset>
+
+            {recordType === 'customer' && (
+                <Checkbox
+                    checked={vatApplied}
+                    onChange={e => setVatApplied(e.target.checked)}
+                    label="Add VAT at 20%"
+                    description="Adds VAT to the subtotal on the work receipt."
+                />
+            )}
+
+            {totalAmount > 0 && (
+                <div className="space-y-1.5 border-t border-line pt-4">
+                    {vatApplied && recordType === 'customer' && (
+                        <>
+                            <TotalLine label="Subtotal" value={formatCurrency(totalAmount)} />
+                            <TotalLine label="VAT (20%)" value={formatCurrency(vatAmount)} />
+                        </>
+                    )}
+                    <TotalLine strong label={vatApplied && recordType === 'customer' ? 'Total including VAT' : 'Total'} value={formatCurrency(totalDue)} />
+                </div>
+            )}
+        </EditorFrame>
     );
 };
 

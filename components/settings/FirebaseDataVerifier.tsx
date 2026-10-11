@@ -101,12 +101,12 @@ const FirebaseDataVerifier = ({ onFixSuccess }: FirebaseDataVerifierProps) => {
     };
     
     const ResultRow = ({ label, path, found }: { label: string; path: string; found: boolean }) => (
-        <li className="flex items-center justify-between p-3 bg-gray-900/50 rounded-md">
+        <li className="flex items-center justify-between p-3 bg-surface/50 rounded-md">
             <div>
-                <p className="font-semibold text-white">{label}</p>
-                <p className="text-xs text-gray-500 font-mono">{path}</p>
+                <p className="font-semibold text-ink">{label}</p>
+                <p className="text-xs text-ink-3 font-mono">{path}</p>
             </div>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${found ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'}`}>
+            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${found ? 'bg-success-soft text-success-ink' : 'bg-danger-soft text-danger-ink'}`}>
                 {found ? 'FOUND' : 'NOT FOUND'}
             </span>
         </li>
@@ -116,11 +116,11 @@ const FirebaseDataVerifier = ({ onFixSuccess }: FirebaseDataVerifierProps) => {
     const canAttemptFix = needsFix;
 
     return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h2 className="text-lg font-semibold text-white">Firebase Data Verifier</h2>
-            <p className="text-sm text-gray-400 mt-1">This tool checks the Realtime Database records your security rules depend on to diagnose permission errors.</p>
+        <div className="bg-surface p-6 rounded-lg shadow-lg">
+            <h2 className="text-lg font-semibold text-ink">Firebase Data Verifier</h2>
+            <p className="text-sm text-ink-3 mt-1">This tool checks the Realtime Database records your security rules depend on to diagnose permission errors.</p>
             <div className="mt-4">
-                <button onClick={handleVerify} disabled={status === 'running'} className="w-full inline-flex items-center justify-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50">
+                <button onClick={handleVerify} disabled={status === 'running'} className="w-full inline-flex items-center justify-center gap-x-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent shadow-sm hover:bg-accent-hover disabled:opacity-50">
                     {status === 'running' ? <Spinner className="h-5 w-5" /> : 'Run Verification'}
                 </button>
             </div>
@@ -130,16 +130,16 @@ const FirebaseDataVerifier = ({ onFixSuccess }: FirebaseDataVerifierProps) => {
                         <ResultRow label="User-to-Company Link" path={`/users/${userId}/companyId`} found={results.userPathFound} />
                         <ResultRow label="Company-to-User Link" path={`/companies/{companyId}/users/${userId}`} found={results.companyUserPathFound} />
                     </ul>
-                    <div className={`p-3 rounded-lg ${!needsFix ? 'bg-green-900/50' : 'bg-yellow-900/50'}`}>
-                        <p className="font-bold text-white">Diagnosis</p>
-                        <p className="text-sm text-gray-300 mt-1">{results.diagnosis}</p>
+                    <div className={`p-3 rounded-lg ${!needsFix ? 'bg-success-soft' : 'bg-warning-soft'}`}>
+                        <p className="font-bold text-ink">Diagnosis</p>
+                        <p className="text-sm text-ink-2 mt-1">{results.diagnosis}</p>
                         {needsFix && (
                             <div className="mt-4">
-                                <button onClick={handleFixData} disabled={!canAttemptFix || fixStatus === 'running'} className="w-full inline-flex items-center justify-center gap-x-2 rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <button onClick={handleFixData} disabled={!canAttemptFix || fixStatus === 'running'} className="w-full inline-flex items-center justify-center gap-x-2 rounded-md bg-warning-soft px-4 py-2 text-sm font-semibold text-warning-ink shadow-sm hover:bg-warning/20 disabled:opacity-50 disabled:cursor-not-allowed">
                                     {fixStatus === 'running' ? <Spinner className="h-5 w-5" /> : 'Attempt to Fix Data'}
                                 </button>
-                                {fixStatus === 'success' && <p className="text-green-400 text-sm mt-2 text-center">{fixMessage}</p>}
-                                {fixStatus === 'error' && <p className="text-red-400 text-sm mt-2 text-center">{fixMessage}</p>}
+                                {fixStatus === 'success' && <p className="text-success text-sm mt-2 text-center">{fixMessage}</p>}
+                                {fixStatus === 'error' && <p className="text-danger text-sm mt-2 text-center">{fixMessage}</p>}
                             </div>
                         )}
                     </div>

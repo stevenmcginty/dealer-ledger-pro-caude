@@ -572,6 +572,8 @@ export const updateExpenseCategories = async (companyId: string, categories: Exp
 export const deleteExpenseCategory = async (companyId: string, id: string) => db.ref(`${FOLDER_ROOTS(companyId).expenseCategories}/${id}`).remove();
 
 export const updateBusinessDetails = async (companyId: string, data: BusinessDetails) => db.ref(FOLDER_ROOTS(companyId).businessDetails).set(data);
+// Brand colour only (Settings > Appearance): writes the one field, never the whole businessDetails object.
+export const updateBusinessTheme = async (companyId: string, theme: string): Promise<void> => db.ref(`${FOLDER_ROOTS(companyId).businessDetails}/theme`).set(theme);
 
 // Year-end adjustments live inside businessDetails (a path every company already
 // writes), not in a new top-level collection the deployed rules may not allow. They

@@ -1,23 +1,22 @@
 import React from 'react';
 import type { ProfitAndLoss } from '../../utils/accounting/profitAndLoss';
 import { formatDayShort } from '../../utils/accounting/yearEnd';
-import { HubCard, CsvButton, money, downloadCsv, fix2 } from './hubShared';
+import { HubCard, CsvButton, money, downloadCsv, fix2, Money, moneyText, Eyebrow, Line } from './hubShared';
+import { eyebrow } from '../ui/cx';
+import { ExclamationTriangleIcon } from '../icons';
 
 // Accountant-style P&L. Every figure comes from computeProfitAndLoss; this file only lays it out.
 
 const Row = ({ label, value, indent = false, strong = false, muted = false, rule = false, cost = false }: {
     label: React.ReactNode; value: number; indent?: boolean; strong?: boolean; muted?: boolean; rule?: boolean; cost?: boolean;
 }) => (
-    <div className={`flex items-baseline justify-between gap-4 py-1.5 ${rule ? 'mt-1 border-t border-gray-600 pt-2.5' : ''} ${indent ? 'pl-4' : ''}`}>
-        <span className={`min-w-0 ${strong ? 'font-semibold text-white' : muted ? 'text-gray-400' : 'text-gray-300'} text-sm`}>{label}</span>
-        <span className={`shrink-0 tabular-nums text-right text-sm ${strong ? 'font-semibold text-white' : muted ? 'text-gray-400' : 'text-gray-200'}`}>
-            {cost ? `(${money(Math.abs(value))})` : money(value, true)}
-        </span>
-    </div>
+    <Line label={label} indent={indent} muted={muted} total={rule || strong}>
+        {cost ? <span className="num">({moneyText(Math.abs(value))})</span> : <Money value={value} brackets />}
+    </Line>
 );
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-    <p className="mt-5 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 first:mt-0">{children}</p>
+    <Eyebrow as="h4" className="mb-0.5 mt-6 first:mt-0">{children}</Eyebrow>
 );
 
 const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServiceBusiness: boolean }) => {
@@ -77,18 +76,18 @@ const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServi
                     {cos.sorPayouts !== 0 && <Row indent label="Sale or return payouts" value={cos.sorPayouts} />}
                     <Row strong rule label="Total cost of sales" value={cos.total} cost />
 
-                    <div className="mt-4 flex items-baseline justify-between gap-4 rounded-lg bg-gray-900/60 px-3 py-2.5 ring-1 ring-inset ring-gray-700">
-                        <span className="text-sm font-semibold text-white">Gross profit</span>
-                        <span className="tabular-nums text-base font-semibold text-white">{money(pnl.grossProfit, true)}</span>
+                    <div className="mt-3 flex items-baseline justify-between gap-4 rounded-control bg-surface-2 px-3 py-2.5">
+                        <span className="text-sm font-bold text-ink">Gross profit</span>
+                        <Money value={pnl.grossProfit} brackets className="text-base font-bold text-ink" />
                     </div>
 
                     <SectionLabel>Overheads</SectionLabel>
-                    {expenses.byCategory.length === 0 && <p className="py-1.5 pl-4 text-sm text-gray-500">No overheads booked in this period.</p>}
+                    {expenses.byCategory.length === 0 && <p className="py-2 ps-4 text-sm text-ink-3">No overheads booked in this period.</p>}
                     {expenses.byCategory.map(c => (
                         <React.Fragment key={c.category}>
                             <Row indent label={c.category} value={c.net} />
                             {c.category.toLowerCase() === 'wages' && pnl.directorSalary?.lines.map(l => (
-                                <p key={l.name} className={`-mt-1 pb-1.5 pl-8 text-xs ${l.status === 'settled' ? 'text-gray-400' : 'text-amber-300/90'}`}>
+                                <p key={l.name} className={`pb-2 ps-8 text-sm leading-5 ${l.status === 'settled' ? 'text-ink-3' : 'text-warning-ink'}`}>
                                     {l.name}: salary due {money(l.due)} (accrued), paid {money(l.paid)}, {l.balance >= 0 ? `owed ${money(l.balance)}` : `overdrawn ${money(-l.balance)}`} at {formatDayShort(pnl.directorSalary!.asOf)}
                                 </p>
                             ))}
@@ -96,9 +95,11 @@ const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServi
                     ))}
                     <Row strong rule label="Total overheads" value={expenses.total} cost />
 
-                    <div className={`mt-4 flex items-baseline justify-between gap-4 rounded-lg px-3 py-3 ring-1 ring-inset ${pnl.netProfit >= 0 ? 'bg-emerald-900/30 ring-emerald-700/50' : 'bg-red-900/30 ring-red-700/50'}`}>
-                        <span className="text-base font-bold text-white">Net profit {pnl.netProfit < 0 ? '(loss)' : ''}</span>
-                        <span className={`tabular-nums text-lg font-bold ${pnl.netProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{money(pnl.netProfit, true)}</span>
+                    <div className="mt-4 border-y-[3px] border-line-strong px-1 py-3 [border-style:double]">
+                        <div className="flex items-baseline justify-between gap-4">
+                            <span className="text-base font-bold text-ink">Net profit{pnl.netProfit < 0 ? ' (loss)' : ''}</span>
+                            <Money value={pnl.netProfit} brackets className={`text-xl font-bold ${pnl.netProfit >= 0 ? 'text-success' : 'text-danger'}`} />
+                        </div>
                     </div>
                 </div>
             </HubCard>
@@ -106,31 +107,31 @@ const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServi
             <div className="space-y-5">
                 <HubCard title="Not in the P&L" subtitle="Real money moved, but not income or a trading cost.">
                     {notInPnl.byGroup.length === 0 ? (
-                        <p className="text-sm text-gray-500">Nothing set aside in this period.</p>
+                        <p className="text-sm text-ink-3">Nothing set aside in this period.</p>
                     ) : (
                         <div className="-mx-1 overflow-x-auto">
-                            <table className="w-full min-w-[18rem] text-sm">
+                            <table className="w-full text-sm">
                                 <thead>
-                                    <tr className="text-[11px] uppercase tracking-wider text-gray-500">
-                                        <th className="px-1 pb-2 text-left font-semibold">Group</th>
-                                        <th className="px-1 pb-2 text-right font-semibold">In</th>
-                                        <th className="px-1 pb-2 text-right font-semibold">Out</th>
+                                    <tr>
+                                        <th scope="col" className={`${eyebrow} px-1 pb-2 text-start`}>Group</th>
+                                        <th scope="col" className={`${eyebrow} px-1 pb-2 text-end`}>In</th>
+                                        <th scope="col" className={`${eyebrow} px-1 pb-2 text-end`}>Out</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-700/60">
+                                <tbody>
                                     {notInPnl.byGroup.map(g => (
-                                        <tr key={g.group}>
-                                            <td className="px-1 py-2 text-gray-300">{g.label}<span className="ml-1 text-xs text-gray-500">· {g.count}</span></td>
-                                            <td className="px-1 py-2 text-right tabular-nums text-gray-200">{g.moneyIn ? money(g.moneyIn) : '–'}</td>
-                                            <td className="px-1 py-2 text-right tabular-nums text-gray-200">{g.moneyOut ? money(g.moneyOut) : '–'}</td>
+                                        <tr key={g.group} className="border-b border-dashed border-line last:border-b-0">
+                                            <td className="px-1 py-2 text-ink-2">{g.label}<span className="block text-ink-3"><span className="num">{g.count}</span> {g.count === 1 ? 'line' : 'lines'}</span></td>
+                                            <td className="num whitespace-nowrap px-1 py-2 text-end align-top text-ink">{g.moneyIn ? moneyText(g.moneyIn) : '–'}</td>
+                                            <td className="num whitespace-nowrap px-1 py-2 text-end align-top text-ink">{g.moneyOut ? moneyText(g.moneyOut) : '–'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                                 <tfoot>
-                                    <tr className="border-t border-gray-600 font-semibold text-white">
-                                        <td className="px-1 pt-2">Total</td>
-                                        <td className="px-1 pt-2 text-right tabular-nums">{money(notInPnl.totalIn)}</td>
-                                        <td className="px-1 pt-2 text-right tabular-nums">{money(notInPnl.totalOut)}</td>
+                                    <tr className="border-t border-line-strong font-bold text-ink">
+                                        <td className="px-1 pt-2.5">Total</td>
+                                        <td className="num whitespace-nowrap px-1 pt-2.5 text-end">{moneyText(notInPnl.totalIn)}</td>
+                                        <td className="num whitespace-nowrap px-1 pt-2.5 text-end">{moneyText(notInPnl.totalOut)}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -139,8 +140,8 @@ const ProfitLossTab = ({ pnl, isServiceBusiness }: { pnl: ProfitAndLoss; isServi
                 </HubCard>
                 {pnl.warnings.length > 0 && (
                     <HubCard title="Check before you rely on it">
-                        <ul className="space-y-2 text-sm text-amber-200/90">
-                            {pnl.warnings.map(w => <li key={w.code} className="flex gap-2"><span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />{w.message}</li>)}
+                        <ul className="space-y-2 text-sm leading-5 text-ink-2">
+                            {pnl.warnings.map(w => <li key={w.code} className="flex gap-2"><ExclamationTriangleIcon aria-hidden="true" className="mt-0.5 h-4 w-4 flex-none text-warning" />{w.message}</li>)}
                         </ul>
                     </HubCard>
                 )}

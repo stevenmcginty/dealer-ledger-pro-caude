@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { ShieldCheckIcon, PlusIcon, EditIcon, TrashIcon } from '../icons';
+import { ShieldCheckIcon, EditIcon, TrashIcon } from '../icons';
 import { formatDate } from '../../utils/helpers';
-import Spinner from '../common/Spinner';
+import { EmptyState, IconButton, Plate, Search, SkeletonList, StatusChip } from '../ui';
+import { PageHead, pdiVerdict } from '../stock/parts';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
-import { pdiExceptions, withPdiDefaults } from '../../utils/pdi';
 
 const PdisLedger = () => {
   const { openModal } = useUI();
@@ -35,98 +35,74 @@ const PdisLedger = () => {
     });
   }, [filteredPdis]);
 
-  if (!pdis || !vehicles) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
-
-  const EmptyState = () => (
-    <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-      <ShieldCheckIcon className="h-12 w-12 text-gray-500 mx-auto" />
-      <h3 className="mt-4 text-lg font-medium text-white">{searchTerm ? 'No PDIs Found' : 'No PDIs'}</h3>
-      <p className="mt-1 text-sm text-gray-400">{searchTerm ? 'Try adjusting your search.' : 'Create a PDI to record a pre-delivery inspection.'}</p>
-       {!searchTerm && (
-          <div className="mt-6">
-              <button onClick={() => openModal('pdi')} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                  <PlusIcon className="-ml-0.5 h-5 w-5" /> Add PDI
-              </button>
-          </div>
-       )}
-    </div>
-  );
-
-  const getStatusPill = (pdi: typeof pdis[number]) => {
-      const exceptions = pdiExceptions(withPdiDefaults(pdi));
-      const fails = exceptions.filter(e => e.status === 'fail');
-      const advisories = exceptions.filter(e => e.status === 'advisory');
-      if (!pdi.roadworthy) {
-          return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-900/50 text-red-300">Not roadworthy</span>;
-      }
-      if (fails.length > 0) {
-          return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-900/50 text-red-300">{fails.length} fail{fails.length === 1 ? '' : 's'}</span>;
-      }
-      if (advisories.length > 0) {
-          return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-yellow-900/50 text-yellow-300">{advisories.length} advisory</span>;
-      }
-      return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-900/50 text-green-300">All pass</span>;
-  };
+  if (!pdis || !vehicles) return <SkeletonList rows={4} label="Loading PDIs" />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
-          <div className="relative sm:max-w-xs w-full">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                   <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
-              </div>
-              <input
-                  type="search"
-                  name="search"
-                  id="search"
-                  className="block w-full rounded-md border-0 bg-gray-700 py-2 pl-10 pr-3 text-white ring-1 ring-inset ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-500 sm:text-sm"
-                  placeholder="Search PDIs..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-              />
-          </div>
-      </div>
+    <div className="space-y-4 pb-6">
+      {pdis.length > 0 && (
+        <PageHead facts={<>{pdis.length} inspection{pdis.length === 1 ? '' : 's'}</>} />
+      )}
+      <Search
+        value={searchTerm}
+        onChange={setSearchTerm}
+        label="Search PDIs"
+        placeholder="PDI no., reg, make or model"
+        className="w-full lg:max-w-sm"
+      />
 
-       {sortedPdis.length === 0 ? <EmptyState /> : (
-            <div className="bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                <ul role="list" className="divide-y divide-gray-700">
-                    {sortedPdis.map((pdi) => {
-                        const carDetails = pdi.carDetails || vehicles.find(v => v.id === pdi.vehicleId);
-                        return (
-                            <li key={pdi.id} className="group relative">
-                                <button onClick={() => openModal('pdi', { viewOnly: true, pdi })} className="block w-full text-left hover:bg-gray-700/50 focus:outline-none focus:bg-gray-700/50 transition duration-150 ease-in-out">
-                                    <div className="px-4 py-4 sm:px-6">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-sm font-medium text-brand-400 truncate">PDI #{pdi.pdiNumber}</p>
-                                            {getStatusPill(pdi)}
-                                        </div>
-                                        <div className="mt-2 sm:flex sm:justify-between">
-                                            <div className="sm:flex">
-                                                <p className="flex items-center text-sm text-gray-300 font-semibold">{carDetails?.make} {carDetails?.model} - <span className="uppercase ml-2 bg-gray-900 px-2 py-0.5 rounded text-xs">{carDetails?.reg}</span></p>
-                                                {pdi.mileage != null && (
-                                                    <p className="mt-2 flex items-center text-sm text-gray-400 sm:mt-0 sm:ml-6">{pdi.mileage.toLocaleString()} miles</p>
-                                                )}
-                                            </div>
-                                            <div className="mt-2 flex items-center text-sm text-gray-400 sm:mt-0">
-                                                <p>{formatDate(pdi.inspectionDate)}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </button>
-                                <div className="absolute top-1/2 -translate-y-1/2 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-x-2">
-                                    <button onClick={() => openModal('pdi', { editingPdi: pdi })} className="p-2 rounded-full text-gray-300 bg-gray-700 hover:bg-gray-600 hover:text-white" title="Edit">
-                                        <EditIcon className="h-5 w-5" />
-                                    </button>
-                                    <button onClick={() => openModal('deletePdiConfirm', pdi)} className="p-2 rounded-full text-gray-300 bg-gray-700 hover:bg-red-600 hover:text-white" title="Delete">
-                                        <TrashIcon className="h-5 w-5" />
-                                    </button>
-                                </div>
-                            </li>
-                        )
-                    })}
-                </ul>
-            </div>
-       )}
+      {sortedPdis.length === 0 ? (
+        <div className="rounded-card border border-line bg-surface">
+          {searchTerm ? (
+            <EmptyState
+              icon={<ShieldCheckIcon />}
+              title={`No PDIs match “${searchTerm}”`}
+              description="Search looks at the PDI number, reg, make and model."
+              actionLabel="Clear search"
+              onAction={() => setSearchTerm('')}
+            />
+          ) : (
+            <EmptyState
+              icon={<ShieldCheckIcon />}
+              title="No PDIs yet"
+              description="A PDI records the pre-delivery checks and prints a certificate for the buyer."
+              actionLabel="Start PDI"
+              onAction={() => openModal('pdi')}
+            />
+          )}
+        </div>
+      ) : (
+        <ul role="list" aria-label="Inspections" className="m-0 list-none overflow-hidden rounded-card border border-line bg-surface p-0">
+          {sortedPdis.map((pdi) => {
+            const carDetails = pdi.carDetails || vehicles.find(v => v.id === pdi.vehicleId);
+            const verdict = pdiVerdict(pdi);
+            const name = [carDetails?.make, carDetails?.model].filter(Boolean).join(' ') || 'Unknown car';
+            return (
+              <li key={pdi.id} className="flex items-stretch border-b border-line last:border-b-0">
+                <button
+                  type="button"
+                  onClick={() => openModal('pdi', { viewOnly: true, pdi })}
+                  className="min-w-0 flex-1 px-4 py-3 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3"
+                >
+                  <span className="mb-1.5 flex min-w-0 flex-wrap items-center gap-2">
+                    {carDetails?.reg && <Plate reg={carDetails.reg} size="sm" />}
+                    <span className="num text-sm font-semibold text-ink-3">PDI #{pdi.pdiNumber}</span>
+                    <StatusChip status={verdict.status} className="ms-auto">{verdict.label}</StatusChip>
+                  </span>
+                  <span className="block truncate text-base font-semibold leading-tight text-ink">{name}</span>
+                  <span className="mt-0.5 block truncate text-sm text-ink-3">
+                    {formatDate(pdi.inspectionDate)}
+                    {pdi.mileage != null && <> · <span className="num">{pdi.mileage.toLocaleString('en-GB')}</span> mi</>}
+                  </span>
+                </button>
+                <div className="flex flex-none flex-col items-center justify-center gap-0.5 border-s border-line px-1 sm:flex-row">
+                  <IconButton size="sm" label={`Edit PDI ${pdi.pdiNumber}`} icon={<EditIcon />} onClick={() => openModal('pdi', { editingPdi: pdi })} />
+                  <IconButton size="sm" label={`Delete PDI ${pdi.pdiNumber}`} icon={<TrashIcon />} onClick={() => openModal('deletePdiConfirm', pdi)} className="hover:text-danger" />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 };

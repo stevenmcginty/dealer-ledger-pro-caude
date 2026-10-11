@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, useToast } from '../ui';
-import { XMarkIcon, DocumentTextIcon } from '../icons';
+import { controlFrame, controlInput, cx } from '../ui/cx';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from './SheetParts';
 import { useData } from '../../hooks/useData';
 import { Lead } from '../../types';
 
@@ -30,68 +31,38 @@ const AddNoteModal: React.FC<AddNoteModalProps> = ({ lead, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error adding note:', error);
-            toast.error("Could not add the note. Please try again.");
+            toast.error("Couldn't save the note. Check your signal and try again.");
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="flex flex-col w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                        <DocumentTextIcon className="w-5 h-5 text-purple-400" />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-white">Add Note</h2>
-                        <p className="text-xs text-gray-400">
-                            {lead.firstName} {lead.lastName}
-                        </p>
-                    </div>
-                </div>
-                <button
-                    onClick={onClose}
-                    className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                    <XMarkIcon className="w-5 h-5" />
-                </button>
-            </div>
-
-            {/* Body */}
-            <form onSubmit={handleSubmit}>
-                <div className="p-4">
+        <SheetFrame as="form" onSubmit={handleSubmit}>
+            <SheetHeader title="Add a note" description={`${lead.firstName} ${lead.lastName}`} onClose={onClose} />
+            <SheetBody>
+                <label htmlFor="lead-note" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Note</label>
+                <div className={controlFrame()}>
                     <textarea
+                        id="lead-note"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        placeholder="Enter your note..."
-                        rows={4}
+                        placeholder="What happened, what's next"
+                        rows={5}
                         autoFocus
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none"
+                        className={cx(controlInput, 'min-h-[132px] resize-none')}
                     />
                 </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="submit"
-                        variant="primary"
-                        disabled={isSubmitting || !note.trim()}
-                    >
-                        {isSubmitting ? 'Saving...' : 'Add Note'}
-                    </Button>
-                </div>
-            </form>
-        </div>
+            </SheetBody>
+            <SheetFooter>
+                <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
+                    Cancel
+                </Button>
+                <Button type="submit" variant="primary" loading={isSubmitting} disabled={!note.trim()}>
+                    Save note
+                </Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

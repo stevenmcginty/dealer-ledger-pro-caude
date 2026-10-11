@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { ChevronDownIcon } from '../icons';
 import { formatBytes } from '../../utils/helpers';
 
@@ -11,40 +10,52 @@ interface DrawerProps {
   isSizeLoading?: boolean;
 }
 
+/**
+ * One drawer of the cabinet: a front with a label holder, a pull and the
+ * count; it slides open to show its documents. Closed drawers are inert, so
+ * the hidden rows can't be tabbed into.
+ */
 const Drawer: React.FC<DrawerProps> = ({ title, count, children, totalSize, isSizeLoading }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const bodyId = useId();
 
     return (
-        <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-white/10">
-                <div className="flex items-center justify-between">
-                    <button
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="flex items-center text-left gap-3"
-                        aria-expanded={isOpen}
-                    >
-                        <h3 className="text-lg font-semibold text-white tracking-tight">{title}</h3>
-                        <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 rounded-full bg-white/10 px-2 text-xs font-medium text-gray-200">{count}</span>
-                        {(totalSize !== undefined || isSizeLoading) && (
-                            <span className="ml-2 hidden sm:inline-flex items-center rounded-full bg-gray-800 px-2.5 py-0.5 text-xs font-medium text-gray-400">
-                                {isSizeLoading ? 'Calculating...' : formatBytes(totalSize ?? 0)}
-                            </span>
-                        )}
-                    </button>
-                    <div className="flex items-center gap-2 ml-4">
-                        <button onClick={() => setIsOpen(!isOpen)} className="p-1 hover:bg-white/5 rounded-lg transition-colors">
-                            <ChevronDownIcon className={`h-6 w-6 text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div className={`transition-all duration-300 ease-in-out grid ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                <div className="overflow-hidden">
-                    <div className="p-4 pt-2">
-                        <ul className="space-y-2">
-                            {children}
-                        </ul>
-                    </div>
+        <div className="overflow-hidden rounded-control border border-line bg-surface">
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                aria-expanded={isOpen}
+                aria-controls={bodyId}
+                className="group flex min-h-[64px] w-full items-center gap-3 px-3.5 py-3 text-start transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3 sm:px-4"
+            >
+                {/* The label holder on the drawer front. */}
+                <span className="inline-flex min-w-0 items-center rounded-chip border border-line-strong bg-bg px-2.5 py-1.5">
+                    <span className="truncate font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink">{title}</span>
+                </span>
+                {(totalSize !== undefined || isSizeLoading) && (
+                    <span className="num hidden text-sm text-ink-3 sm:inline">
+                        {isSizeLoading ? 'Working out size…' : formatBytes(totalSize ?? 0)}
+                    </span>
+                )}
+                {/* The pull. Decorative; the whole front opens the drawer. */}
+                <span aria-hidden="true" className="flex flex-1 justify-center">
+                    <span className="h-1.5 w-12 rounded-full bg-line-strong transition-colors duration-quick ease-out group-hover:bg-ink-3" />
+                </span>
+                <span className="flex flex-none items-baseline gap-1.5">
+                    <span className="num text-lg font-semibold leading-none text-ink">{count}</span>
+                    <span className="sr-only">{count === 1 ? 'document' : 'documents'}</span>
+                </span>
+                <ChevronDownIcon className={`h-5 w-5 flex-none text-ink-3 transition-transform duration-base ease-out motion-reduce:transition-none ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <div
+                id={bodyId}
+                inert={!isOpen}
+                className={`grid transition-[grid-template-rows] duration-base ease-out motion-reduce:transition-none ${isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+            >
+                <div className="min-h-0 overflow-hidden">
+                    <ul className="m-0 list-none divide-y divide-line border-t border-line p-0">
+                        {children}
+                    </ul>
                 </div>
             </div>
         </div>

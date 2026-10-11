@@ -4,11 +4,13 @@ import { uploadFile } from '../../services/dataService';
 import * as ai from '../../utils/ai';
 import { lookupVehicle, buildVehiclePatch, isPlausibleUkReg, normaliseReg } from '../../services/vehicleLookup';
 import { formatCurrency, fileToBase64, compressImage, robustDateParser, formatBytes, formatDate } from '../../utils/helpers';
-import { XMarkIcon, CameraIcon, ArrowUpTrayIcon, SparklesIcon, CheckCircleIcon, MagnifyingGlassIcon, ExclamationTriangleIcon } from '../icons';
+import { CameraIcon, ArrowUpTrayIcon, SparklesIcon, CheckCircleIcon, MagnifyingGlassIcon, ExclamationTriangleIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
+import { Button, Segmented, Checkbox } from '../ui';
+import { PanelHeader } from './parts';
 
 type ScannedDeliveryDetails = {
     amount: number;
@@ -54,38 +56,38 @@ const ScanProgressIndicator = ({ progress, onRetry, onClose }: { progress: ScanP
             case 'uploading':
                 return `Uploading... ${progress.compressedSize ? `(${formatBytes(progress.compressedSize)})` : ''}`;
             case 'analyzing':
-                return 'AI is analyzing the document...';
+                return 'Reading the invoice…';
             case 'looking-up':
-                return 'Checking DVLA & MOT records...';
+                return 'Checking DVLA and MOT records…';
             default:
                 return progress.message;
         }
     };
 
     return (
-        <div className="absolute inset-0 bg-gray-900/90 backdrop-blur-md flex flex-col justify-center items-center z-20 p-4 text-center">
-             <div className="w-full max-w-sm bg-gray-800 p-8 rounded-2xl shadow-2xl">
-                <h3 className="text-xl font-bold text-white mb-6">
-                    {progress.step === 'success' ? 'Scan Complete!' : 'Scanning Invoice'}
+        <div className="absolute inset-0 z-dialog flex flex-col items-center justify-center bg-scrim p-4 text-center">
+             <div role="status" aria-live="polite" className="w-full max-w-sm rounded-card border border-line bg-surface p-6 shadow-e3">
+                <h3 className="mb-4 text-xl font-bold text-ink">
+                    {progress.step === 'success' ? 'Invoice read' : 'Reading the invoice'}
                 </h3>
-                {progress.step !== 'error' && progress.step !== 'success' && <Spinner className="h-8 w-8 text-brand-500 mx-auto mb-4" />}
-                <p className="text-gray-300 mb-6 h-5">{progressMessage()}</p>
+                {progress.step !== 'error' && progress.step !== 'success' && <Spinner className="h-8 w-8 text-accent-text mx-auto mb-4" />}
+                <p className="mb-2 min-h-5 text-ink-2">{progressMessage()}</p>
                  {progress.step === 'error' && (
                      <div className="mt-2">
-                        <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg"><p className="font-bold">Scan Failed</p><p className="text-sm mt-1">{progress.message}</p></div>
-                        <div className="mt-6 flex space-x-4">
-                           <button onClick={onClose} className="flex-1 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                           <button onClick={onRetry} className="flex-1 px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-md">Try Again</button>
+                        <div className="rounded-control border border-danger bg-danger-soft px-4 py-3 text-start text-danger-ink"><p className="font-bold">Couldn’t read the invoice</p><p className="text-sm mt-1">{progress.message}</p></div>
+                        <div className="mt-5 flex gap-3">
+                           <Button variant="secondary" className="flex-1" onClick={onClose}>Type it in</Button>
+                           <Button className="flex-1" onClick={onRetry}>Try again</Button>
                         </div>
                     </div>
                 )}
                 {progress.step === 'success' && (
                     <div className="mt-2 text-center">
-                        <div className="text-green-400 flex items-center justify-center space-x-2">
+                        <div className="flex items-center justify-center gap-2 text-success">
                             <CheckCircleIcon className="h-7 w-7" />
                             <p className="font-semibold text-xl">{progress.message}</p>
                         </div>
-                        <p className="text-sm text-gray-300 mt-2">The form has been populated with the scanned data.</p>
+                        <p className="mt-2 text-sm text-ink-2">Check the filled-in fields before you save.</p>
                     </div>
                 )}
             </div>
@@ -101,14 +103,14 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
 
     if (lookup.status === 'loading') {
         return (
-            <p className="text-sm text-gray-400">Checking MOT and DVLA records…</p>
+            <p className="text-sm text-ink-3">Checking MOT and DVLA records…</p>
         );
     }
 
     if (lookup.status === 'error') {
         return (
-            <div className="flex items-start gap-2 rounded-lg border border-red-800 bg-red-900/40 px-4 py-3 text-sm text-red-200">
-                <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 text-red-400" />
+            <div role="alert" className="flex items-start gap-2 rounded-control border border-danger bg-danger-soft px-4 py-3 text-sm text-danger-ink">
+                <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 text-danger-ink" />
                 <p>{lookup.message}</p>
             </div>
         );
@@ -117,7 +119,7 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
     const result = lookup.result;
     if (!result) return null;
 
-    const motStatusColor = result.motStatus === 'Expired' ? 'text-red-300' : 'text-green-300';
+    const motStatusColor = result.motStatus === 'Expired' ? 'text-danger' : 'text-success';
     const advisories = result.motHistory?.find(test => test.advisories.length > 0)?.advisories || [];
     const warnings = [lookup.mileageWarning, ...(result.warnings || [])]
         .filter((w): w is string => !!w && !isRoutineWarning(w));
@@ -163,7 +165,7 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
     }
     if (result.zones?.ulez) {
         facts.push(['ULEZ', (
-            <span className={result.zones.ulez.compliant ? 'text-green-300' : 'text-red-300'}>
+            <span className={result.zones.ulez.compliant ? 'text-success' : 'text-danger'}>
                 {result.zones.ulez.compliant ? 'Compliant' : 'Not compliant'}
                 {result.zones.ulez.assumed ? ' (from the date)' : ''}
             </span>
@@ -187,12 +189,12 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
     ].filter((s): s is string => !!s);
 
     return (
-        <div className="rounded-lg border border-gray-700 bg-gray-900/60 px-4 py-3 space-y-3">
+        <div className="space-y-3 rounded-control border border-line bg-surface-2 px-4 py-3">
             <div className="flex items-start gap-2">
-                <CheckCircleIcon className="h-5 w-5 flex-shrink-0 text-green-400" />
+                <CheckCircleIcon className="h-5 w-5 flex-shrink-0 text-success" />
                 <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{lookup.message}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-sm font-medium text-ink">{lookup.message}</p>
+                    <p className="text-sm text-ink-3">
                         Source: {result.sources.mot ? 'DVSA MOT history' : ''}
                         {result.sources.mot && result.sources.ves ? ' + ' : ''}
                         {result.sources.ves ? 'DVLA vehicle enquiry' : ''}
@@ -204,7 +206,7 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
             {!!lookup.changed?.length && (
                 <div className="flex flex-wrap gap-1.5">
                     {lookup.changed.map(field => (
-                        <span key={field} className="rounded-full bg-brand-600/20 px-2 py-0.5 text-xs text-brand-300">{field}</span>
+                        <span key={field} className="rounded-chip bg-accent-soft px-2 py-1 text-xs font-semibold text-accent-soft-ink">{field}</span>
                     ))}
                 </div>
             )}
@@ -213,19 +215,19 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     {facts.map(([label, value]) => (
                         <div key={label} className="flex justify-between gap-2">
-                            <dt className="text-gray-400">{label}</dt>
-                            <dd className="text-right text-gray-200">{value}</dd>
+                            <dt className="text-ink-3">{label}</dt>
+                            <dd className="text-end font-semibold text-ink">{value}</dd>
                         </div>
                     ))}
                 </dl>
             )}
 
             {!!workings.length && (
-                <details className="text-xs text-gray-400">
-                    <summary className="cursor-pointer select-none hover:text-gray-200">
+                <details className="text-sm text-ink-3">
+                    <summary className="flex min-h-[44px] cursor-pointer select-none items-center font-semibold hover:text-ink">
                         How the tax and running costs were worked out
                     </summary>
-                    <ul className="mt-1 space-y-1 list-disc list-inside text-gray-300">
+                    <ul className="mt-1 space-y-1 list-disc list-inside text-ink-2">
                         {workings.map((text, i) => <li key={i}>{text}</li>)}
                     </ul>
                 </details>
@@ -233,23 +235,26 @@ const LookupResultPanel = ({ lookup }: { lookup: LookupState }) => {
 
             {!!advisories.length && (
                 <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Latest MOT advisories</p>
-                    <ul className="mt-1 space-y-0.5 text-xs text-gray-300 list-disc list-inside">
+                    <p className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">Latest MOT advisories</p>
+                    <ul className="mt-1 list-inside list-disc space-y-0.5 text-sm text-ink-2">
                         {advisories.slice(0, 4).map((text, i) => <li key={i}>{text}</li>)}
-                        {advisories.length > 4 && <li className="list-none text-gray-500">+{advisories.length - 4} more</li>}
+                        {advisories.length > 4 && <li className="list-none text-ink-3">+{advisories.length - 4} more</li>}
                     </ul>
                 </div>
             )}
 
             {warnings.map(warning => (
-                <div key={warning} className="flex items-start gap-2 rounded-md bg-amber-900/30 px-3 py-2 text-xs text-amber-200">
-                    <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                <div key={warning} className="flex items-start gap-2 rounded-control bg-warning-soft px-3 py-2 text-sm text-warning-ink">
+                    <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0 text-warning-ink" />
                     <span>{warning}</span>
                 </div>
             ))}
         </div>
     );
 };
+
+/** Plain text field on the shared control look (48px, 8px radius, strong edge). */
+const inputCls = 'mt-1.5 block min-h-[48px] w-full rounded-control border border-line-strong bg-surface px-3.5 py-3 text-base text-ink placeholder:text-ink-3 transition-colors duration-quick ease-out hover:border-ink-2';
 
 const calculateNextStockNumber = (allVehicles: Vehicle[]): string => {
     const allStockNumbers = allVehicles.map(v => parseInt(v.stockNumber, 10)).filter(n => !isNaN(n));
@@ -520,63 +525,65 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
   return (
     <div className="flex flex-col w-full">
         {scanProgress.step !== 'idle' && <ScanProgressIndicator progress={scanProgress} onRetry={() => lastFile && runInvoiceScan(lastFile)} onClose={() => setScanProgress({ step: 'idle', message: ''})} />}
-        <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0 sticky top-0 z-10 bg-gray-800">
-            <h2 className="text-lg font-bold text-white">{isEditing ? 'Edit Vehicle' : 'Add New Vehicle'}</h2>
-            <button onClick={onClear} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
-        </header>
-        <form id="vehicle-editor-form" onSubmit={handleSubmit} className="p-4 space-y-4">
+        <PanelHeader
+            title={isEditing ? 'Edit car' : 'Add car'}
+            subtitle={formData.stockNumber ? <span className="num">#{formData.stockNumber}{formData.reg ? ` · ${formData.reg}` : ''}</span> : undefined}
+            onClose={onClear}
+        />
+        <form id="vehicle-editor-form" onSubmit={handleSubmit} className="space-y-5 p-5">
             
             <fieldset>
-                <div className="flex items-center justify-between">
-                    <legend className="text-sm font-medium text-gray-300">Ownership Type</legend>
-                </div>
-                <div className="mt-2 flex items-center space-x-2 rounded-lg bg-gray-700 p-1">
-                    <button type="button" onClick={() => handleOwnershipTypeChange('Owned Stock')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${!isSor ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Owned Stock</button>
-                    <button type="button" onClick={() => handleOwnershipTypeChange('Sale or Return')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${isSor ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Sale or Return (SOR)</button>
-                </div>
+                <legend className="mb-1.5 text-sm font-semibold text-ink">Ownership</legend>
+                <Segmented
+                    ariaLabel="Ownership"
+                    full
+                    value={isSor ? 'Sale or Return' : 'Owned Stock'}
+                    onChange={v => handleOwnershipTypeChange(v as 'Owned Stock' | 'Sale or Return')}
+                    options={[{ value: 'Owned Stock', label: 'Owned stock' }, { value: 'Sale or Return', label: 'Sale or return' }]}
+                />
             </fieldset>
 
              {!isSor && (
                 <div>
                     <input type="file" accept="image/*,application/pdf" capture="environment" ref={cameraInputRef} onChange={e => e.target.files && runInvoiceScan(e.target.files[0])} className="hidden" />
                     <input type="file" accept="image/*,application/pdf" ref={uploadInputRef} onChange={e => e.target.files && runInvoiceScan(e.target.files[0])} className="hidden" />
-                    <label className="block text-sm font-medium text-gray-300">AI Purchase Invoice Scan</label>
-                    <div className="mt-1 grid grid-cols-2 gap-3">
-                        <button type="button" onClick={() => cameraInputRef.current?.click()} className="inline-flex items-center justify-center w-full px-4 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600"><CameraIcon className="mr-2 h-5 w-5" />Take Photo</button>
-                        <button type="button" onClick={() => uploadInputRef.current?.click()} className="inline-flex items-center justify-center w-full px-4 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600"><ArrowUpTrayIcon className="mr-2 h-5 w-5" />Upload File</button>
+                    <p className="text-sm font-semibold text-ink">Read the purchase invoice</p>
+                    <div className="mt-1.5 grid grid-cols-2 gap-3">
+                        <Button type="button" variant="secondary" block icon={<CameraIcon />} onClick={() => cameraInputRef.current?.click()}>Take photo</Button>
+                        <Button type="button" variant="secondary" block icon={<ArrowUpTrayIcon />} onClick={() => uploadInputRef.current?.click()}>Pick a file</Button>
                     </div>
                 </div>
              )}
-            <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-700" /></div><div className="relative flex justify-center"><span className="bg-gray-800 px-2 text-sm text-gray-400">Or enter manually</span></div></div>
+            <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-line" /></div><div className="relative flex justify-center"><span className="bg-surface px-2 text-sm text-ink-3">Or type it in</span></div></div>
             
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label htmlFor="stockNumber" className="block text-sm font-medium text-gray-300">Stock #</label>
+                    <label htmlFor="stockNumber" className="block text-sm font-semibold text-ink">Stock no.</label>
                     <input 
                         type="text" 
                         name="stockNumber" 
                         value={formData.stockNumber || ''} 
                         readOnly
                         placeholder={isSor && !isEditing ? "Assigned upon sale" : ""}
-                        className="mt-1 block w-full bg-gray-900 border-gray-700 rounded-md py-2 px-3 text-gray-400 placeholder:text-gray-500"
+                        className="num mt-1.5 block min-h-[48px] w-full rounded-control border border-line bg-surface-2 px-3.5 py-3 text-base text-ink-3 placeholder:text-ink-3"
                     />
                 </div>
                 <div>
-                    <label htmlFor="reg" className="block text-sm font-medium text-gray-300">Registration</label>
-                    <div className="mt-1 flex items-stretch gap-2">
-                        <input type="text" name="reg" value={formData.reg || ''} onChange={handleChange} required className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase" />
-                        <button
+                    <label htmlFor="reg" className="block text-sm font-semibold text-ink">Registration</label>
+                    <div className="mt-1.5 flex items-stretch gap-2">
+                        <input type="text" name="reg" value={formData.reg || ''} onChange={handleChange} required className="block min-h-[48px] w-full min-w-0 rounded-control border-2 border-plate-ink bg-plate-yellow px-3.5 py-2.5 font-mono text-lg font-semibold uppercase tracking-[0.08em] text-plate-ink" />
+                        <Button
                             type="button"
+                            variant="secondary"
                             onClick={() => runRegLookup(formData.reg || '', formData)}
-                            disabled={lookup.status === 'loading' || isScanning}
-                            title="Look up DVLA & MOT data for this registration"
-                            className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md text-white bg-gray-600 hover:bg-gray-500 disabled:opacity-50"
+                            loading={lookup.status === 'loading'}
+                            disabled={isScanning}
+                            title="Look up DVLA and MOT data for this registration"
+                            icon={<MagnifyingGlassIcon />}
+                            className="flex-none"
                         >
-                            {lookup.status === 'loading'
-                                ? <Spinner className="h-5 w-5" />
-                                : <MagnifyingGlassIcon className="h-5 w-5" />}
-                            <span>Look up</span>
-                        </button>
+                            Look up
+                        </Button>
                     </div>
                 </div>
                 {lookup.status !== 'idle' && (
@@ -584,81 +591,85 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
                         <LookupResultPanel lookup={lookup} />
                     </div>
                 )}
-                <div><label htmlFor="make" className="block text-sm font-medium text-gray-300">Make</label><input type="text" name="make" value={formData.make || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                <div><label htmlFor="model" className="block text-sm font-medium text-gray-300">Model</label><input type="text" name="model" value={formData.model || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                <div><label htmlFor="color" className="block text-sm font-medium text-gray-300">Colour</label><input type="text" name="color" value={formData.color || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                <div><label htmlFor="vin" className="block text-sm font-medium text-gray-300">Chassis / VIN</label><input type="text" name="vin" value={formData.vin || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                <div><label htmlFor="year" className="block text-sm font-medium text-gray-300">Year</label><input type="number" name="year" value={formData.year || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                <div><label htmlFor="mileage" className="block text-sm font-medium text-gray-300">Mileage</label><input type="number" name="mileage" value={formData.mileage || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                <div><label htmlFor="firstRegistered" className="block text-sm font-medium text-gray-300">Date First Registered</label><UkDateInput id="firstRegistered" name="firstRegistered" value={formData.firstRegistered || ''} onChange={handleChange} className="mt-1" /></div>
-                <div><label htmlFor="engineSize" className="block text-sm font-medium text-gray-300">Engine Size (cc)</label><input type="text" name="engineSize" value={formData.engineSize || ''} onChange={handleChange} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                 <div><label htmlFor="motDueDate" className="block text-sm font-medium text-gray-300">MOT Due Date</label><UkDateInput id="motDueDate" name="motDueDate" value={formData.motDueDate || ''} onChange={handleChange} className="mt-1" /></div>
+                <div><label htmlFor="make" className="block text-sm font-semibold text-ink">Make</label><input type="text" name="make" value={formData.make || ''} onChange={handleChange} required className={inputCls} /></div>
+                <div><label htmlFor="model" className="block text-sm font-semibold text-ink">Model</label><input type="text" name="model" value={formData.model || ''} onChange={handleChange} required className={inputCls} /></div>
+                <div><label htmlFor="color" className="block text-sm font-semibold text-ink">Colour</label><input type="text" name="color" value={formData.color || ''} onChange={handleChange} className={inputCls} /></div>
+                <div><label htmlFor="vin" className="block text-sm font-semibold text-ink">Chassis / VIN</label><input type="text" name="vin" value={formData.vin || ''} onChange={handleChange} className={inputCls} /></div>
+                <div><label htmlFor="year" className="block text-sm font-semibold text-ink">Year</label><input type="number" name="year" value={formData.year || ''} onChange={handleChange} className={inputCls} /></div>
+                <div><label htmlFor="mileage" className="block text-sm font-semibold text-ink">Mileage</label><input type="number" name="mileage" value={formData.mileage || ''} onChange={handleChange} className={inputCls} /></div>
+                <div><label htmlFor="firstRegistered" className="block text-sm font-semibold text-ink">First registered</label><UkDateInput id="firstRegistered" name="firstRegistered" value={formData.firstRegistered || ''} onChange={handleChange} className="mt-1.5" /></div>
+                <div><label htmlFor="engineSize" className="block text-sm font-semibold text-ink">Engine size (cc)</label><input type="text" name="engineSize" value={formData.engineSize || ''} onChange={handleChange} className={inputCls} /></div>
+                 <div><label htmlFor="motDueDate" className="block text-sm font-semibold text-ink">MOT due</label><UkDateInput id="motDueDate" name="motDueDate" value={formData.motDueDate || ''} onChange={handleChange} className="mt-1.5" /></div>
                 <div>
                     {/* Read-only: worked out from CO2 and first registration when the car
                         is looked up (functions/src/vehicle/ved.ts) and kept on the car. */}
-                    <span className="block text-sm font-medium text-gray-300">Road Tax</span>
-                    <p className="mt-1 py-2 text-white">
+                    <span className="block text-sm font-semibold text-ink">Road tax</span>
+                    <p className="num mt-1.5 py-3 text-base text-ink">
                         {typeof formData.annualRoadTax === 'number'
                             ? `£${formData.annualRoadTax.toLocaleString('en-GB')} a year`
-                            : <span className="text-gray-500">Not known yet</span>}
+                            : <span className="font-sans text-ink-3">Not known yet</span>}
                         {typeof formData.co2Emissions === 'number' && (
-                            <span className="text-gray-400"> · CO2 {formData.co2Emissions} g/km</span>
+                            <span className="font-sans text-ink-3"> · CO2 {formData.co2Emissions} g/km</span>
                         )}
                     </p>
                     {formData.taxStatus && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm text-ink-3">
                             {formData.taxStatus}{formData.taxDueDate ? ` — due ${formatDate(formData.taxDueDate)}` : ''}
                         </p>
                     )}
                 </div>
                 <div>
-                    <label htmlFor="vatScheme" className="block text-sm font-medium text-gray-300">VAT Scheme</label>
-                    <Select name="vatScheme" value={formData.vatScheme} onChange={handleChange} wrapperClassName="mt-1">
+                    <label htmlFor="vatScheme" className="block text-sm font-semibold text-ink">VAT scheme</label>
+                    <Select name="vatScheme" value={formData.vatScheme} onChange={handleChange} wrapperClassName="mt-1.5">
                         <option>Margin</option><option>Qualifying</option><option>Commercial</option>
                     </Select>
                 </div>
-                <div className="md:col-span-2"><label htmlFor="purchasePrice" className="block text-sm font-medium text-gray-300">{isSor ? 'Owner Payout Amount' : 'Purchase Price'}</label><CurrencyInput id="purchasePrice" value={priceStr} onChange={e => setPriceStr(e.target.value)} required={!isSor} className="mt-1"/></div>
+                <div className="md:col-span-2"><label htmlFor="purchasePrice" className="block text-sm font-semibold text-ink">{isSor ? 'Owner payout' : 'Purchase price'}</label><CurrencyInput id="purchasePrice" value={priceStr} onChange={e => setPriceStr(e.target.value)} required={!isSor} className="mt-1.5"/></div>
                 <div className="md:col-span-2">
-                    <label htmlFor="advertisedPrice" className="block text-sm font-medium text-gray-300">Advertised Price</label>
-                    <CurrencyInput id="advertisedPrice" value={advertisedPriceStr} onChange={e => setAdvertisedPriceStr(e.target.value)} className="mt-1"/>
+                    <label htmlFor="advertisedPrice" className="block text-sm font-semibold text-ink">Asking price</label>
+                    <CurrencyInput id="advertisedPrice" value={advertisedPriceStr} onChange={e => setAdvertisedPriceStr(e.target.value)} className="mt-1.5"/>
                     {/* The only price a linked website is ever sent. Left blank until
                         the car is worth advertising, which is usually weeks later. */}
-                    <p className="mt-1 text-xs text-gray-500">Optional — what it goes on the forecourt at. Sent to a linked website; the purchase price never is.</p>
+                    <p className="mt-1.5 text-sm text-ink-3">Optional — what it goes on the forecourt at. Sent to a linked website; the purchase price never is.</p>
                 </div>
-                <div className="md:col-span-2"><label htmlFor="purchaseDate" className="block text-sm font-medium text-gray-300">{isSor ? 'Agreement Date' : 'Purchase Date'}</label><UkDateInput id="purchaseDate" name="purchaseDate" value={formData.purchaseDate || ''} onChange={handleChange} className="mt-1" /></div>
+                <div className="md:col-span-2"><label htmlFor="purchaseDate" className="block text-sm font-semibold text-ink">{isSor ? 'Agreement date' : 'Purchase date'}</label><UkDateInput id="purchaseDate" name="purchaseDate" value={formData.purchaseDate || ''} onChange={handleChange} className="mt-1.5" /></div>
             </div>
 
             {isSor && (
-                <fieldset className="p-4 border border-gray-700 rounded-lg animate-in fade-in-0 duration-300">
-                    <legend className="text-sm font-medium text-gray-300 px-1">Owner Details</legend>
+                <fieldset className="rounded-card border border-line p-4">
+                    <legend className="px-1 text-sm font-semibold text-ink">Owner details</legend>
                     <div className="mt-2 grid grid-cols-1 gap-4">
                         <div>
-                            <label htmlFor="sorOwner.name" className="block text-sm font-medium text-gray-300">Owner's Full Name</label>
-                            <input type="text" id="sorOwner.name" name="sorOwner.name" value={formData.sorOwner?.name || ''} onChange={handleChange} required={isSor} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                            <label htmlFor="sorOwner.name" className="block text-sm font-semibold text-ink">Owner’s full name</label>
+                            <input type="text" id="sorOwner.name" name="sorOwner.name" value={formData.sorOwner?.name || ''} onChange={handleChange} required={isSor} className={inputCls} />
                         </div>
                         <div>
-                            <label htmlFor="sorOwner.address" className="block text-sm font-medium text-gray-300">Owner's Address</label>
-                            <textarea id="sorOwner.address" name="sorOwner.address" value={formData.sorOwner?.address || ''} onChange={handleChange} required={isSor} rows={3} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                            <label htmlFor="sorOwner.address" className="block text-sm font-semibold text-ink">Owner’s address</label>
+                            <textarea id="sorOwner.address" name="sorOwner.address" value={formData.sorOwner?.address || ''} onChange={handleChange} required={isSor} rows={3} className={inputCls} />
                         </div>
                     </div>
                 </fieldset>
             )}
             
             {!isEditing && !isSor && (
-                <fieldset className="p-4 border border-gray-700 rounded-lg">
-                    <div className="relative flex items-start">
-                        <div className="flex h-6 items-center"><input id="generatePurchaseInvoice" name="generatePurchaseInvoice" type="checkbox" checked={generatePurchaseInvoice} onChange={(e) => setGeneratePurchaseInvoice(e.target.checked)} className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-600"/></div>
-                        <div className="ml-3 text-sm leading-6"><label htmlFor="generatePurchaseInvoice" className="font-medium text-gray-300">Generate Purchase Invoice</label><p className="text-gray-400">For private purchases. Creates a document in the Filing Cabinet.</p></div>
-                    </div>
+                <fieldset className="rounded-card border border-line px-4 py-2">
+                    <Checkbox
+                        id="generatePurchaseInvoice"
+                        name="generatePurchaseInvoice"
+                        checked={generatePurchaseInvoice}
+                        onChange={(e) => setGeneratePurchaseInvoice(e.target.checked)}
+                        label="Make a purchase invoice"
+                        description="For private purchases. It goes in the Filing Cabinet."
+                    />
                     {generatePurchaseInvoice && (
-                        <div className="mt-4 grid grid-cols-1 gap-4 animate-in fade-in-0 duration-300">
+                        <div className="mb-2 mt-2 grid grid-cols-1 gap-4">
                              <div>
-                                <label htmlFor="sellerName" className="block text-sm font-medium text-gray-300">Seller's Full Name</label>
-                                <input type="text" id="sellerName" value={sellerDetails.name} onChange={e => setSellerDetails(p => ({...p, name: e.target.value}))} required={generatePurchaseInvoice} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                                <label htmlFor="sellerName" className="block text-sm font-semibold text-ink">Seller’s full name</label>
+                                <input type="text" id="sellerName" value={sellerDetails.name} onChange={e => setSellerDetails(p => ({...p, name: e.target.value}))} required={generatePurchaseInvoice} className={inputCls} />
                             </div>
                              <div>
-                                <label htmlFor="sellerAddress" className="block text-sm font-medium text-gray-300">Seller's Address</label>
-                                <textarea id="sellerAddress" value={sellerDetails.address} onChange={e => setSellerDetails(p => ({...p, address: e.target.value}))} required={generatePurchaseInvoice} rows={3} className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
+                                <label htmlFor="sellerAddress" className="block text-sm font-semibold text-ink">Seller’s address</label>
+                                <textarea id="sellerAddress" value={sellerDetails.address} onChange={e => setSellerDetails(p => ({...p, address: e.target.value}))} required={generatePurchaseInvoice} rows={3} className={inputCls} />
                             </div>
                         </div>
                     )}
@@ -666,11 +677,11 @@ const VehicleEditor = ({ companyId, userId, vehicles, onSubmit, addReceipt, edit
             )}
 
         </form>
-         <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end space-x-3 items-center bg-gray-800 sticky bottom-0 z-10">
-            <button type="button" onClick={onClear} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-            <button type="submit" form="vehicle-editor-form" disabled={isSubmitting || isScanning} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                {isSubmitting ? <Spinner /> : (isEditing ? 'Update Vehicle' : 'Add Vehicle')}
-            </button>
+         <footer className="sticky bottom-0 z-sticky flex flex-none items-center justify-end gap-3 border-t border-line bg-surface p-4">
+            <Button type="button" variant="secondary" onClick={onClear}>Cancel</Button>
+            <Button type="submit" form="vehicle-editor-form" loading={isSubmitting} disabled={isScanning}>
+                {isEditing ? 'Save car' : 'Add car'}
+            </Button>
         </footer>
     </div>
   );

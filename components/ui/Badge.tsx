@@ -1,4 +1,5 @@
 import React from 'react';
+import { cx } from './cx';
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 type BadgeSize = 'sm' | 'md' | 'lg';
@@ -11,45 +12,28 @@ interface BadgeProps {
   className?: string;
 }
 
-const Badge: React.FC<BadgeProps> = ({
-  children,
-  variant = 'default',
-  size = 'md',
-  dot = false,
-  className = '',
-}) => {
-  const variantStyles: Record<BadgeVariant, string> = {
-    default: 'bg-gray-700 text-gray-300 border-gray-600',
-    primary: 'bg-brand-500/20 text-brand-400 border-brand-500/30',
-    success: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    warning: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-    danger: 'bg-red-500/20 text-red-400 border-red-500/30',
-    info: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
-  };
-
-  const dotColors: Record<BadgeVariant, string> = {
-    default: 'bg-gray-400',
-    primary: 'bg-brand-400',
-    success: 'bg-emerald-400',
-    warning: 'bg-amber-400',
-    danger: 'bg-red-400',
-    info: 'bg-sky-400',
-  };
-
-  const sizeStyles: Record<BadgeSize, string> = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-2.5 py-1 text-xs',
-    lg: 'px-3 py-1.5 text-sm',
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
-    >
-      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant]}`} />}
-      {children}
-    </span>
-  );
+// Soft tint + matching ink: one recipe per meaning, the same in every screen.
+const VARIANT: Record<BadgeVariant, string> = {
+  default: 'bg-surface-2 text-ink-2',
+  primary: 'bg-accent-soft text-accent-soft-ink',
+  success: 'bg-success-soft text-success-ink',
+  warning: 'bg-warning-soft text-warning-ink',
+  danger: 'bg-danger-soft text-danger-ink',
+  info: 'bg-info-soft text-info-ink',
 };
+
+const SIZE: Record<BadgeSize, string> = {
+  sm: 'h-[22px] px-1.5 text-xs gap-1',
+  md: 'h-[26px] px-2 text-xs gap-1.5',
+  lg: 'h-8 px-2.5 text-sm gap-1.5',
+};
+
+/** A small label chip (4px corners). For car/money status, prefer StatusChip. */
+const Badge: React.FC<BadgeProps> = ({ children, variant = 'default', size = 'md', dot = false, className = '' }) => (
+  <span className={cx('inline-flex items-center whitespace-nowrap rounded-chip font-semibold leading-none tracking-[0.01em]', VARIANT[variant], SIZE[size], className)}>
+    {dot && <span className="h-2 w-2 flex-none rounded-full bg-current" aria-hidden="true" />}
+    {children}
+  </span>
+);
 
 export default Badge;

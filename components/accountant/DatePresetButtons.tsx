@@ -1,12 +1,13 @@
 import React from 'react';
 import { DatePreset, getPresetRange } from '../../utils/datePresets';
+import { chipClass } from './hubShared';
 
 const PRESETS: { key: DatePreset; label: string }[] = [
-    { key: 'this_month', label: 'This Month' },
-    { key: 'last_month', label: 'Last Month' },
-    { key: 'this_quarter', label: 'This Quarter' },
-    { key: 'last_quarter', label: 'Last Quarter' },
-    { key: 'this_year', label: 'This Year' },
+    { key: 'this_month', label: 'This month' },
+    { key: 'last_month', label: 'Last month' },
+    { key: 'this_quarter', label: 'This quarter' },
+    { key: 'last_quarter', label: 'Last quarter' },
+    { key: 'this_year', label: 'This year' },
 ];
 
 interface DatePresetButtonsProps {
@@ -14,13 +15,13 @@ interface DatePresetButtonsProps {
 }
 
 const DatePresetButtons = ({ onSelect }: DatePresetButtonsProps) => (
-    <div className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-label="Quick periods" className="flex flex-wrap items-center gap-1.5">
         {PRESETS.map(p => (
             <button
                 key={p.key}
                 type="button"
                 onClick={() => onSelect(getPresetRange(p.key))}
-                className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-md"
+                className={chipClass(false)}
             >
                 {p.label}
             </button>

@@ -305,6 +305,7 @@ const handleEmailBounce = async (companyId, conversation, settings, msg, lead) =
         mode: 'human',
         lastInboundAt: msg.receivedAt || Date.now(),
         unread: (conversation.unread || 0) + 1,
+        inboundCount: (conversation.inboundCount || 0) + 1,
     };
     if (e164) {
         patch.contact = { ...(conversation.contact || {}), phone: e164, ...(address ? { email: address } : {}) };
@@ -428,6 +429,7 @@ const handleInbound = async (msg, options = {}) => {
             await (0, conversations_1.updateConversation)(companyId, conversation.id, {
                 lastInboundAt: msg.receivedAt || Date.now(),
                 unread: (conversation.unread || 0) + 1,
+                inboundCount: (conversation.inboundCount || 0) + 1,
             });
         }
         return;
@@ -446,6 +448,7 @@ const handleInbound = async (msg, options = {}) => {
     const patch = {
         lastInboundAt: msg.receivedAt || Date.now(),
         unread: (conversation.unread || 0) + 1,
+        inboundCount: (conversation.inboundCount || 0) + 1,
     };
     // Meta's 24h free-text window is opened by a WhatsApp message and nothing else.
     // Letting an email refresh it would queue free text that Graph then refuses.

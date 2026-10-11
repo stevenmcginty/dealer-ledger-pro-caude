@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Supplier, NewSupplier, SupplierUpdate } from '../../types';
+import { Supplier } from '../../types';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import { XMarkIcon, TrashIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { Alert, Button, Field, IconButton, Input } from '../ui';
+import { TextArea, dangerQuiet } from './SettingsKit';
 
 interface SupplierEditorModalProps {
     editingSupplier: Supplier | null;
@@ -45,15 +46,15 @@ const SupplierEditorModal = ({ editingSupplier }: SupplierEditorModalProps) => {
             closeModal();
         } catch (err: any) {
             console.error("Failed to save supplier:", err);
-            setError(err.message || "An unexpected error occurred.");
+            setError(err.message || "Something went wrong. Try again.");
         } finally {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!isEditing) return;
-        if (window.confirm(`Are you sure you want to delete the supplier "${editingSupplier.name}"? This action cannot be undone.`)) {
+        if (window.confirm(`Delete the supplier "${editingSupplier.name}"? You can't undo this.`)) {
              setIsSubmitting(true);
              setError(null);
              try {
@@ -67,67 +68,47 @@ const SupplierEditorModal = ({ editingSupplier }: SupplierEditorModalProps) => {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">
-                    {isEditing ? 'Edit Supplier' : 'Add Supplier'}
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col" aria-labelledby="supplier-editor-title">
+            <header className="flex flex-none items-start gap-3 px-5 pb-3 pt-2 sm:pt-5">
+                <h2 id="supplier-editor-title" className="min-w-0 flex-1 pt-2.5 text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">
+                    {isEditing ? `Edit ${editingSupplier.name}` : 'Add supplier'}
                 </h2>
-                <button type="button" onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700">
-                    <XMarkIcon className="h-6 w-6" />
-                </button>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={closeModal} className="-me-2" />
             </header>
-            <div className="p-4 space-y-4">
-                 {error && (
-                    <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg text-sm">
-                        {error}
-                    </div>
-                )}
-                <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-300">Supplier Name</label>
-                    <input
-                        id="name"
-                        type="text"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        required
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                        autoFocus
-                    />
-                </div>
-                <div>
-                    <label htmlFor="keys" className="block text-sm font-medium text-gray-300">Reconciliation Keys</label>
-                    <textarea
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 pb-5">
+                {error && <Alert tone="danger" title="Couldn't save the supplier">{error}</Alert>}
+                <Input
+                    id="name"
+                    label="Supplier name"
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    required
+                    autoFocus
+                />
+                <Field
+                    label="Match words"
+                    htmlFor="keys"
+                    hint="Words from the bank line that mean this supplier, split by commas."
+                >
+                    <TextArea
                         id="keys"
                         value={keys}
                         onChange={e => setKeys(e.target.value)}
                         rows={3}
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                        placeholder="e.g., autobits, ab parts, autobits ltd"
+                        placeholder="autobits, ab parts, autobits ltd"
                     />
-                    <p className="mt-1 text-xs text-gray-400">
-                        Enter comma-separated keywords found in bank statement descriptions to auto-match this supplier.
-                    </p>
-                </div>
+                </Field>
             </div>
-            <footer className="p-4 border-t border-gray-700 flex justify-between items-center">
-                 <div>
-                    {isEditing && (
-                        <button
-                            type="button"
-                            onClick={handleDelete}
-                            disabled={isSubmitting}
-                            className="inline-flex items-center text-sm font-medium text-red-400 hover:text-red-300 disabled:opacity-50"
-                        >
-                            <TrashIcon className="h-5 w-5 mr-2 -ml-1" />
-                            Delete Supplier
-                        </button>
-                    )}
-                </div>
-                <div className="flex space-x-3">
-                    <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                    <button type="submit" disabled={isSubmitting} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {isSubmitting ? <Spinner /> : 'Save Supplier'}
+            <footer className="flex flex-none flex-wrap items-center gap-2 border-t border-line px-4 py-3 sm:px-5">
+                {isEditing && (
+                    <button type="button" onClick={handleDelete} disabled={isSubmitting} className={`${dangerQuiet} me-auto`}>
+                        <TrashIcon /> Delete
                     </button>
+                )}
+                <div className="ms-auto flex flex-1 gap-2 sm:flex-none">
+                    <Button type="button" variant="secondary" onClick={closeModal} className="flex-1 sm:flex-none">Cancel</Button>
+                    <Button type="submit" loading={isSubmitting} className="flex-1 sm:flex-none">Save supplier</Button>
                 </div>
             </footer>
         </form>

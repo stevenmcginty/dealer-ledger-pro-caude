@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NewInformalVehicle } from '../../types';
-import { XMarkIcon } from '../icons';
+import { Button, Field, Input, PlateInput } from '../ui';
+import { PanelHeader } from '../stock/parts';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 
@@ -19,49 +20,24 @@ const AddInformalVehicleModal = () => {
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Add Informal Car</h2>
-                <button type="button" onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700">
-                    <XMarkIcon className="h-6 w-6" />
-                </button>
-            </header>
-            <div className="p-4 space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">Registration</label>
-                    <input
-                        type="text"
+            <PanelHeader title="Add informal car" subtitle="A car that isn’t in your stock book" onClose={closeModal} />
+            <div className="space-y-5 p-5">
+                <Field label="Registration" htmlFor="informal-reg">
+                    <PlateInput
+                        id="informal-reg"
                         value={reg}
                         onChange={e => setReg(e.target.value.toUpperCase())}
+                        maxLength={12}
                         required
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase"
                         autoFocus
                     />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">Make</label>
-                    <input
-                        type="text"
-                        value={make}
-                        onChange={e => setMake(e.target.value)}
-                        required
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">Model</label>
-                    <input
-                        type="text"
-                        value={model}
-                        onChange={e => setModel(e.target.value)}
-                        required
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                    />
-                </div>
+                </Field>
+                <Input id="informal-make" label="Make" value={make} onChange={e => setMake(e.target.value)} required />
+                <Input id="informal-model" label="Model" value={model} onChange={e => setModel(e.target.value)} required />
             </div>
-            <footer className="p-4 border-t border-gray-700 flex justify-end">
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">
-                    Add Car
-                </button>
+            <footer className="flex justify-end gap-3 border-t border-line p-4">
+                <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
+                <Button type="submit">Add car</Button>
             </footer>
         </form>
     );

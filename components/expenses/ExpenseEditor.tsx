@@ -1,16 +1,17 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Receipt, NewReceipt, ReceiptUpdate, ExpenseCategory } from '../../types';
 import { uploadFile } from '../../services/dataService';
 import * as ai from '../../utils/ai';
 import { robustDateParser, compressImage, formatBytes } from '../../utils/helpers';
-import { XMarkIcon, CameraIcon, ArrowUpTrayIcon, TrashIcon, ArrowDownTrayIcon, CheckCircleIcon, DocumentTextIcon } from '../icons';
+import { XMarkIcon, CameraIcon, ArrowUpTrayIcon, TrashIcon, ArrowDownTrayIcon, CheckCircleIcon, DocumentTextIcon, ScanIcon } from '../icons';
 import Spinner from '../common/Spinner';
 import CurrencyInput from '../common/CurrencyInput';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
-import { useToast } from '../ui';
+import { useToast, Button, IconButton, Field, Segmented, Alert, buttonClasses } from '../ui';
+import { controlFrame, controlInput, cx } from '../ui/cx';
+import './expenses.css';
 
 interface ExpenseEditorProps {
   companyId: string;
@@ -32,38 +33,39 @@ interface ScanProgress {
     compressedSize?: number;
 }
 
+/** Fields the receipt reader filled in. Each one is tagged until it is touched. */
+type ReadField = 'vendor' | 'amount' | 'vat' | 'date' | 'category';
 
-const ScanProgressIndicator = ({ progress }: { progress: ScanProgress }) => {
-    const progressMessage = () => {
-        switch (progress.step) {
-            case 'compressing':
-                return `Compressing... ${progress.originalSize ? `(${formatBytes(progress.originalSize)})` : ''}`;
-            case 'uploading':
-                return `Uploading... ${progress.compressedSize ? `(${formatBytes(progress.compressedSize)})` : ''}`;
-            case 'analyzing':
-                return 'AI is analyzing the receipt...';
-            default:
-                return progress.message;
-        }
-    };
-
-    return (
-        <div className="absolute inset-0 bg-gray-900/90 backdrop-blur-md flex flex-col justify-center items-center z-20 p-4 text-center">
-             <div className="w-full max-w-sm bg-gray-800 p-8 rounded-2xl shadow-2xl">
-                <h3 className="text-xl font-bold text-white mb-6">
-                    {progress.step === 'success' ? 'Scan Complete!' : 'Scanning Receipt'}
-                </h3>
-                {progress.step !== 'error' && progress.step !== 'success' && <Spinner className="h-8 w-8 text-brand-500 mx-auto mb-4" />}
-                <p className="text-gray-300 mb-6 h-5">{progressMessage()}</p>
-                 {progress.step === 'error' && (
-                     <div className="mt-2">
-                        <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg"><p className="font-bold">Scan Failed</p><p className="text-sm mt-1">{progress.message}</p></div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+const progressMessage = (progress: ScanProgress): string => {
+    switch (progress.step) {
+        case 'compressing':
+            return `Getting the photo ready${progress.originalSize ? ` (${formatBytes(progress.originalSize)})` : ''}…`;
+        case 'uploading':
+        case 'analyzing':
+            return 'Reading receipt…';
+        case 'success':
+            return 'Receipt read. Check the details below.';
+        default:
+            return progress.message;
+    }
 };
+
+const ReadTag = () => (
+    <span className="inline-flex flex-none items-center gap-1 rounded-chip bg-accent-soft px-1.5 py-0.5 text-xs font-semibold leading-4 text-accent-soft-ink">
+        <ScanIcon className="h-3.5 w-3.5" aria-hidden="true" />
+        From receipt
+    </span>
+);
+
+/** Registration marks in the four corners of the capture frame, like a print proof. */
+const FrameCorners = () => (
+    <span aria-hidden="true" className="pointer-events-none absolute inset-3">
+        <span className="absolute start-0 top-0 h-5 w-5 rounded-ss-[6px] border-s-2 border-t-2 border-ink-3" />
+        <span className="absolute end-0 top-0 h-5 w-5 rounded-se-[6px] border-e-2 border-t-2 border-ink-3" />
+        <span className="absolute bottom-0 start-0 h-5 w-5 rounded-es-[6px] border-b-2 border-s-2 border-ink-3" />
+        <span className="absolute bottom-0 end-0 h-5 w-5 rounded-ee-[6px] border-b-2 border-e-2 border-ink-3" />
+    </span>
+);
 
 const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillData, imageFile, onClear, categories, allReceipts }: ExpenseEditorProps) => {
     const { deleteReceipt } = useData();
@@ -75,7 +77,12 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
     const [fileType, setFileType] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [scanProgress, setScanProgress] = useState<ScanProgress>({ step: 'idle', message: '' });
+    // Display only: which fields the reader filled, the last scan error, and drag-over state.
+    const [readFields, setReadFields] = useState<Set<ReadField>>(new Set());
+    const [scanError, setScanError] = useState<string | null>(null);
+    const [dragOver, setDragOver] = useState(false);
     const cameraInputRef = useRef<HTMLInputElement>(null);
+    const shutterInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         let initialState: Partial<NewReceipt> = { date: new Date().toISOString().split('T')[0], category: categories[0]?.name || 'Other', paymentType: 'Direct' };
@@ -99,11 +106,11 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
             initialAmount = String(prefillData.amount || '');
             initialVat = String(prefillData.vat || '');
         }
-        
+
         setFormData(initialState);
         setAmountStr(initialAmount);
         setVatStr(initialVat);
-        
+
     }, [editingReceipt, prefillData, categories]);
 
     useEffect(() => {
@@ -115,9 +122,17 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
         };
     }, [previewUrl]);
 
+    const touch = (field: ReadField) => setReadFields(prev => {
+        if (!prev.has(field)) return prev;
+        const next = new Set(prev);
+        next.delete(field);
+        return next;
+    });
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        if (name === 'vendor' || name === 'date' || name === 'category') touch(name);
     };
 
     const handleCalculateVat = () => {
@@ -125,6 +140,7 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
         if (!isNaN(total) && total > 0) {
             const vat = total / 6;
             setVatStr(vat.toFixed(2));
+            touch('vat');
         }
     };
 
@@ -133,6 +149,8 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
         if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
         setPreviewUrl(URL.createObjectURL(file));
         setFileType(file.type);
+        setScanError(null);
+        setReadFields(new Set());
 
         try {
             let fileToProcess = file;
@@ -142,21 +160,21 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
             } else {
                 setScanProgress({ step: 'compressing', message: 'Processing PDF...', originalSize: file.size });
             }
-            
+
             setScanProgress(p => ({ ...p, step: 'uploading', message: 'Uploading...', compressedSize: fileToProcess.size }));
-            
+
             const categoryNames = categories.map(c => c.name);
 
             const [scanResult, receiptUrl] = await Promise.all([
                 ai.scanExpenseReceipt(fileToProcess, categoryNames),
                 uploadFile(companyId, userId, fileToProcess, 'receipts')
             ]);
-            
+
             setScanProgress(p => ({ ...p, step: 'analyzing', message: 'AI is analyzing...' }));
 
             const totalAmount = scanResult.amount || 0;
             let potentialVat = scanResult.vat || 0;
-            
+
             if (totalAmount > 0 && potentialVat > 0 && potentialVat > totalAmount * 0.3) {
                  if (Math.round(potentialVat) === 20) potentialVat = totalAmount - (totalAmount / 1.2);
                  else if (Math.round(potentialVat) === 5) potentialVat = totalAmount - (totalAmount / 1.05);
@@ -182,23 +200,31 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
                         if (mostCommonPaymentType) suggestedPaymentType = mostCommonPaymentType as 'Direct' | 'On Account';
                     }
                 }
-        
+
                 const parsedDate = scanResult.date ? robustDateParser(scanResult.date) || prev.date : prev.date;
                 return { ...prev, receiptUrl, vendor: scanResult.vendor || prev.vendor, date: parsedDate, category: suggestedCategory, paymentType: suggestedPaymentType };
             });
             setAmountStr(String(totalAmount || ''));
             setVatStr(String(parseFloat(potentialVat.toFixed(2)) || ''));
+            const read = new Set<ReadField>();
+            if (scanResult.vendor) read.add('vendor');
+            if (totalAmount) read.add('amount');
+            if (potentialVat) read.add('vat');
+            if (scanResult.date && robustDateParser(scanResult.date)) read.add('date');
+            if (scanResult.category) read.add('category');
+            setReadFields(read);
             setScanProgress({ step: 'success', message: 'Success!' });
         } catch (error: any) {
             console.error("Scan failed", error);
             const msg = error instanceof Error ? error.message : 'An unknown error occurred.';
             setScanProgress({ step: 'error', message: msg });
+            setScanError(msg);
             setPreviewUrl(null); // Clear preview on error
         } finally {
              setTimeout(() => setScanProgress({ step: 'idle', message: '' }), scanProgress.step === 'error' ? 5000 : 1500);
         }
     }
-    
+
     useEffect(() => {
         if (imageFile && !editingReceipt) {
             runScan(imageFile);
@@ -233,99 +259,203 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
             }
         }
     };
-    
+
     const isScanning = scanProgress.step !== 'idle' && scanProgress.step !== 'success' && scanProgress.step !== 'error';
+
+    const onPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) runScan(e.target.files[0]);
+        e.target.value = '';
+    };
+
+    const onDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file && !isScanning && (file.type.startsWith('image/') || file.type === 'application/pdf')) runScan(file);
+    };
+
+    const label = (text: string, field?: ReadField) => (
+        <span className="flex items-center justify-between gap-2">
+            {text}
+            {field && readFields.has(field) && <ReadTag />}
+        </span>
+    );
+
+    const wasRead = readFields.size > 0;
 
     return (
         <>
-            {scanProgress.step !== 'idle' && <ScanProgressIndicator progress={scanProgress} />}
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between sticky top-0 z-10 bg-gray-800">
-                <h2 className="text-lg font-bold text-white">{editingReceipt ? 'Edit Expense' : 'Add New Expense'}</h2>
-                <button onClick={onClear} className="p-1 rounded-full text-gray-400 hover:bg-gray-700"><XMarkIcon className="h-6 w-6" /></button>
+            <header className="sticky top-0 z-sticky flex items-start gap-3 border-b border-line bg-surface px-4 pb-3 pt-1 sm:pt-4">
+                <div className="min-w-0 flex-1 pt-1.5">
+                    <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">{editingReceipt ? 'Edit expense' : 'New expense'}</h2>
+                    {!editingReceipt && <p className="mt-0.5 text-sm text-ink-2">Snap the receipt. We fill in the rest.</p>}
+                </div>
+                <IconButton label="Close" icon={<XMarkIcon />} onClick={onClear} className="-me-2" />
             </header>
-            <form id="expense-editor-form" onSubmit={handleSubmit} className="p-4 space-y-4">
-                 <input type="file" accept="image/*,application/pdf" ref={cameraInputRef} onChange={e => e.target.files && runScan(e.target.files[0])} className="hidden" />
+
+            <form id="expense-editor-form" onSubmit={handleSubmit} className="space-y-5 p-4">
+                <input type="file" accept="image/*,application/pdf" ref={cameraInputRef} onChange={onPicked} className="hidden" />
+                {/* Opens the camera straight away on phones; a normal picker elsewhere. */}
+                <input type="file" accept="image/*" capture="environment" ref={shutterInputRef} onChange={onPicked} className="hidden" />
+
                 {previewUrl ? (
-                    <div className="text-center group relative">
-                        {fileType === 'application/pdf' ? (
-                            <div className="flex flex-col items-center justify-center p-8 bg-gray-700 rounded-lg h-40 w-full max-w-sm mx-auto border-2 border-dashed border-gray-600">
-                                <DocumentTextIcon className="h-12 w-12 text-gray-400" />
-                                <span className="text-sm text-gray-300 mt-2 font-medium">PDF Document</span>
-                            </div>
-                        ) : (
-                            <img src={previewUrl} alt="Receipt preview" className="max-h-40 w-auto inline-block rounded-lg shadow-md" />
-                        )}
-                         <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity space-x-2">
-                             <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={isScanning} className="inline-flex items-center gap-2 py-2 px-4 text-sm font-semibold rounded-lg border border-gray-500 bg-gray-800/80 text-white hover:bg-gray-700">
-                                {isScanning ? <Spinner /> : <><CameraIcon className="h-5 w-5" /> Change</>}
-                            </button>
-                             {editingReceipt?.receiptUrl && (
-                                <a href={editingReceipt.receiptUrl} download={`Receipt-${editingReceipt.vendor}-${editingReceipt.date}.${fileType === 'application/pdf' ? 'pdf' : 'jpg'}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 py-2 px-4 text-sm font-semibold rounded-lg border border-gray-500 bg-gray-800/80 text-white hover:bg-gray-700">
-                                    <ArrowDownTrayIcon className="h-5 w-5" /> Download
-                                </a>
+                    <div className="overflow-hidden rounded-card border border-line bg-surface-2">
+                        <div className="relative flex h-56 items-center justify-center overflow-hidden p-3">
+                            {fileType === 'application/pdf' ? (
+                                <span className="flex flex-col items-center gap-2 text-ink-2">
+                                    <DocumentTextIcon className="h-12 w-12" />
+                                    <span className="text-sm font-semibold">PDF receipt</span>
+                                </span>
+                            ) : (
+                                <img src={previewUrl} alt="Receipt" className="max-h-full max-w-full rounded-control object-contain" />
                             )}
-                         </div>
+                            {isScanning && <span className="exp-scan" aria-hidden="true" />}
+                        </div>
+                        <div className="border-t border-line bg-surface px-1.5 pb-1.5 pt-2">
+                            <p role="status" className="flex min-w-0 items-center gap-2 px-2 pb-1 text-sm font-semibold text-ink-2">
+                                {isScanning ? (
+                                    <><Spinner className="h-4 w-4 flex-none text-accent-text" /> {progressMessage(scanProgress)}</>
+                                ) : scanProgress.step === 'success' ? (
+                                    <><CheckCircleIcon className="h-5 w-5 flex-none text-success" /> {progressMessage(scanProgress)}</>
+                                ) : (
+                                    <><DocumentTextIcon className="h-5 w-5 flex-none text-ink-3" /> Receipt on file</>
+                                )}
+                            </p>
+                            <span className="flex flex-wrap items-center">
+                                <Button size="sm" variant="ghost" icon={<CameraIcon />} onClick={() => shutterInputRef.current?.click()} disabled={isScanning}>Retake</Button>
+                                <Button size="sm" variant="ghost" icon={<ArrowUpTrayIcon />} onClick={() => cameraInputRef.current?.click()} disabled={isScanning}>File</Button>
+                                {editingReceipt?.receiptUrl && (
+                                    <a
+                                        href={editingReceipt.receiptUrl}
+                                        download={`Receipt-${editingReceipt.vendor}-${editingReceipt.date}.${fileType === 'application/pdf' ? 'pdf' : 'jpg'}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={buttonClasses('ghost', 'sm')}
+                                    >
+                                        <ArrowDownTrayIcon /> Download
+                                    </a>
+                                )}
+                            </span>
+                        </div>
                     </div>
                 ) : (
-                    <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={isScanning} className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold rounded-lg border border-gray-600 bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50">
-                        {isScanning ? <Spinner /> : <><CameraIcon className="h-5 w-5" /> Upload or Scan Receipt</>}
-                    </button>
-                )}
-
-                <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-700" /></div><div className="relative flex justify-center"><span className="bg-gray-800 px-2 text-sm text-gray-400">Or enter manually</span></div></div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2"><label htmlFor="vendor" className="block text-sm font-medium text-gray-300">Vendor</label><input type="text" name="vendor" value={formData.vendor || ''} onChange={handleChange} required className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" /></div>
-                    <div><label htmlFor="amount" className="block text-sm font-medium text-gray-300">Total Amount</label><CurrencyInput id="amount" value={amountStr} onChange={e => setAmountStr(e.target.value)} required className="mt-1"/></div>
-                    <div>
-                        <div className="flex justify-between items-baseline">
-                            <label htmlFor="vat" className="block text-sm font-medium text-gray-300">VAT</label>
+                    <div
+                        onDragOver={e => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={onDrop}
+                        className={cx(
+                            'relative rounded-card border bg-surface-2 px-6 py-7 transition-colors duration-quick ease-out',
+                            dragOver ? 'border-accent bg-accent-soft' : 'border-line',
+                        )}
+                    >
+                        <FrameCorners />
+                        <div className="relative flex flex-col items-center gap-3 text-center">
                             <button
                                 type="button"
-                                onClick={handleCalculateVat}
-                                className="text-xs text-brand-400 hover:text-brand-300 font-semibold"
-                                aria-label="Calculate 20% VAT from total amount"
+                                onClick={() => shutterInputRef.current?.click()}
+                                disabled={isScanning}
+                                aria-label="Snap the receipt"
+                                className="grid h-[72px] w-[72px] place-items-center rounded-full bg-accent text-on-accent shadow-[0_0_0_4px_rgb(var(--c-surface-2)),0_0_0_6px_rgb(var(--c-accent))] transition-[background-color,transform] duration-quick ease-out hover:bg-accent-hover active:scale-95 active:bg-accent-press active:duration-press disabled:opacity-60"
                             >
-                                Calculate from total
+                                <CameraIcon className="h-8 w-8" />
                             </button>
+                            <div>
+                                <p className="text-base font-bold text-ink">Snap the receipt</p>
+                                <p className="mt-0.5 text-sm text-ink-2">
+                                    We read the supplier, date, total and VAT.
+                                    <span className="hidden [@media(pointer:fine)]:inline"> Or drop a photo or PDF here.</span>
+                                </p>
+                            </div>
+                            <Button size="sm" variant="secondary" icon={<ArrowUpTrayIcon />} onClick={() => cameraInputRef.current?.click()} disabled={isScanning}>
+                                Choose a file
+                            </Button>
                         </div>
-                        <CurrencyInput id="vat" value={vatStr} onChange={e => setVatStr(e.target.value)} className="mt-1"/>
                     </div>
-                    <div className="col-span-2"><label htmlFor="date" className="block text-sm font-medium text-gray-300">Date</label><UkDateInput id="date" name="date" value={formData.date || ''} onChange={handleChange} required className="mt-1" /></div>
-                    <div className="col-span-2">
-                        <label htmlFor="category" className="block text-sm font-medium text-gray-300">Category</label>
-                        <Select name="category" value={formData.category} onChange={handleChange} wrapperClassName="mt-1">
+                )}
+
+                {scanError && (
+                    <Alert tone="danger" title="Couldn’t read that receipt" onDismiss={() => setScanError(null)}>
+                        {scanError} Type the details below, or try another photo.
+                    </Alert>
+                )}
+
+                <div className="space-y-4">
+                    <h3 className="text-base font-bold text-ink">
+                        {wasRead ? 'Check what we read' : editingReceipt ? 'Details' : 'Or type it in'}
+                    </h3>
+
+                    <Field label={label('Supplier', 'vendor')} htmlFor="vendor">
+                        {ids => (
+                            <div className={controlFrame()}>
+                                <input id={ids.id} type="text" name="vendor" value={formData.vendor || ''} onChange={handleChange} required autoComplete="off" className={controlInput} />
+                            </div>
+                        )}
+                    </Field>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label={label('Total', 'amount')} htmlFor="amount">
+                            <CurrencyInput id="amount" value={amountStr} onChange={e => { setAmountStr(e.target.value); touch('amount'); }} required />
+                        </Field>
+                        <Field label={label('VAT', 'vat')} htmlFor="vat">
+                            <CurrencyInput id="vat" value={vatStr} onChange={e => { setVatStr(e.target.value); touch('vat'); }} />
+                        </Field>
+                    </div>
+                    <div className="-mt-2 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleCalculateVat}
+                            className="min-h-[40px] rounded-control px-1 text-sm font-semibold text-accent-text underline-offset-4 hover:underline [@media(pointer:coarse)]:min-h-[48px]"
+                            aria-label="Calculate 20% VAT from total amount"
+                        >
+                            Work out 20% VAT from the total
+                        </button>
+                    </div>
+
+                    <Field label={label('Date', 'date')} htmlFor="date">
+                        <UkDateInput id="date" name="date" value={formData.date || ''} onChange={e => handleChange(e)} required />
+                    </Field>
+
+                    <Field label={label('Category', 'category')} htmlFor="category">
+                        <Select id="category" name="category" value={formData.category} onChange={handleChange}>
                             {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                         </Select>
+                    </Field>
+
+                    <div role="group" aria-labelledby="expense-paid-label" className="flex flex-col gap-1.5">
+                        <span id="expense-paid-label" className="text-sm font-semibold leading-5 text-ink">How it was paid</span>
+                        <Segmented
+                            ariaLabel="How it was paid"
+                            value={(formData.paymentType || 'Direct') as 'Direct' | 'On Account'}
+                            onChange={v => setFormData(p => ({ ...p, paymentType: v }))}
+                            options={[
+                                { value: 'Direct', label: 'Paid direct' },
+                                { value: 'On Account', label: 'On supplier account' },
+                            ]}
+                            full
+                        />
                     </div>
                 </div>
-                <div>
-                     <label className="block text-sm font-medium text-gray-300">Payment Type</label>
-                     <div className="mt-2 flex items-center space-x-2 rounded-lg bg-gray-700 p-1">
-                        <button type="button" onClick={() => setFormData(p => ({...p, paymentType: 'Direct'}))} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${formData.paymentType === 'Direct' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Direct Payment</button>
-                        <button type="button" onClick={() => setFormData(p => ({...p, paymentType: 'On Account'}))} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${formData.paymentType === 'On Account' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>On Supplier Account</button>
-                     </div>
-                </div>
-            </form>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-between items-center bg-gray-800 sticky bottom-0 z-10">
-                <div>
-                    {editingReceipt && (
+
+                {editingReceipt && (
+                    <div className="border-t border-line pt-3">
                         <button
                             type="button"
                             onClick={handleDelete}
                             disabled={isSubmitting}
-                            className="inline-flex items-center px-4 py-2 border border-red-600/50 text-sm font-medium rounded-md shadow-sm text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50"
+                            className="inline-flex min-h-[48px] items-center gap-2 rounded-control px-2 text-base font-semibold text-danger transition-colors duration-quick ease-out hover:bg-danger-soft disabled:opacity-50"
                         >
-                            <TrashIcon className="h-5 w-5 mr-2 -ml-1" />
-                            Delete Expense
+                            <TrashIcon className="h-5 w-5" />
+                            Delete expense
                         </button>
-                    )}
-                </div>
-                <div className="flex space-x-3">
-                    <button type="button" onClick={onClear} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                    <button type="submit" form="expense-editor-form" disabled={isSubmitting || isScanning} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                        {isSubmitting ? <Spinner /> : (editingReceipt ? 'Update Expense' : 'Save Expense')}
-                    </button>
-                </div>
+                    </div>
+                )}
+            </form>
+
+            <footer className="sticky bottom-0 z-sticky mt-auto grid flex-shrink-0 grid-cols-[auto_1fr] gap-2 border-t border-line bg-surface px-4 py-3 sm:flex sm:justify-end">
+                <Button variant="secondary" onClick={onClear}>Cancel</Button>
+                <Button type="submit" form="expense-editor-form" disabled={isScanning} loading={isSubmitting}>
+                    Save expense
+                </Button>
             </footer>
         </>
     );

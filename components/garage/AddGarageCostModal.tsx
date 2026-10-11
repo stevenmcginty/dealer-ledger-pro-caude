@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NewGarageCost } from '../../types';
-import { XMarkIcon } from '../icons';
+import { Button, Field, Input } from '../ui';
+import { PanelHeader } from '../stock/parts';
 import CurrencyInput from '../common/CurrencyInput';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
@@ -27,39 +28,28 @@ const AddGarageCostModal = ({ vehicleReg }: AddGarageCostModalProps) => {
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">Add Cost to {vehicleReg}</h2>
-                <button type="button" onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700">
-                    <XMarkIcon className="h-6 w-6" />
-                </button>
-            </header>
-            <div className="p-4 space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">Description</label>
-                    <input
-                        type="text"
-                        value={description}
-                        onChange={e => setDescription(e.target.value)}
-                        required
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                        autoFocus
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">Amount</label>
+            <PanelHeader title="Add a cost" subtitle={vehicleReg} onClose={closeModal} />
+            <div className="space-y-5 p-5">
+                <Input
+                    id="cost-description"
+                    label="What was it for?"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    required
+                    autoFocus
+                />
+                <Field label="Amount" htmlFor="cost-amount">
                     <CurrencyInput
                         id="cost-amount"
                         value={amountStr}
                         onChange={e => setAmountStr(e.target.value)}
                         required
-                        className="mt-1"
                     />
-                </div>
+                </Field>
             </div>
-            <footer className="p-4 border-t border-gray-700 flex justify-end">
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md">
-                    Add Cost
-                </button>
+            <footer className="flex justify-end gap-3 border-t border-line p-4">
+                <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
+                <Button type="submit">Add cost</Button>
             </footer>
         </form>
     );

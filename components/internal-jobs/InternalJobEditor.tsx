@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Vehicle, NewInternalJob, InternalJob, InternalJobUpdate, BusinessDetails } from '../../types';
-import { XMarkIcon, PlusIcon, TrashIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { TrashIcon } from '../icons';
 import CurrencyInput from '../common/CurrencyInput';
 import UkDateInput from '../common/UkDateInput';
 import { formatCurrency } from '../../utils/helpers';
 import PrintableJobSheet from './PrintableJobSheet';
-import { useToast } from '../ui';
+import { useToast, Button, Field, IconButton } from '../ui';
+import EditorFrame, { AddLineButton, FrameInput, FrameTextarea, TotalLine, VehicleSuggestions } from '../work-sheets/EditorFrame';
 
 interface InternalJobEditorProps {
     vehicles: Vehicle[];
@@ -202,111 +202,89 @@ const InternalJobEditor = ({ vehicles, existingJobs, onSubmit, onCancel, busines
     }
 
     return (
-        <div className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <h2 className="text-lg font-bold text-white">{isEditing ? `Edit Job Sheet #${editingJob.jobSheetNumber}` : 'Create Internal Job Sheet'}</h2>
-                <button type="button" onClick={onCancel} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <form id="internal-job-editor-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
-                <div className="rounded-md border border-gray-700 bg-gray-900/50 px-3 py-2 text-xs text-gray-400">
-                    Internal job sheets record in-house cost only. They are not customer documents and carry no VAT.
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="relative md:col-span-2" ref={suggestionBoxRef}>
-                        <label htmlFor="internalJobVehicle" className="block text-sm font-medium text-gray-300">Vehicle</label>
-                        <input
+        <EditorFrame
+            title={isEditing ? <>Edit job sheet <span className="num">#{editingJob.jobSheetNumber}</span></> : 'New internal job sheet'}
+            onClose={onCancel}
+            formId="internal-job-editor-form"
+            onSubmit={handleGeneratePreview}
+            footer={<>
+                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" form="internal-job-editor-form" loading={isSubmitting} disabled={!selectedVehicleId}>
+                    {isEditing ? 'Preview changes' : 'Preview job sheet'}
+                </Button>
+            </>}
+        >
+            <p className="rounded-control bg-surface-2 px-3.5 py-2.5 text-sm text-ink-2">
+                Internal job sheets record in-house cost only. They are not customer documents and carry no VAT.
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="relative md:col-span-2" ref={suggestionBoxRef}>
+                    <Field label="Vehicle" htmlFor="internalJobVehicle" hint={isEditing ? 'The vehicle stays the same on a saved job sheet.' : undefined}>
+                        <FrameInput
                             type="text"
                             id="internalJobVehicle"
                             value={regInput}
                             onChange={handleRegInputChange}
                             required
                             disabled={isEditing}
-                            placeholder="Search by Reg, Make, Model..."
-                            className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase disabled:bg-gray-800 disabled:cursor-not-allowed"
+                            placeholder="Search reg, make or model"
+                            className="font-mono uppercase tracking-[0.06em]"
                             autoComplete="off"
                         />
-                        {showSuggestions && suggestions.length > 0 && (
-                            <ul className="absolute z-10 mt-1 w-full bg-gray-600 border border-gray-500 rounded-md shadow-lg max-h-60 overflow-auto">
-                                {suggestions.map(v => (
-                                    <li key={v.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSuggestionClick(v)}
-                                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-brand-600 flex justify-between items-center"
-                                        >
-                                            <div><span className="font-bold">{v.reg}</span> - {v.make} {v.model}</div>
-                                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                                v.status === 'Sold' ? 'bg-red-800 text-red-200' :
-                                                v.status === 'Deposit Paid' ? 'bg-cyan-800 text-cyan-200' :
-                                                'bg-green-800 text-green-200'
-                                            }`}>{v.status}</span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                    <div>
-                        <label htmlFor="jobDate" className="block text-sm font-medium text-gray-300">Job Date</label>
-                        <UkDateInput id="jobDate" name="jobDate" value={jobDate} onChange={e => setJobDate(e.target.value)} className="mt-1" required />
-                    </div>
-                    <div>
-                        <label htmlFor="internalJobMileage" className="block text-sm font-medium text-gray-300">Mileage at Job (Optional)</label>
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            id="internalJobMileage"
-                            value={mileageStr}
-                            onChange={e => setMileageStr(e.target.value)}
-                            placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString()} on record` : 'e.g., 44229'}
-                            className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                        />
-                    </div>
+                    </Field>
+                    {showSuggestions && suggestions.length > 0 && (
+                        <VehicleSuggestions vehicles={suggestions} onPick={handleSuggestionClick} />
+                    )}
                 </div>
-                <div>
-                    <h3 className="text-base font-semibold text-white">Work Carried Out</h3>
-                    <div className="mt-2 space-y-3">
-                        {items.map((item, index) => (
-                            <div key={index} className="flex items-start gap-2">
-                                <div className="flex-1">
-                                    <label htmlFor={`internal-desc-${index}`} className="sr-only">Description</label>
-                                    <input id={`internal-desc-${index}`} type="text" placeholder="e.g., Full Service" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className="block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" />
-                                </div>
-                                <div className="w-36">
-                                    <label htmlFor={`internal-amount-${index}`} className="sr-only">Cost</label>
-                                    <CurrencyInput id={`internal-amount-${index}`} value={item.amountStr} onChange={e => handleItemChange(index, 'amountStr', e.target.value)} />
-                                </div>
-                                <button type="button" onClick={() => removeItem(index)} disabled={items.length <= 1} className="p-2 text-gray-400 hover:text-red-400 disabled:opacity-50 mt-1"><TrashIcon className="h-5 w-5" /></button>
-                            </div>
-                        ))}
-                        <button type="button" onClick={addItem} className="w-full text-sm font-semibold text-brand-400 hover:text-brand-300 flex items-center justify-center gap-2 p-2 border-2 border-dashed border-gray-600 rounded-lg hover:border-gray-500">
-                            <PlusIcon className="h-4 w-4" /> Add Line Item
-                        </button>
-                    </div>
-                </div>
-                <div>
-                    <label htmlFor="internalJobNotes" className="block text-sm font-medium text-gray-300">Notes (Optional)</label>
-                    <textarea
-                        id="internalJobNotes"
-                        rows={2}
-                        value={notes}
-                        onChange={e => setNotes(e.target.value)}
-                        placeholder="Anything worth recording against this job"
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
+                <Field label="Job date" htmlFor="jobDate">
+                    <UkDateInput id="jobDate" name="jobDate" value={jobDate} onChange={e => setJobDate(e.target.value)} required />
+                </Field>
+                <Field label="Mileage at job" optional htmlFor="internalJobMileage">
+                    <FrameInput
+                        type="text"
+                        inputMode="numeric"
+                        id="internalJobMileage"
+                        value={mileageStr}
+                        onChange={e => setMileageStr(e.target.value)}
+                        placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString()} on record` : 'e.g. 44,229'}
+                        className="num"
                     />
+                </Field>
+            </div>
+            <fieldset>
+                <legend className="mb-2 text-base font-bold text-ink">Work carried out</legend>
+                <div className="divide-y divide-line rounded-card border border-line">
+                    {items.map((item, index) => (
+                        <div key={index} className="flex flex-wrap items-center gap-2 p-2.5 sm:flex-nowrap">
+                            <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                                <label htmlFor={`internal-desc-${index}`} className="sr-only">Work done, line {index + 1}</label>
+                                <FrameInput id={`internal-desc-${index}`} type="text" placeholder="e.g. Full service" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} />
+                            </div>
+                            <div className="min-w-0 flex-1 sm:w-36 sm:flex-none">
+                                <label htmlFor={`internal-amount-${index}`} className="sr-only">Cost, line {index + 1}</label>
+                                <CurrencyInput id={`internal-amount-${index}`} value={item.amountStr} onChange={e => handleItemChange(index, 'amountStr', e.target.value)} />
+                            </div>
+                            <IconButton label={`Remove line ${index + 1}`} icon={<TrashIcon />} onClick={() => removeItem(index)} disabled={items.length <= 1} />
+                        </div>
+                    ))}
                 </div>
-                <div className="pt-4 border-t border-gray-700 text-right">
-                    <p className="text-lg font-bold text-brand-400">Total Cost</p>
-                    <p className="text-3xl font-bold text-white">{formatCurrency(totalAmount)}</p>
+                <div className="mt-2">
+                    <AddLineButton onClick={addItem} />
                 </div>
-            </form>
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end space-x-3 items-center bg-gray-800">
-                <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                <button type="submit" form="internal-job-editor-form" disabled={isSubmitting || !selectedVehicleId} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : (isEditing ? 'Update & Preview' : 'Generate Preview')}
-                </button>
-            </footer>
-        </div>
+            </fieldset>
+            <Field label="Notes" optional htmlFor="internalJobNotes">
+                <FrameTextarea
+                    id="internalJobNotes"
+                    rows={2}
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Anything worth recording against this job"
+                />
+            </Field>
+            <div className="border-t border-line pt-4">
+                <TotalLine strong label="Total cost" value={formatCurrency(totalAmount)} />
+            </div>
+        </EditorFrame>
     );
 };
 

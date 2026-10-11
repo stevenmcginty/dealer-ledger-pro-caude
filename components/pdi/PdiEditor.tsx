@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Vehicle, PDI, NewPDI, BusinessDetails, PdiCheckStatus, PdiSection, PdiTyre, PdiTyrePosition } from '../../types';
-import { XMarkIcon, ChevronDownIcon, ShieldCheckIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from '../icons';
+import { ChevronDownIcon, ShieldCheckIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from '../icons';
 import UkDateInput from '../common/UkDateInput';
 import PrintablePdi from './PrintablePdi';
-import { useToast } from '../ui';
+import { useToast, Button } from '../ui';
+import { PanelHeader, VehicleStatusChip } from '../stock/parts';
 import {
     createDefaultPdiSections,
     createDefaultPdiTyres,
@@ -50,10 +51,10 @@ const toTyreDrafts = (tyres: PdiTyre[]): TyreDraft[] =>
     }));
 
 const STATUS_STYLE: Record<PdiCheckStatus, { classes: string; Icon: React.ComponentType<{ className?: string }> | null }> = {
-    pass: { classes: 'border-green-500/40 bg-green-500/10 text-green-400 hover:border-green-400/70', Icon: CheckCircleIcon },
-    advisory: { classes: 'border-amber-500/50 bg-amber-500/10 text-amber-400 hover:border-amber-400/70', Icon: ExclamationTriangleIcon },
-    fail: { classes: 'border-red-500/50 bg-red-500/10 text-red-400 hover:border-red-400/70', Icon: XCircleIcon },
-    na: { classes: 'border-gray-600 bg-gray-700/60 text-gray-400 hover:border-gray-500', Icon: null },
+    pass: { classes: 'border-success bg-success-soft text-success-ink', Icon: CheckCircleIcon },
+    advisory: { classes: 'border-warning bg-warning-soft text-warning-ink', Icon: ExclamationTriangleIcon },
+    fail: { classes: 'border-danger bg-danger-soft text-danger-ink', Icon: XCircleIcon },
+    na: { classes: 'border-line-strong bg-surface-2 text-ink-2', Icon: null },
 };
 
 /** The one control repeated fifty times: icon + word so state never rests on colour alone. */
@@ -65,7 +66,7 @@ const StatusButton = ({ status, itemLabel, onCycle }: { status: PdiCheckStatus; 
             onClick={onCycle}
             aria-label={`${itemLabel}: ${PDI_STATUS_LABEL[status]}`}
             title="Click to cycle: Pass, Advisory, Fail, N/A"
-            className={`inline-flex w-24 flex-shrink-0 items-center justify-center gap-1.5 rounded-full border px-2 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1 focus:ring-offset-gray-900 ${classes}`}
+            className={`inline-flex min-h-[40px] w-[7.5rem] flex-none items-center justify-center gap-1.5 rounded-control border px-2 text-sm font-semibold transition-[background-color,border-color,transform] duration-quick ease-out active:scale-[.97] [@media(pointer:coarse)]:min-h-[48px] ${classes}`}
         >
             {Icon && <Icon className="h-4 w-4" />}
             {PDI_STATUS_LABEL[status]}
@@ -73,7 +74,8 @@ const StatusButton = ({ status, itemLabel, onCycle }: { status: PdiCheckStatus; 
     );
 };
 
-const compactInput = 'block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-1.5 px-2.5 text-sm text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500';
+const compactInput = 'block min-h-[44px] w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-3 transition-colors duration-quick ease-out hover:border-ink-2 [@media(pointer:coarse)]:min-h-[48px]';
+const inputCls = 'block min-h-[48px] w-full rounded-control border border-line-strong bg-surface px-3.5 py-3 text-base text-ink placeholder:text-ink-3 transition-colors duration-quick ease-out hover:border-ink-2';
 
 const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editingPdi, presetVehicle }: PdiEditorProps) => {
     const toast = useToast();
@@ -237,7 +239,7 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
         e.preventDefault();
         const vehicle = selectedVehicle;
         if (!vehicle) {
-            toast.error('Please select a valid vehicle from the list.');
+            toast.error('Choose a car from your stock list.');
             return;
         }
 
@@ -276,7 +278,7 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
             await onSubmit(submissionData as NewPDI, editingPdi ? editingPdi.id : undefined);
         } catch (error) {
             console.error('Failed to save PDI:', error);
-            toast.error('Could not save the PDI. Please try again.');
+            toast.error('Couldn’t save the PDI. Check your signal and try again.');
             setPreviewData(null);
         } finally {
             setIsSubmitting(false);
@@ -298,23 +300,16 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
 
     return (
         <div className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between gap-3 flex-shrink-0">
-                <div className="min-w-0">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                        <ShieldCheckIcon className="h-5 w-5 text-brand-400 flex-shrink-0" />
-                        <span className="truncate">{isEditing ? 'Edit Pre-Delivery Inspection' : 'Pre-Delivery Inspection'}</span>
-                    </h2>
-                    <p className="text-xs text-gray-400 mt-0.5">PDI #{pdiNumber}</p>
-                </div>
-                <button type="button" onClick={onCancel} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white flex-shrink-0" aria-label="Close">
-                    <XMarkIcon className="h-6 w-6" />
-                </button>
-            </header>
+            <PanelHeader
+                title={isEditing ? 'Edit PDI' : 'New PDI'}
+                subtitle={<span className="num">PDI #{pdiNumber}</span>}
+                onClose={onCancel}
+            />
 
-            <form id="pdi-editor-form" onSubmit={handleGeneratePreview} className="p-6 space-y-6 flex-1 overflow-y-auto">
+            <form id="pdi-editor-form" onSubmit={handleGeneratePreview} className="flex-1 space-y-6 overflow-y-auto p-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="relative md:col-span-2" ref={suggestionBoxRef}>
-                        <label htmlFor="pdiVehicleReg" className="block text-sm font-medium text-gray-300 mb-1">Vehicle</label>
+                        <label htmlFor="pdiVehicleReg" className="mb-1.5 block text-sm font-semibold text-ink">Car</label>
                         <input
                             type="text"
                             id="pdiVehicleReg"
@@ -322,82 +317,76 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                             onChange={handleRegInputChange}
                             required
                             disabled={vehicleLocked}
-                            placeholder="Search by Reg, Make, Model..."
-                            className="block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white uppercase focus:outline-none focus:ring-brand-500 focus:border-brand-500 disabled:bg-gray-800 disabled:cursor-not-allowed"
+                            placeholder="Reg, make or model"
+                            className="block min-h-[48px] w-full rounded-control border border-line-strong bg-surface px-3.5 py-3 text-base text-ink placeholder:text-ink-3 transition-colors duration-quick ease-out hover:border-ink-2 uppercase placeholder:normal-case disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-2"
                             autoComplete="off"
                         />
                         {showSuggestions && suggestions.length > 0 && (
-                            <ul className="absolute z-10 mt-1 w-full bg-gray-600 border border-gray-500 rounded-md shadow-lg max-h-60 overflow-auto">
+                            <ul className="absolute z-dropdown mt-1 max-h-72 w-full overflow-auto rounded-control border border-line-strong bg-surface py-1 shadow-e2">
                                 {suggestions.map(v => (
                                     <li key={v.id}>
                                         <button
                                             type="button"
                                             onClick={() => handleSuggestionClick(v)}
-                                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-brand-600 flex justify-between items-center"
+                                            className="flex min-h-[48px] w-full items-center justify-between gap-3 px-4 py-2 text-start text-base text-ink hover:bg-surface-2"
                                         >
                                             <div>
-                                                <span className="font-bold">{v.reg}</span> - {v.make} {v.model}
+                                                <span className="font-mono font-semibold uppercase tracking-[0.06em]">{v.reg}</span> <span className="text-ink-2">{v.make} {v.model}</span>
                                             </div>
-                                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                                v.status === 'Sold' ? 'bg-red-800 text-red-200' :
-                                                v.status === 'Deposit Paid' ? 'bg-cyan-800 text-cyan-200' :
-                                                'bg-green-800 text-green-200'
-                                            }`}>
-                                                {v.status}
-                                            </span>
+                                            <VehicleStatusChip status={v.status} />
                                         </button>
                                     </li>
                                 ))}
                             </ul>
                         )}
                         {selectedVehicle && (
-                            <p className="mt-1 text-xs text-gray-400">
+                            <p className="mt-1.5 text-sm text-ink-3">
                                 {selectedVehicle.make} {selectedVehicle.model}{selectedVehicle.year ? ` · ${selectedVehicle.year}` : ''}
                             </p>
                         )}
                     </div>
                     <div>
-                        <label htmlFor="pdiDate" className="block text-sm font-medium text-gray-300 mb-1">Inspection Date</label>
+                        <label htmlFor="pdiDate" className="mb-1.5 block text-sm font-semibold text-ink">Inspection date</label>
                         <UkDateInput id="pdiDate" name="pdiDate" value={inspectionDate} onChange={e => setInspectionDate(e.target.value)} required />
                     </div>
                     <div>
-                        <label htmlFor="pdiMileage" className="block text-sm font-medium text-gray-300 mb-1">Mileage</label>
+                        <label htmlFor="pdiMileage" className="mb-1.5 block text-sm font-semibold text-ink">Mileage</label>
                         <input
                             type="text"
                             inputMode="numeric"
                             id="pdiMileage"
                             value={mileageStr}
                             onChange={e => setMileageStr(e.target.value)}
-                            placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString()} on record` : 'e.g., 44229'}
-                            className="block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                            placeholder={selectedVehicle?.mileage ? `${selectedVehicle.mileage.toLocaleString('en-GB')} on record` : 'e.g. 44229'}
+                            className={inputCls}
                         />
                     </div>
                     <div>
-                        <label htmlFor="pdiInspector" className="block text-sm font-medium text-gray-300 mb-1">Inspected By (Optional)</label>
+                        <label htmlFor="pdiInspector" className="mb-1.5 block text-sm font-semibold text-ink">Inspected by <span className="font-normal text-ink-3">(optional)</span></label>
                         <input
                             type="text"
                             id="pdiInspector"
                             value={inspectedBy}
                             onChange={e => setInspectedBy(e.target.value)}
-                            className="block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                            className={inputCls}
                         />
                     </div>
                     <div>
-                        <label htmlFor="pdiLockingNut" className="block text-sm font-medium text-gray-300 mb-1">Locking Wheel Nut Key Location</label>
+                        <label htmlFor="pdiLockingNut" className="mb-1.5 block text-sm font-semibold text-ink">Where the locking wheel nut key is</label>
                         <input
                             type="text"
                             id="pdiLockingNut"
                             value={lockingWheelNutLocation}
                             onChange={e => setLockingWheelNutLocation(e.target.value)}
-                            placeholder="e.g., Boot floor with the spare"
-                            className="block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                            placeholder="e.g. Boot floor, with the spare"
+                            className={inputCls}
                         />
                     </div>
                 </div>
 
                 <div>
-                    <h3 className="text-base font-semibold text-white">Inspection Checklist</h3>
-                    <p className="mt-0.5 text-xs text-gray-400">Every item starts at Pass. Tap a status to cycle Pass → Advisory → Fail → N/A.</p>
+                    <h3 className="text-lg font-bold text-ink">Checks</h3>
+                    <p className="mt-0.5 text-sm text-ink-3">Every item starts at Pass. Tap a status to cycle Pass → Advisory → Fail → N/A.</p>
                     <div className="mt-3 space-y-2">
                         {sections.map(section => {
                             const open = !!expanded[section.id];
@@ -407,51 +396,51 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                             const secNa = section.items.filter(i => i.status === 'na').length;
                             const allPass = passCount === section.items.length;
                             return (
-                                <div key={section.id} className="bg-gray-900/40 border border-gray-700/50 rounded-lg">
+                                <div key={section.id} className="rounded-control border border-line bg-surface">
                                     <button
                                         type="button"
                                         onClick={() => setExpanded(prev => ({ ...prev, [section.id]: !open }))}
                                         aria-expanded={open}
                                         aria-controls={`pdi-section-${section.id}`}
-                                        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left rounded-lg hover:bg-gray-800/60 transition-colors"
+                                        className="flex min-h-[52px] w-full items-center justify-between gap-2 rounded-control px-3 text-start transition-colors duration-quick ease-out hover:bg-surface-2"
                                     >
                                         <span className="flex items-center gap-2 min-w-0">
-                                            <ChevronDownIcon className={`h-4 w-4 text-gray-500 flex-shrink-0 transition-transform ${open ? '' : '-rotate-90'}`} />
-                                            <span className="text-sm font-semibold text-white truncate">{section.title}</span>
+                                            <ChevronDownIcon className={`h-5 w-5 flex-none text-ink-3 transition-transform duration-quick ease-out ${open ? '' : '-rotate-90 rtl:rotate-90'}`} />
+                                            <span className="truncate text-base font-semibold text-ink">{section.title}</span>
                                         </span>
-                                        <span className="flex items-center gap-2 flex-shrink-0 text-xs font-medium">
+                                        <span className="flex flex-none items-center gap-2 text-sm font-semibold">
                                             {allPass ? (
-                                                <span className="inline-flex items-center gap-1 text-green-500/90">
-                                                    <CheckCircleIcon className="h-3.5 w-3.5" />{passCount} pass
+                                                <span className="inline-flex items-center gap-1 text-success">
+                                                    <CheckCircleIcon className="h-4 w-4" />{passCount} pass
                                                 </span>
                                             ) : (
                                                 <>
-                                                    <span className="text-gray-500">{passCount} pass</span>
-                                                    {secAdvisory > 0 && <span className="text-amber-400">{secAdvisory} adv</span>}
-                                                    {secFail > 0 && <span className="text-red-400">{secFail} fail</span>}
-                                                    {secNa > 0 && <span className="text-gray-500">{secNa} n/a</span>}
+                                                    <span className="text-ink-3">{passCount} pass</span>
+                                                    {secAdvisory > 0 && <span className="text-warning">{secAdvisory} adv</span>}
+                                                    {secFail > 0 && <span className="text-danger">{secFail} fail</span>}
+                                                    {secNa > 0 && <span className="text-ink-3">{secNa} n/a</span>}
                                                 </>
                                             )}
                                         </span>
                                     </button>
                                     {open && (
-                                        <div id={`pdi-section-${section.id}`} className="px-3 pb-3 border-t border-gray-700/50">
+                                        <div id={`pdi-section-${section.id}`} className="border-t border-line px-3 pb-3">
                                             {!allPass && (
                                                 <div className="flex justify-end pt-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => resetSection(section.id)}
-                                                        className="text-xs font-semibold text-brand-400 hover:text-brand-300"
+                                                        className="min-h-[44px] rounded-control px-2 text-sm font-semibold text-accent-text hover:bg-accent-soft"
                                                     >
-                                                        Reset all to Pass
+                                                        Set all to Pass
                                                     </button>
                                                 </div>
                                             )}
-                                            <ul className="divide-y divide-gray-800">
+                                            <ul className="divide-y divide-line">
                                                 {section.items.map(item => (
                                                     <li key={item.id} className="py-2">
                                                         <div className="flex items-center gap-3">
-                                                            <span className="flex-1 min-w-0 text-sm text-gray-200">{item.label}</span>
+                                                            <span className="min-w-0 flex-1 text-base text-ink">{item.label}</span>
                                                             <StatusButton
                                                                 status={item.status}
                                                                 itemLabel={item.label}
@@ -480,32 +469,32 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                 </div>
 
                 <div>
-                    <h3 className="text-base font-semibold text-white">Tyres</h3>
-                    <p className="mt-0.5 text-xs text-gray-400">Legal minimum tread is {LEGAL_TREAD_MM}mm; under {ADVISORY_TREAD_MM}mm is worth advising.</p>
+                    <h3 className="text-lg font-bold text-ink">Tyres</h3>
+                    <p className="mt-0.5 text-sm text-ink-3">Legal minimum tread is {LEGAL_TREAD_MM}mm; under {ADVISORY_TREAD_MM}mm is worth advising.</p>
                     <div className="mt-3 space-y-3">
                         {tyres.map(tyre => {
                             const meta = TYRE_POSITIONS.find(p => p.position === tyre.position);
                             const verdict = treadVerdict(tyre.treadStr === '' ? null : parseFloat(tyre.treadStr));
                             const treadColour =
-                                verdict === 'fail' ? 'text-red-400 border-red-500/60 focus:ring-red-500 focus:border-red-500' :
-                                verdict === 'advisory' ? 'text-amber-400 border-amber-500/60 focus:ring-amber-500 focus:border-amber-500' :
-                                verdict === 'pass' ? 'text-green-400' : 'text-white';
+                                verdict === 'fail' ? 'text-danger border-danger' :
+                                verdict === 'advisory' ? 'text-warning border-warning' :
+                                verdict === 'pass' ? 'text-success' : 'text-ink';
                             const isSpare = tyre.position === 'Spare';
                             return (
-                                <div key={tyre.position} className="bg-gray-900/40 border border-gray-700/50 rounded-lg p-3">
+                                <div key={tyre.position} className="rounded-control border border-line bg-surface p-3">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                         <span className="flex items-baseline gap-2 min-w-0">
-                                            <span className="text-xs font-bold text-brand-400 w-10 flex-shrink-0">{tyre.position}</span>
-                                            <span className="text-sm text-gray-200 truncate">{meta?.label || tyre.position}</span>
+                                            <span className="w-12 flex-none font-mono text-sm font-semibold text-ink-2">{tyre.position}</span>
+                                            <span className="truncate text-base font-semibold text-ink">{meta?.label || tyre.position}</span>
                                         </span>
                                         <span className="flex items-center gap-3 flex-shrink-0">
                                             {isSpare && (
-                                                <label className="flex items-center gap-2 text-xs font-medium text-gray-300 cursor-pointer">
+                                                <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm font-semibold text-ink-2">
                                                     <input
                                                         type="checkbox"
                                                         checked={tyre.fitted}
                                                         onChange={e => updateTyre(tyre.position, { fitted: e.target.checked })}
-                                                        className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-brand-600 focus:ring-brand-500"
+                                                        className="h-5 w-5 rounded-chip accent-[rgb(var(--c-accent))]"
                                                     />
                                                     Fitted
                                                 </label>
@@ -523,18 +512,18 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                                         <>
                                             <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                 <div>
-                                                    <label htmlFor={`tyre-${tyre.position}-make`} className="block text-xs font-medium text-gray-400 mb-1">Make</label>
+                                                    <label htmlFor={`tyre-${tyre.position}-make`} className="mb-1 block text-sm font-semibold text-ink-2">Make</label>
                                                     <input
                                                         type="text"
                                                         id={`tyre-${tyre.position}-make`}
                                                         value={tyre.makeStr}
                                                         onChange={e => updateTyre(tyre.position, { makeStr: e.target.value })}
-                                                        placeholder="e.g., Michelin"
+                                                        placeholder="e.g. Michelin"
                                                         className={compactInput}
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label htmlFor={`tyre-${tyre.position}-size`} className="block text-xs font-medium text-gray-400 mb-1">Size</label>
+                                                    <label htmlFor={`tyre-${tyre.position}-size`} className="mb-1 block text-sm font-semibold text-ink-2">Size</label>
                                                     <input
                                                         type="text"
                                                         id={`tyre-${tyre.position}-size`}
@@ -545,7 +534,7 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label htmlFor={`tyre-${tyre.position}-tread`} className="block text-xs font-medium text-gray-400 mb-1">Tread (mm)</label>
+                                                    <label htmlFor={`tyre-${tyre.position}-tread`} className="mb-1 block text-sm font-semibold text-ink-2">Tread (mm)</label>
                                                     <input
                                                         type="number"
                                                         id={`tyre-${tyre.position}-tread`}
@@ -554,20 +543,20 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                                                         step="0.1"
                                                         min="0"
                                                         inputMode="decimal"
-                                                        placeholder="e.g., 5.5"
-                                                        className={`block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-1.5 px-2.5 text-sm font-semibold focus:outline-none focus:ring-brand-500 focus:border-brand-500 ${treadColour}`}
+                                                        placeholder="e.g. 5.5"
+                                                        className={`${compactInput} num font-semibold ${treadColour}`}
                                                     />
                                                 </div>
                                             </div>
                                             {verdict === 'fail' && (
-                                                <p className="mt-1.5 text-xs text-red-400">Below the {LEGAL_TREAD_MM}mm legal minimum — prints as a fail.</p>
+                                                <p className="mt-1.5 text-sm font-semibold text-danger">Below the {LEGAL_TREAD_MM}mm legal minimum — prints as a fail.</p>
                                             )}
                                             {verdict === 'advisory' && (
-                                                <p className="mt-1.5 text-xs text-amber-400">Under {ADVISORY_TREAD_MM}mm — prints as an advisory.</p>
+                                                <p className="mt-1.5 text-sm font-semibold text-warning">Under {ADVISORY_TREAD_MM}mm — prints as an advisory.</p>
                                             )}
                                         </>
                                     ) : (
-                                        <p className="mt-1.5 text-xs text-gray-500">No spare carried — left off the certificate.</p>
+                                        <p className="mt-1.5 text-sm text-ink-3">No spare carried — left off the certificate.</p>
                                     )}
                                 </div>
                             );
@@ -575,12 +564,12 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                     </div>
                 </div>
 
-                <div className={`rounded-lg border p-4 transition-colors ${roadworthy ? 'border-green-500/40 bg-green-500/5' : 'border-red-500/50 bg-red-500/10'}`}>
+                <div className={`rounded-card border p-4 transition-colors duration-quick ease-out ${roadworthy ? 'border-success bg-success-soft' : 'border-danger bg-danger-soft'}`}>
                     <div className="flex items-center gap-3">
-                        <ShieldCheckIcon className={`h-7 w-7 flex-shrink-0 ${roadworthy ? 'text-green-400' : 'text-red-400'}`} />
+                        <ShieldCheckIcon className={`h-7 w-7 flex-shrink-0 ${roadworthy ? 'text-success' : 'text-danger'}`} />
                         <div className="min-w-0">
-                            <span className="block text-sm font-semibold text-white">Roadworthiness Declaration</span>
-                            <span className="block text-xs text-gray-400">The headline verdict printed on the certificate.</span>
+                            <span className="block text-base font-bold text-ink">Roadworthy?</span>
+                            <span className="block text-sm text-ink-2">The headline verdict on the certificate.</span>
                         </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
@@ -588,31 +577,31 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                             type="button"
                             onClick={() => setRoadworthy(true)}
                             aria-pressed={roadworthy}
-                            className={`inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                            className={`inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control border px-3 text-base font-semibold transition-colors duration-quick ease-out ${
                                 roadworthy
-                                    ? 'border-green-500 bg-green-600/20 text-white'
-                                    : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    ? 'border-success bg-success-soft text-success-ink'
+                                    : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2'
                             }`}
                         >
-                            <CheckCircleIcon className={`h-5 w-5 flex-shrink-0 ${roadworthy ? 'text-green-400' : 'text-gray-400'}`} />
+                            <CheckCircleIcon className={`h-5 w-5 flex-shrink-0 ${roadworthy ? 'text-success' : 'text-ink-3'}`} />
                             Roadworthy
                         </button>
                         <button
                             type="button"
                             onClick={() => setRoadworthy(false)}
                             aria-pressed={!roadworthy}
-                            className={`inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                            className={`inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control border px-3 text-base font-semibold transition-colors duration-quick ease-out ${
                                 !roadworthy
-                                    ? 'border-red-500 bg-red-600/20 text-white'
-                                    : 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    ? 'border-danger bg-danger-soft text-danger-ink'
+                                    : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2'
                             }`}
                         >
-                            <XCircleIcon className={`h-5 w-5 flex-shrink-0 ${!roadworthy ? 'text-red-400' : 'text-gray-400'}`} />
-                            Not Roadworthy
+                            <XCircleIcon className={`h-5 w-5 flex-shrink-0 ${!roadworthy ? 'text-danger' : 'text-ink-3'}`} />
+                            Not roadworthy
                         </button>
                     </div>
                     {roadworthy && failCount > 0 && (
-                        <p className="mt-2 text-xs text-amber-400 flex items-start gap-1.5">
+                        <p className="mt-2 flex items-start gap-1.5 text-sm font-semibold text-warning-ink">
                             <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0" />
                             This inspection has {failCount} failed check{failCount === 1 ? '' : 's'}.
                         </p>
@@ -620,34 +609,34 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                 </div>
 
                 <div>
-                    <label htmlFor="pdiAdvisoryNotes" className="block text-sm font-medium text-gray-300 mb-1">Advisory Notes (Optional)</label>
+                    <label htmlFor="pdiAdvisoryNotes" className="mb-1.5 block text-sm font-semibold text-ink">Advisory notes <span className="font-normal text-ink-3">(optional)</span></label>
                     <textarea
                         id="pdiAdvisoryNotes"
                         value={advisoryNotes}
                         onChange={e => setAdvisoryNotes(e.target.value)}
                         rows={3}
-                        placeholder="Anything the customer should know that isn't tied to a single check..."
-                        className="block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-brand-500 focus:border-brand-500"
+                        placeholder="Anything the buyer should know that isn’t tied to one check"
+                        className={inputCls}
                     />
                 </div>
             </form>
 
-            <footer className="flex-shrink-0 p-4 border-t border-gray-700 flex justify-end space-x-3 items-center bg-gray-800">
-                <div className="mr-auto min-w-0 text-xs font-medium">
+            <footer className="flex flex-none flex-wrap items-center justify-end gap-3 border-t border-line bg-surface p-4">
+                <div className="me-auto min-w-0 text-sm font-semibold" aria-live="polite">
                     {advisoryCount === 0 && failCount === 0 ? (
-                        <span className="inline-flex items-center gap-1.5 text-green-400">
+                        <span className="inline-flex items-center gap-1.5 text-success">
                             <CheckCircleIcon className="h-4 w-4 flex-shrink-0" />All checks pass
                         </span>
                     ) : (
                         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
                             {advisoryCount > 0 && (
-                                <span className="inline-flex items-center gap-1.5 text-amber-400">
+                                <span className="inline-flex items-center gap-1.5 text-warning">
                                     <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0" />
                                     {advisoryCount} advisor{advisoryCount === 1 ? 'y' : 'ies'}
                                 </span>
                             )}
                             {failCount > 0 && (
-                                <span className="inline-flex items-center gap-1.5 text-red-400">
+                                <span className="inline-flex items-center gap-1.5 text-danger">
                                     <XCircleIcon className="h-4 w-4 flex-shrink-0" />
                                     {failCount} fail{failCount === 1 ? '' : 's'}
                                 </span>
@@ -655,15 +644,8 @@ const PdiEditor = ({ vehicles, pdis, businessDetails, onSubmit, onCancel, editin
                         </span>
                     )}
                 </div>
-                <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md">Cancel</button>
-                <button
-                    type="submit"
-                    form="pdi-editor-form"
-                    disabled={!selectedVehicleId}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50"
-                >
-                    Preview Certificate
-                </button>
+                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" form="pdi-editor-form" disabled={!selectedVehicleId}>Preview certificate</Button>
             </footer>
         </div>
     );

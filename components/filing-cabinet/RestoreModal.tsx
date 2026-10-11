@@ -3,8 +3,10 @@ import React, { useState, useRef } from 'react';
 import JSZip from 'jszip';
 import { useData } from '../../hooks/useData';
 import * as dataService from '../../services/dataService';
-import { ArrowUpTrayIcon, CheckCircleIcon, ExclamationTriangleIcon } from '../icons';
+import { ArrowUpTrayIcon } from '../icons';
 import Spinner from '../common/Spinner';
+import { Alert, Button } from '../ui';
+import { ProgressBar } from '../settings/SettingsKit';
 
 interface RestoreDrawerProps {
     onClose: () => void;
@@ -24,20 +26,20 @@ const RestoreDrawer = ({ onClose, companyId, userId }: RestoreDrawerProps) => {
         if (!file) return;
 
         setStatus('uploading');
-        setMessage('Reading archive file...');
+        setMessage('Reading the archive…');
 
         try {
             const zip = await JSZip.loadAsync(file);
             const manifestFile = zip.file("manifest.json");
             
             if (!manifestFile) {
-                throw new Error("Invalid archive: manifest.json not found.");
+                throw new Error("This isn't a filing cabinet archive: it has no manifest.json.");
             }
 
             const manifestContent = await manifestFile.async("string");
             const manifest = JSON.parse(manifestContent);
             
-            setMessage(`Found ${manifest.items.length} items to restore. Uploading files...`);
+            setMessage(`Found ${manifest.items.length} items. Uploading files…`);
             
             let restoredCount = 0;
             const totalFiles = manifest.items.filter((i: any) => i.zipPath).length;
@@ -65,70 +67,67 @@ const RestoreDrawer = ({ onClose, companyId, userId }: RestoreDrawerProps) => {
                 }
             }
 
-            setMessage('Restoring database records...');
+            setMessage('Restoring records…');
             setStatus('restoring');
             await batchRestore(manifest);
 
             setStatus('success');
-            setMessage(`Successfully restored ${manifest.items.length} items.`);
+            setMessage(`Restored ${manifest.items.length} items.`);
 
         } catch (error: any) {
             console.error("Restore failed", error);
             setStatus('error');
-            setMessage(error.message || "Failed to process archive file.");
+            setMessage(error.message || "Couldn't read the archive file.");
         }
     };
 
     return (
-        <div className="p-6 h-full flex flex-col justify-center text-center space-y-6">
-            <h2 className="text-2xl font-bold text-white">Restore from Archive</h2>
-            
+        <div className="flex flex-col px-5 pb-5 pt-2 sm:pt-5">
+            <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">Restore an archive</h2>
+            <p className="mt-1 text-sm leading-5 text-ink-2">
+                Puts receipts, invoices and sales documents from an archive ZIP back into the filing cabinet.
+            </p>
+
             {status === 'idle' && (
                 <>
-                    <p className="text-gray-300">
-                        Upload a previously generated archive ZIP file to restore receipts, invoices, and sales documents to the Filing Cabinet.
-                    </p>
-                    <div 
+                    <button
+                        type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="border-4 border-dashed border-gray-600 rounded-xl p-10 cursor-pointer hover:border-brand-500 hover:bg-gray-800 transition-colors"
+                        className="mt-5 flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed border-line-strong bg-bg p-6 text-center transition-colors duration-quick ease-out hover:border-accent hover:bg-accent-soft"
                     >
-                        <ArrowUpTrayIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                        <p className="text-lg font-medium text-white">Click to Select Archive ZIP</p>
-                    </div>
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileChange} 
-                        accept=".zip" 
-                        className="hidden" 
+                        <ArrowUpTrayIcon className="h-8 w-8 text-ink-2" />
+                        <span className="text-base font-semibold text-ink">Choose an archive ZIP</span>
+                        <span className="text-sm text-ink-3">The file Archive saved, named <span className="font-mono">Archive_YYYY-MM-DD.zip</span></span>
+                    </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept=".zip"
+                        className="hidden"
                     />
                 </>
             )}
 
             {(status === 'uploading' || status === 'restoring') && (
-                <>
-                    <Spinner className="h-12 w-12 text-brand-500 mx-auto" />
-                    <h3 className="text-xl font-semibold text-white">{message}</h3>
-                    {status === 'uploading' && <div className="w-full bg-gray-700 rounded-full h-2.5 mt-2"><div className="bg-brand-600 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div></div>}
-                </>
+                <div className="mt-5 space-y-3 rounded-control border border-line bg-bg p-4" role="status">
+                    <p className="flex items-center gap-3 font-semibold text-ink"><Spinner className="h-5 w-5 text-accent-text" /> {message}</p>
+                    {status === 'uploading' && <ProgressBar value={progress} label={message} />}
+                </div>
             )}
 
             {status === 'success' && (
-                <>
-                    <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto" />
-                    <h3 className="text-xl font-bold text-white">Restore Successful</h3>
-                    <p className="text-gray-300">{message}</p>
-                    <button onClick={onClose} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg mx-auto">Done</button>
-                </>
+                <div className="mt-5 space-y-4">
+                    <Alert tone="success" title="Restored">{message}</Alert>
+                    <Button variant="secondary" onClick={onClose} block>Done</Button>
+                </div>
             )}
 
             {status === 'error' && (
-                <>
-                    <ExclamationTriangleIcon className="h-16 w-16 text-red-500 mx-auto" />
-                    <h3 className="text-xl font-bold text-white">Restore Failed</h3>
-                    <p className="text-red-300">{message}</p>
-                    <button onClick={() => setStatus('idle')} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg mx-auto">Try Again</button>
-                </>
+                <div className="mt-5 space-y-4">
+                    <Alert tone="danger" title="Restore didn't finish">{message}</Alert>
+                    <Button variant="secondary" onClick={() => setStatus('idle')} block>Try another file</Button>
+                </div>
             )}
         </div>
     );

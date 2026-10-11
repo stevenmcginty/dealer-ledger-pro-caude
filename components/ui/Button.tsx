@@ -1,57 +1,84 @@
 import React from 'react';
 import Spinner from '../common/Spinner';
+import { cx } from './cx';
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success';
-type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Keeps the label, adds a spinner and aria-busy, and blocks clicks. */
   loading?: boolean;
   icon?: React.ReactNode;
+  /** Icon after the label instead of before it. */
+  iconEnd?: React.ReactNode;
+  /** Full width. */
+  block?: boolean;
   children: React.ReactNode;
 }
 
-const Button: React.FC<ButtonProps> = ({
+// Accent fills for the main action; danger is red-on-white in light and
+// pale-red-on-dark in dark (the tokens flip, the classes don't).
+const VARIANT: Record<ButtonVariant, string> = {
+  primary: 'bg-accent text-on-accent border-transparent hover:bg-accent-hover active:bg-accent-press',
+  success: 'bg-accent text-on-accent border-transparent hover:bg-accent-hover active:bg-accent-press',
+  secondary: 'bg-surface text-ink border-line-strong hover:bg-surface-2 active:bg-surface-3',
+  ghost: 'bg-transparent text-accent-text border-transparent hover:bg-accent-soft active:bg-surface-3',
+  danger: 'bg-danger text-on-danger border-transparent hover:bg-danger-hover active:bg-danger-hover',
+};
+
+// 36 / 48 / 56. Small is 44 on phones and touch screens so it stays
+// tappable; it only drops to 36 on a wide screen with a mouse.
+const SIZE: Record<ButtonSize, string> = {
+  sm: 'min-h-[44px] min-w-[44px] md:[@media(pointer:fine)]:min-h-[36px] md:[@media(pointer:fine)]:min-w-[36px] px-3 text-sm gap-1.5 [&_svg]:h-4 [&_svg]:w-4',
+  md: 'min-h-[48px] min-w-[48px] px-5 text-base gap-2 [&_svg]:h-5 [&_svg]:w-5',
+  lg: 'min-h-[56px] min-w-[56px] px-6 text-lg gap-2.5 [&_svg]:h-5 [&_svg]:w-5',
+};
+
+export const buttonClasses = (variant: ButtonVariant = 'primary', size: ButtonSize = 'md', block = false, loading = false): string =>
+  cx(
+    'relative inline-flex select-none items-center justify-center whitespace-nowrap rounded-control border font-semibold leading-tight',
+    'transition-[background-color,border-color,color,transform] duration-quick ease-out',
+    loading
+      // Busy keeps its colour and label so nothing jumps; it just stops taking taps.
+      ? 'cursor-progress'
+      : 'active:scale-[.97] active:duration-press disabled:cursor-not-allowed disabled:border-transparent disabled:bg-surface-2 disabled:text-ink-3 disabled:active:scale-100 ' +
+        'aria-disabled:cursor-not-allowed aria-disabled:border-transparent aria-disabled:bg-surface-2 aria-disabled:text-ink-3',
+    VARIANT[variant],
+    SIZE[size],
+    block && 'w-full',
+  );
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({
   variant = 'primary',
   size = 'md',
   loading = false,
   icon,
+  iconEnd,
+  block = false,
   children,
   className = '',
   disabled,
   ...props
-}) => {
-  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed';
-
-  const variantStyles: Record<ButtonVariant, string> = {
-    primary: 'bg-brand-600 hover:bg-brand-500 text-white focus:ring-brand-500 shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40',
-    secondary: 'bg-gray-700 hover:bg-gray-600 text-gray-100 focus:ring-gray-500 border border-gray-600',
-    danger: 'bg-red-600 hover:bg-red-500 text-white focus:ring-red-500 shadow-lg shadow-red-500/25',
-    ghost: 'bg-transparent hover:bg-gray-700/50 text-gray-300 hover:text-white focus:ring-gray-500',
-    success: 'bg-emerald-600 hover:bg-emerald-500 text-white focus:ring-emerald-500 shadow-lg shadow-emerald-500/25',
-  };
-
-  const sizeStyles: Record<ButtonSize, string> = {
-    sm: 'px-3 py-1.5 text-sm gap-1.5',
-    md: 'px-4 py-2 text-sm gap-2',
-    lg: 'px-6 py-3 text-base gap-2.5',
-  };
-
-  return (
-    <button
-      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
-      disabled={disabled || loading}
-      {...props}
-    >
-      {loading ? (
-        <Spinner className="h-4 w-4" />
-      ) : icon ? (
-        <span className="flex-shrink-0">{icon}</span>
-      ) : null}
-      {children}
-    </button>
-  );
-};
+}, ref) => (
+  <button
+    ref={ref}
+    className={cx(buttonClasses(variant, size, block, loading), className)}
+    disabled={disabled || loading}
+    aria-busy={loading || undefined}
+    data-size={size}
+    {...props}
+  >
+    {loading ? (
+      <Spinner />
+    ) : icon ? (
+      <span className="inline-flex flex-shrink-0" aria-hidden="true">{icon}</span>
+    ) : null}
+    {children}
+    {iconEnd && !loading && <span className="inline-flex flex-shrink-0" aria-hidden="true">{iconEnd}</span>}
+  </button>
+));
+Button.displayName = 'Button';
 
 export default Button;

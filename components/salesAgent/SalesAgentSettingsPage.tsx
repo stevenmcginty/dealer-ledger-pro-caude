@@ -36,60 +36,8 @@ import {
 import AgentSimulator from './AgentSimulator';
 import PushNotificationsCard from './PushNotificationsCard';
 import SharedInboxCard from './SharedInboxCard';
-
-/** A labelled on/off switch. The agent's settings are mostly yes-or-no answers. */
-const Toggle: React.FC<{
-    checked: boolean;
-    onChange: (next: boolean) => void;
-    label: string;
-    hint?: string;
-    disabled?: boolean;
-}> = ({ checked, onChange, label, hint, disabled }) => (
-    <label className={`flex items-start gap-3 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
-        <button
-            type="button"
-            role="switch"
-            aria-checked={checked}
-            aria-label={label}
-            disabled={disabled}
-            onClick={() => onChange(!checked)}
-            className={`mt-0.5 relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500/50 ${
-                checked ? 'bg-brand-600' : 'bg-gray-600'
-            }`}
-        >
-            <span
-                className={`inline-block h-5 w-5 mt-0.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
-                    checked ? 'translate-x-[1.375rem]' : 'translate-x-0.5'
-                }`}
-            />
-        </button>
-        <span className="min-w-0">
-            <span className="block text-sm font-medium text-gray-200">{label}</span>
-            {hint && <span className="block text-xs text-gray-500 mt-0.5">{hint}</span>}
-        </span>
-    </label>
-);
-
-const TextArea: React.FC<{
-    label: string;
-    value: string;
-    rows?: number;
-    hint?: string;
-    placeholder?: string;
-    onChange: (next: string) => void;
-}> = ({ label, value, rows = 4, hint, placeholder, onChange }) => (
-    <div className="w-full">
-        <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
-        <textarea
-            rows={rows}
-            value={value}
-            placeholder={placeholder}
-            onChange={e => onChange(e.target.value)}
-            className="w-full bg-gray-900/50 border border-gray-700 hover:border-gray-600 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 text-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500"
-        />
-        {hint && <p className="mt-1.5 text-sm text-gray-500">{hint}</p>}
-    </div>
-);
+import { WhatsAppMark } from './inbox/parts';
+import { SettingSelect, SettingSwitch as Toggle, SettingTextArea as TextArea } from './settingParts';
 
 /** One webhook address, with the copy button that is the whole point of showing it. */
 const CopyRow: React.FC<{ label: string; value: string }> = ({ label, value }) => {
@@ -112,13 +60,17 @@ const CopyRow: React.FC<{ label: string; value: string }> = ({ label, value }) =
 
     return (
         <div>
-            <p className="text-xs font-medium text-gray-400 mb-1">{label}</p>
+            <p className="mb-1.5 text-sm font-semibold text-ink">{label}</p>
             <div className="flex items-center gap-2">
-                <code className="flex-1 min-w-0 truncate bg-gray-900/70 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono">
+                <code className="min-w-0 flex-1 truncate rounded-control border border-line bg-surface-2 px-3 py-2.5 font-mono text-sm text-ink-2">
                     {value}
                 </code>
-                <Button size="sm" variant="secondary" onClick={copy}>
-                    {copied ? <CheckCircleIcon className="h-4 w-4 text-emerald-400" /> : <ClipboardIcon className="h-4 w-4" />}
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={copy}
+                    icon={copied ? <CheckCircleIcon className="text-success" /> : <ClipboardIcon />}
+                >
                     {copied ? 'Copied' : 'Copy'}
                 </Button>
             </div>
@@ -326,29 +278,31 @@ const SalesAgentSettingsPage = () => {
     const stockErrors = useMemo(() => stockMeta?.errors || [], [stockMeta]);
 
     if (!companyId) {
-        return <p className="text-sm text-gray-500">Loading…</p>;
+        return <p className="text-sm text-ink-3">Loading…</p>;
     }
 
     return (
         <div className="space-y-6">
             {/* ---- master switch ---------------------------------------- */}
             <Card
-                className={`border-2 ${draft.enabled ? 'border-emerald-500/40 bg-emerald-950/20' : 'border-gray-700/50'}`}
+                className={draft.enabled ? 'border-accent' : undefined}
                 padding="lg"
             >
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex items-start gap-4 min-w-0">
-                        <div className={`p-3 rounded-xl ${draft.enabled ? 'bg-emerald-500/20' : 'bg-gray-700/60'}`}>
-                            <SparklesIcon className={`w-6 h-6 ${draft.enabled ? 'text-emerald-400' : 'text-gray-400'}`} />
-                        </div>
+                    <div className="flex min-w-0 items-start gap-4">
+                        <span className={`grid h-12 w-12 flex-shrink-0 place-items-center rounded-card ${draft.enabled ? 'bg-accent-soft text-accent-soft-ink' : 'bg-surface-2 text-ink-2'}`}>
+                            <SparklesIcon className="h-6 w-6" />
+                        </span>
                         <div className="min-w-0">
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <h2 className="text-xl font-bold text-white">AI Sales Agent</h2>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <h2 className="text-[1.375rem] font-bold leading-7 tracking-[-0.01em] text-ink">
+                                    {(saved?.agentName || 'Dave').trim() || 'Dave'} answers your enquiries
+                                </h2>
                                 <Badge variant={draft.enabled ? 'success' : 'default'} dot>
                                     {draft.enabled ? 'Answering' : 'Off'}
                                 </Badge>
                             </div>
-                            <p className="text-sm text-gray-400 mt-1 max-w-2xl">
+                            <p className="mt-1 max-w-2xl text-sm leading-5 text-ink-2">
                                 Answers WhatsApp, SMS and email enquiries in your voice, from your live stock
                                 list — asks about the car, part-exchange or finance, and a time to come in,
                                 then books the viewing and pings you. Anything it is unsure of comes to you
@@ -368,16 +322,16 @@ const SalesAgentSettingsPage = () => {
             <Card padding="lg">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="min-w-0">
-                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                            <ChatBubbleLeftRightIcon className="h-5 w-5 text-brand-400" />
+                        <h3 className="flex items-center gap-2 text-lg font-bold text-ink">
+                            <ChatBubbleLeftRightIcon className="h-5 w-5 text-ink-2" />
                             Test the agent
                         </h3>
-                        <p className="text-sm text-gray-400 mt-1 max-w-2xl">
+                        <p className="mt-1 max-w-2xl text-sm leading-5 text-ink-2">
                             Talk to it yourself, as a customer would on WhatsApp. Nothing here reaches a real
                             customer and no conversation is created.
                         </p>
                     </div>
-                    <Button variant={simulatorOpen ? 'secondary' : 'primary'} onClick={() => setSimulatorOpen(o => !o)}>
+                    <Button variant="secondary" onClick={() => setSimulatorOpen(o => !o)}>
                         {simulatorOpen ? 'Close simulator' : 'Open simulator'}
                     </Button>
                 </div>
@@ -493,21 +447,17 @@ const SalesAgentSettingsPage = () => {
                 <Card.Header>How it behaves</Card.Header>
                 <Card.Body>
                     <div className="space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1.5">Price flexibility</label>
-                            <select
-                                value={draft.priceFlexMode}
-                                onChange={e => edit('priceFlexMode', e.target.value as SalesAgentSettings['priceFlexMode'])}
-                                className="w-full md:w-96 bg-gray-900/50 border border-gray-700 hover:border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500"
-                            >
-                                <option value="hint">Hint — "usually a bit of movement", never a figure</option>
-                                <option value="figure">Figure — may offer up to a set discount</option>
-                                <option value="none">None — the price is the price</option>
-                            </select>
-                            <p className="mt-1.5 text-sm text-gray-500">
-                                On a second push, or a straight request for a number, the agent stops and asks you.
-                            </p>
-                        </div>
+                        <SettingSelect
+                            label="Price flexibility"
+                            value={draft.priceFlexMode}
+                            onChange={next => edit('priceFlexMode', next as SalesAgentSettings['priceFlexMode'])}
+                            hint="On a second push, or a straight request for a number, the agent stops and asks you."
+                            className="md:max-w-[28rem]"
+                        >
+                            <option value="hint">Hint — "usually a bit of movement", never a figure</option>
+                            <option value="figure">Figure — may offer up to a set discount</option>
+                            <option value="none">None — the price is the price</option>
+                        </SettingSelect>
 
                         {draft.priceFlexMode === 'figure' && (
                             <div className="w-full md:w-64">
@@ -522,8 +472,8 @@ const SalesAgentSettingsPage = () => {
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1.5">Reply delay</label>
-                            <div className="flex items-center gap-3 flex-wrap">
+                            <p className="mb-1.5 text-sm font-semibold leading-5 text-ink">Reply delay</p>
+                            <div className="flex flex-wrap items-center gap-3">
                                 <div className="w-28">
                                     <Input
                                         type="number"
@@ -533,7 +483,7 @@ const SalesAgentSettingsPage = () => {
                                         onChange={e => edit('replyDelaySeconds', [Number(e.target.value) || 0, draft.replyDelaySeconds[1]])}
                                     />
                                 </div>
-                                <span className="text-sm text-gray-500">to</span>
+                                <span className="text-sm text-ink-3">to</span>
                                 <div className="w-28">
                                     <Input
                                         type="number"
@@ -543,17 +493,17 @@ const SalesAgentSettingsPage = () => {
                                         onChange={e => edit('replyDelaySeconds', [draft.replyDelaySeconds[0], Number(e.target.value) || 0])}
                                     />
                                 </div>
-                                <span className="text-sm text-gray-500">seconds</span>
+                                <span className="text-sm text-ink-3">seconds</span>
                             </div>
-                            <p className="mt-1.5 text-sm text-gray-500">
+                            <p className="mt-1.5 text-sm leading-5 text-ink-3">
                                 An answer that arrives the instant a message is sent reads as a machine. The agent
                                 waits somewhere in this window.
                             </p>
                         </div>
 
                         <div>
-                            <p className="block text-sm font-medium text-gray-300 mb-3">Channels it answers on</p>
-                            <div className="space-y-3">
+                            <p className="mb-1 text-sm font-semibold leading-5 text-ink">Channels it answers on</p>
+                            <div className="divide-y divide-line">
                                 <Toggle
                                     label="WhatsApp"
                                     checked={draft.channels.whatsapp}
@@ -580,7 +530,7 @@ const SalesAgentSettingsPage = () => {
                         />
 
                         <div className="space-y-3">
-                            <p className="block text-sm font-medium text-gray-300">Before {draft.agentName || 'Dave'} sends</p>
+                            <p className="text-sm font-semibold leading-5 text-ink">Before {draft.agentName || 'Dave'} sends</p>
                             <Toggle
                                 label="Hold WhatsApp replies for approval"
                                 hint={`On: you read the draft first. Off: ${draft.agentName || 'Dave'} sends WhatsApp himself. Steve and Chris each have their own copy.`}
@@ -613,7 +563,7 @@ const SalesAgentSettingsPage = () => {
                                 onChange={next => edit('sendHours', { ...draft.sendHours, enabled: next })}
                             />
                             {draft.sendHours?.enabled !== false && (
-                                <div className="ml-14 space-y-3">
+                                <div className="space-y-3 ps-[3.75rem]">
                                     <div className="flex flex-wrap items-end gap-3">
                                         <div className="w-36">
                                             <Input
@@ -631,11 +581,11 @@ const SalesAgentSettingsPage = () => {
                                                 onChange={e => edit('sendHours', { ...draft.sendHours, end: e.target.value || '17:00' })}
                                             />
                                         </div>
-                                        <p className="pb-2.5 text-xs text-gray-500">Europe/London</p>
+                                        <p className="pb-3.5 text-xs text-ink-3">Europe/London</p>
                                     </div>
                                     <div>
-                                        <p className="mb-1.5 text-sm font-medium text-gray-300">Days</p>
-                                        <div className="flex flex-wrap gap-1.5">
+                                        <p className="mb-1.5 text-sm font-semibold leading-5 text-ink">Days</p>
+                                        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days it may send">
                                             {(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const).map((label, day) => {
                                                 const selected = (draft.sendHours?.days || [1, 2, 3, 4, 5, 6]).includes(day);
                                                 return (
@@ -650,10 +600,10 @@ const SalesAgentSettingsPage = () => {
                                                                 : [...current, day].sort((a, b) => a - b);
                                                             edit('sendHours', { ...draft.sendHours, days: next.length ? next : [day] });
                                                         }}
-                                                        className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                                                        className={`min-h-[44px] min-w-[44px] rounded-control border px-2 text-sm font-semibold transition-colors duration-quick ease-out [@media(pointer:coarse)]:min-h-[48px] ${
                                                             selected
-                                                                ? 'bg-brand-600 text-white'
-                                                                : 'bg-gray-700 text-gray-400 hover:text-white'
+                                                                ? 'border-accent bg-accent-soft text-accent-soft-ink'
+                                                                : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink'
                                                         }`}
                                                     >
                                                         {label}
@@ -680,30 +630,30 @@ const SalesAgentSettingsPage = () => {
                             onChange={next => edit('shareStockWithAgent', next)}
                         />
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1.5">Cars not in any ledger account</label>
-                            <select
-                                value={draft.unmatchedStockPolicy ?? 'include'}
-                                onChange={e => edit('unmatchedStockPolicy', e.target.value as SalesAgentSettings['unmatchedStockPolicy'])}
-                                className="w-full md:w-96 bg-gray-900/50 border border-gray-700 hover:border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500"
-                            >
-                                <option value="include">Include — the agent may sell anything on the site</option>
-                                <option value="exclude">Exclude — only cars matched to a ledger account</option>
-                            </select>
-                            <p className="mt-1.5 text-sm text-gray-500">
-                                A car on the website that nobody's stock list claims. Excluded ones are indexed but
-                                never offered, and the agent asks you rather than guessing.
-                            </p>
-                        </div>
+                        <SettingSelect
+                            label="Cars not in any ledger account"
+                            value={draft.unmatchedStockPolicy ?? 'include'}
+                            onChange={next => edit('unmatchedStockPolicy', next as SalesAgentSettings['unmatchedStockPolicy'])}
+                            hint="A car on the website that nobody's stock list claims. Excluded ones are indexed but never offered, and the agent asks you rather than guessing."
+                            className="md:max-w-[28rem]"
+                        >
+                            <option value="include">Include — the agent may sell anything on the site</option>
+                            <option value="exclude">Exclude — only cars matched to a ledger account</option>
+                        </SettingSelect>
                     </div>
                 </Card.Body>
             </Card>
 
             {/* ---- save -------------------------------------------------- */}
-            <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-end gap-3 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl px-4 py-3">
-                {dirty && <p className="text-sm text-amber-400 mr-auto">Unsaved changes</p>}
+            <div className="sticky bottom-3 z-sticky flex flex-wrap items-center justify-end gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-e1">
+                {dirty && (
+                    <p className="me-auto flex items-center gap-2 text-sm font-semibold text-warning-ink">
+                        <span className="h-2 w-2 rounded-full bg-warning" aria-hidden />
+                        Unsaved changes
+                    </p>
+                )}
                 {!dirty && saved?.updatedAt ? (
-                    <p className="text-sm text-gray-500 mr-auto">Saved {formatAgentTime(saved.updatedAt)}</p>
+                    <p className="me-auto text-sm text-ink-3">Saved {formatAgentTime(saved.updatedAt)}</p>
                 ) : null}
                 {dirty && (
                     <Button variant="ghost" onClick={() => { if (saved) setDraft(saved); setDirty(false); }}>
@@ -728,13 +678,13 @@ const SalesAgentSettingsPage = () => {
             {/* ---- stock index ------------------------------------------- */}
             <Card padding="lg">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 min-w-0">
-                        <div className="p-2 rounded-lg bg-brand-500/20">
-                            <CarIcon className="w-5 h-5 text-brand-400" />
-                        </div>
+                    <div className="flex min-w-0 items-start gap-3">
+                        <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-control bg-surface-2 text-ink-2">
+                            <CarIcon className="h-5 w-5" />
+                        </span>
                         <div className="min-w-0">
-                            <h3 className="text-lg font-semibold text-white">Stock the agent can talk about</h3>
-                            <p className="text-sm text-gray-400 mt-1 max-w-2xl">
+                            <h3 className="text-lg font-bold text-ink">Stock the agent can talk about</h3>
+                            <p className="mt-1 max-w-2xl text-sm leading-5 text-ink-2">
                                 Read from your website every morning at six. Every fact the agent gives out about a
                                 car comes from here — it is not allowed to invent one.
                             </p>
@@ -747,45 +697,45 @@ const SalesAgentSettingsPage = () => {
                 </div>
 
                 {stockMeta ? (
-                    <dl className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-line pt-4 md:grid-cols-4">
                         <div>
-                            <dt className="text-xs text-gray-500">Available</dt>
-                            <dd className="text-2xl font-bold text-white">{stockMeta.availableCount ?? 0}</dd>
+                            <dt className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">Available</dt>
+                            <dd className="num mt-1 text-[1.75rem] font-semibold leading-8 text-ink">{stockMeta.availableCount ?? 0}</dd>
                         </div>
                         <div>
-                            <dt className="text-xs text-gray-500">Listings read</dt>
-                            <dd className="text-2xl font-bold text-white">{stockMeta.count ?? 0}</dd>
+                            <dt className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">Listings read</dt>
+                            <dd className="num mt-1 text-[1.75rem] font-semibold leading-8 text-ink">{stockMeta.count ?? 0}</dd>
                         </div>
                         <div>
-                            <dt className="text-xs text-gray-500">Last read</dt>
-                            <dd className="text-sm text-gray-200 mt-2">{formatAgentTime(stockMeta.lastIndexedAt)}</dd>
+                            <dt className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">Last read</dt>
+                            <dd className="mt-2 text-sm text-ink">{formatAgentTime(stockMeta.lastIndexedAt)}</dd>
                         </div>
                         <div>
-                            <dt className="text-xs text-gray-500">Took</dt>
-                            <dd className="text-sm text-gray-200 mt-2">
+                            <dt className="font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">Took</dt>
+                            <dd className="num mt-2 text-sm text-ink">
                                 {stockMeta.durationMs ? `${Math.round(stockMeta.durationMs / 100) / 10}s` : '—'}
                             </dd>
                         </div>
                     </dl>
                 ) : (
-                    <p className="mt-5 text-sm text-gray-500">
+                    <p className="mt-5 border-t border-line pt-4 text-sm text-ink-3">
                         Nothing indexed yet. Run it once and the agent has a stock list to answer from.
                     </p>
                 )}
 
                 {!!stockErrors.length && (
-                    <div className="mt-4 p-3 rounded-lg bg-amber-900/30 border border-amber-700/40">
-                        <p className="text-sm font-medium text-amber-300 flex items-center gap-2">
-                            <ExclamationTriangleIcon className="h-4 w-4" />
+                    <div className="mt-4 rounded-control border border-warning bg-warning-soft p-3 text-warning-ink">
+                        <p className="flex items-center gap-2 text-sm font-semibold">
+                            <ExclamationTriangleIcon className="h-5 w-5" />
                             {stockErrors.length === 1 ? 'One listing gave trouble' : `${stockErrors.length} listings gave trouble`}
                         </p>
                         <ul className="mt-2 space-y-1">
                             {stockErrors.slice(0, 5).map((err, i) => (
-                                <li key={i} className="text-xs text-gray-400 font-mono truncate">{err}</li>
+                                <li key={i} className="truncate font-mono text-xs">{err}</li>
                             ))}
                         </ul>
                         {stockErrors.length > 5 && (
-                            <p className="mt-1 text-xs text-gray-500">and {stockErrors.length - 5} more</p>
+                            <p className="mt-1 text-xs">and {stockErrors.length - 5} more</p>
                         )}
                     </div>
                 )}
@@ -793,8 +743,8 @@ const SalesAgentSettingsPage = () => {
 
             {/* ---- connections ------------------------------------------- */}
             <div>
-                <h3 className="text-sm font-semibold tracking-wider text-gray-500 uppercase mb-3">Connections</h3>
-                <p className="text-sm text-gray-400 mb-4 max-w-3xl">
+                <h3 className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.08em] text-ink-3">Connections</h3>
+                <p className="mb-4 max-w-3xl text-sm leading-5 text-ink-2">
                     These go straight into the functions and cannot be read back out — not by this page, not by
                     anyone signed in. If you need to change one, paste the new value over the top.
                 </p>
@@ -806,13 +756,13 @@ const SalesAgentSettingsPage = () => {
                             action={<Badge variant={usesSharedWhatsApp || connections.whatsapp ? 'success' : 'default'}>{usesSharedWhatsApp ? 'Shared number' : connections.whatsapp ? 'Connected' : 'Not connected'}</Badge>}
                         >
                             <span className="flex items-center gap-2">
-                                <ChatBubbleLeftRightIcon className="h-5 w-5 text-emerald-400" />
+                                <WhatsAppMark brand className="h-5 w-5" />
                                 WhatsApp Cloud API
                             </span>
                         </Card.Header>
                         <Card.Body>
                             {usesSharedWhatsApp ? (
-                                <p className="text-sm text-gray-300 max-w-2xl">
+                                <p className="text-sm text-ink-2 max-w-2xl">
                                     This ledger uses the shared {sharedInbox?.name || 'Radlett'} number. You do not
                                     paste Meta tokens here — send from the Agent Inbox and it goes out on that number.
                                 </p>
@@ -859,7 +809,7 @@ const SalesAgentSettingsPage = () => {
                                 </div>
                             ) : (
                                 <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <p className="text-sm text-gray-400 max-w-xl">
+                                    <p className="text-sm text-ink-3 max-w-xl">
                                         Your own number through Meta Coexistence — the WhatsApp Business app keeps
                                         working on the phone while the agent answers through the Cloud API.
                                     </p>
@@ -877,7 +827,7 @@ const SalesAgentSettingsPage = () => {
                             action={<Badge variant={connections.twilio ? 'success' : 'default'}>{connections.twilio ? 'Connected' : 'Not connected'}</Badge>}
                         >
                             <span className="flex items-center gap-2">
-                                <PhoneIcon className="h-5 w-5 text-red-400" />
+                                <PhoneIcon className="h-5 w-5 text-ink-2" />
                                 Twilio SMS
                             </span>
                         </Card.Header>
@@ -913,7 +863,7 @@ const SalesAgentSettingsPage = () => {
                                 </div>
                             ) : (
                                 <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <p className="text-sm text-gray-400 max-w-xl">
+                                    <p className="text-sm text-ink-3 max-w-xl">
                                         The UK number texts arrive on. Twilio signs every webhook, and the auth token
                                         is what proves it.
                                     </p>
@@ -931,13 +881,13 @@ const SalesAgentSettingsPage = () => {
                             action={<Badge variant={connections.gmail ? 'success' : 'default'}>{connections.gmail ? 'Connected' : 'Not connected'}</Badge>}
                         >
                             <span className="flex items-center gap-2">
-                                <EnvelopeIcon className="h-5 w-5 text-sky-400" />
+                                <EnvelopeIcon className="h-5 w-5 text-ink-2" />
                                 Gmail
                             </span>
                         </Card.Header>
                         <Card.Body>
                             <div className="flex flex-wrap items-center justify-between gap-3">
-                                <p className="text-sm text-gray-400 max-w-xl">
+                                <p className="text-sm text-ink-3 max-w-xl">
                                     Email enquiries are pushed to the agent as they arrive — nothing polls the
                                     inbox. You will be sent to Google to approve it.
                                 </p>
@@ -957,12 +907,12 @@ const SalesAgentSettingsPage = () => {
                     <Card padding="lg">
                         <Card.Header>
                             <span className="flex items-center gap-2">
-                                <BoltIcon className="h-5 w-5 text-amber-400" />
+                                <BoltIcon className="h-5 w-5 text-ink-2" />
                                 Addresses to paste into Meta and Twilio
                             </span>
                         </Card.Header>
                         <Card.Body>
-                            <p className="text-sm text-gray-400 mb-4 max-w-2xl">
+                            <p className="text-sm text-ink-3 mb-4 max-w-2xl">
                                 Set these once, by hand, in each provider's console. Meta will ask for the verify
                                 token above at the same time.
                             </p>
@@ -976,7 +926,7 @@ const SalesAgentSettingsPage = () => {
             </div>
 
             {saved === null && (
-                <div className="flex items-center gap-3 text-sm text-gray-500">
+                <div className="flex items-center gap-3 text-sm text-ink-3">
                     <Spinner className="h-4 w-4" /> Loading settings…
                 </div>
             )}

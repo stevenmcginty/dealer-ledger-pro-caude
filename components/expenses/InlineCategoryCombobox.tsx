@@ -1,7 +1,7 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExpenseCategory } from '../../types';
-import { PlusIcon, ChevronDownIcon } from '../icons';
+import { PlusIcon, ChevronDownIcon, MagnifyingGlassIcon } from '../icons';
 
 export interface CategoryComboboxHandle {
     open: () => void;
@@ -119,6 +119,10 @@ const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategory
         } else if (e.key === 'Escape') { e.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
     };
 
+    const optionClass = (active: boolean) =>
+        `flex w-full items-center gap-2.5 rounded-control px-3 text-start text-sm transition-colors duration-quick ease-out ${active ? 'bg-accent-soft text-accent-soft-ink shadow-[inset_0_0_0_1px_rgb(var(--c-accent))]' : 'text-ink hover:bg-surface-2'}`;
+    const addLabel = <span className="truncate">{onAddCategory ? 'Add' : 'Use'} &ldquo;{trimmed}&rdquo;</span>;
+
     return (
         <div className={`relative ${className}`}>
             <button
@@ -127,46 +131,54 @@ const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategory
                 onClick={() => (open ? doClose() : doOpen())}
                 aria-haspopup="listbox"
                 aria-expanded={open}
-                className="w-full inline-flex items-center justify-between gap-1 px-2 py-1.5 rounded-md bg-gray-700 text-xs text-white ring-1 ring-inset ring-gray-600 hover:ring-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="flex min-h-[40px] w-full items-center justify-between gap-2 rounded-control border border-line-strong bg-surface pe-2 ps-3 text-sm text-ink transition-colors duration-quick ease-out hover:border-ink-2 [@media(pointer:coarse)]:min-h-[48px]"
             >
-                <span className={`truncate ${value ? 'text-white' : 'text-gray-400'}`}>{value || placeholder}</span>
-                <ChevronDownIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                <span className={`truncate ${value ? 'text-ink' : 'text-ink-3'}`}>{value || placeholder}</span>
+                <ChevronDownIcon className="h-4 w-4 flex-shrink-0 text-ink-3" />
             </button>
 
             {open && large && createPortal(
-                <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm sm:p-6">
+                // Phone: a bottom sheet. Wider screens: a dialog near the top.
+                <div className="fixed inset-0 z-dialog flex items-end justify-center bg-scrim sm:items-start sm:p-6">
                     <div
                         ref={panelRef}
-                        className="mt-[6vh] flex max-h-[84vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-gray-800 shadow-2xl ring-1 ring-black/40 border border-gray-700"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Choose a category"
+                        className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-sheet border border-line bg-surface pb-[env(safe-area-inset-bottom)] shadow-e3 sm:mt-[6vh] sm:max-w-3xl sm:rounded-card sm:pb-0"
                     >
-                        <div className="flex items-center gap-2 border-b border-gray-700 p-3">
-                            <input
-                                ref={inputRef}
-                                value={search}
-                                onChange={e => { setSearch(e.target.value); setHighlight(0); }}
-                                onKeyDown={onInputKeyDown}
-                                placeholder={onAddCategory ? 'Search or add a category…' : 'Search categories…'}
-                                className="w-full bg-gray-900 text-white text-base rounded-md px-3 py-2.5 ring-1 ring-inset ring-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                            />
+                        <div className="flex items-center gap-2 border-b border-line p-3">
+                            <label className="flex min-h-[48px] min-w-0 flex-1 items-center gap-2 rounded-control border border-line-strong bg-surface px-3 text-ink-3 focus-within:border-focus focus-within:shadow-[0_0_0_1px_rgb(var(--c-focus))]">
+                                <MagnifyingGlassIcon className="h-5 w-5 flex-none" />
+                                <input
+                                    ref={inputRef}
+                                    value={search}
+                                    onChange={e => { setSearch(e.target.value); setHighlight(0); }}
+                                    onKeyDown={onInputKeyDown}
+                                    aria-label="Search categories"
+                                    placeholder={onAddCategory ? 'Search or add a category' : 'Search categories'}
+                                    className="min-w-0 flex-1 border-0 bg-transparent py-2 text-base text-ink placeholder:text-ink-3 focus-visible:outline-none"
+                                />
+                            </label>
                             <button
                                 type="button"
                                 onClick={doClose}
-                                className="flex-shrink-0 rounded-md px-3 py-2.5 text-sm text-gray-300 ring-1 ring-inset ring-gray-700 hover:bg-gray-700 hover:text-white"
+                                className="min-h-[48px] flex-none rounded-control border border-line-strong bg-surface px-4 text-sm font-semibold text-ink transition-colors duration-quick ease-out hover:bg-surface-2"
                             >
                                 Close
                             </button>
                         </div>
-                        <ul className="grid grid-cols-2 gap-1.5 overflow-y-auto p-3 sm:grid-cols-3" role="listbox">
+                        <ul className="grid grid-cols-2 gap-1.5 overflow-y-auto p-3 sm:grid-cols-3" role="listbox" aria-label="Categories">
                             {canAdd && (
-                                <li className="sm:col-span-3">
+                                <li className="col-span-2 sm:col-span-3">
                                     <button
                                         type="button"
                                         onMouseEnter={() => setHighlight(filtered.length)}
                                         onClick={addNew}
-                                        className={`flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm ${highlight === filtered.length ? 'bg-brand-600 text-white' : 'text-brand-300 ring-1 ring-inset ring-gray-700 hover:bg-gray-700'}`}
+                                        className={`${optionClass(highlight === filtered.length)} min-h-[48px] border border-dashed border-line-strong font-semibold text-accent-text`}
                                     >
                                         <PlusIcon className="h-4 w-4 flex-shrink-0" />
-                                        <span className="truncate">{onAddCategory ? 'Add' : 'Use'} &ldquo;{trimmed}&rdquo;</span>
+                                        {addLabel}
                                     </button>
                                 </li>
                             )}
@@ -176,15 +188,15 @@ const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategory
                                         type="button"
                                         onMouseEnter={() => setHighlight(i)}
                                         onClick={() => choose(c.name)}
-                                        className={`flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm ${highlight === i ? 'bg-brand-600 text-white' : 'text-gray-200 hover:bg-gray-700'}`}
+                                        className={`${optionClass(highlight === i)} min-h-[48px]`}
                                     >
-                                        <span className={`h-3 w-3 rounded-full flex-shrink-0 ${c.color || 'bg-gray-500'}`} />
+                                        <span className={`h-3 w-3 flex-shrink-0 rounded-full ${c.color || 'bg-ink-3'}`} />
                                         <span className="truncate">{c.name}</span>
                                     </button>
                                 </li>
                             ))}
                             {filtered.length === 0 && !canAdd && (
-                                <li className="px-3 py-6 text-center text-sm text-gray-500 sm:col-span-3">No matching categories</li>
+                                <li className="col-span-2 px-3 py-6 text-center text-sm text-ink-3 sm:col-span-3">No category called that</li>
                             )}
                         </ul>
                     </div>
@@ -196,28 +208,29 @@ const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategory
                 <div
                     ref={panelRef}
                     style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
-                    className="z-[60] rounded-lg bg-gray-800 shadow-2xl ring-1 ring-black/40 border border-gray-700 overflow-hidden"
+                    className="z-dropdown overflow-hidden rounded-card border border-line bg-surface shadow-e2"
                 >
-                    <div className="p-2 border-b border-gray-700">
+                    <div className="border-b border-line p-2">
                         <input
                             ref={inputRef}
                             value={search}
                             onChange={e => { setSearch(e.target.value); setHighlight(0); }}
                             onKeyDown={onInputKeyDown}
-                            placeholder={onAddCategory ? 'Search or add…' : 'Search…'}
-                            className="w-full bg-gray-900 text-white text-sm rounded-md px-2 py-1.5 ring-1 ring-inset ring-gray-700 focus:outline-none focus:ring-brand-500"
+                            aria-label="Search categories"
+                            placeholder={onAddCategory ? 'Search or add' : 'Search'}
+                            className="min-h-[40px] w-full rounded-control border border-line-strong bg-surface px-3 text-base text-ink placeholder:text-ink-3 focus-visible:border-focus focus-visible:shadow-[0_0_0_1px_rgb(var(--c-focus))] focus-visible:outline-none"
                         />
                     </div>
-                    <ul className="max-h-60 overflow-y-auto py-1" role="listbox">
+                    <ul className="max-h-60 space-y-0.5 overflow-y-auto p-1" role="listbox" aria-label="Categories">
                         {filtered.map((c, i) => (
                             <li key={c.id}>
                                 <button
                                     type="button"
                                     onMouseEnter={() => setHighlight(i)}
                                     onClick={() => choose(c.name)}
-                                    className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm ${highlight === i ? 'bg-brand-600 text-white' : 'text-gray-200 hover:bg-gray-700'}`}
+                                    className={`${optionClass(highlight === i)} min-h-[40px] [@media(pointer:coarse)]:min-h-[48px]`}
                                 >
-                                    <span className={`h-3 w-3 rounded-full flex-shrink-0 ${c.color || 'bg-gray-500'}`} />
+                                    <span className={`h-3 w-3 flex-shrink-0 rounded-full ${c.color || 'bg-ink-3'}`} />
                                     <span className="truncate">{c.name}</span>
                                 </button>
                             </li>
@@ -228,15 +241,15 @@ const InlineCategoryCombobox = forwardRef<CategoryComboboxHandle, InlineCategory
                                     type="button"
                                     onMouseEnter={() => setHighlight(filtered.length)}
                                     onClick={addNew}
-                                    className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm ${highlight === filtered.length ? 'bg-brand-600 text-white' : 'text-brand-300 hover:bg-gray-700'}`}
+                                    className={`${optionClass(highlight === filtered.length)} min-h-[40px] font-semibold text-accent-text [@media(pointer:coarse)]:min-h-[48px]`}
                                 >
                                     <PlusIcon className="h-4 w-4 flex-shrink-0" />
-                                    <span className="truncate">{onAddCategory ? 'Add' : 'Use'} &ldquo;{trimmed}&rdquo;</span>
+                                    {addLabel}
                                 </button>
                             </li>
                         )}
                         {filtered.length === 0 && !canAdd && (
-                            <li className="px-3 py-2 text-xs text-gray-500">No matching categories</li>
+                            <li className="px-3 py-2 text-sm text-ink-3">No category called that</li>
                         )}
                     </ul>
                 </div>,

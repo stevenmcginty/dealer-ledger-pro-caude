@@ -20,6 +20,27 @@ export type ThreadChannel = 'whatsapp' | 'email';
 export const conversationRefKey = (conv: Pick<Conversation, 'id' | 'companyId'>): string =>
     `${conv.companyId || ''}:${conv.id}`;
 
+/**
+ * Unread customer messages for one person. Steve and Chris share the inbox, so
+ * each keeps their own place: `readBy[uid].count` is the `inboundCount` they had
+ * seen when they last opened the thread. Threads with no inbound since that
+ * shipped have no `inboundCount`; for those, a read after the last inbound is
+ * read, and anything else falls back to the old shared `unread`.
+ */
+export const unreadFor = (
+    conv: Pick<Conversation, 'unread' | 'inboundCount' | 'readBy' | 'lastInboundAt'>,
+    uid?: string
+): number => {
+    const legacy = Number(conv.unread) || 0;
+    if (!uid) return legacy;
+    const mine = conv.readBy?.[uid];
+    if (typeof conv.inboundCount === 'number') {
+        return mine ? Math.max(0, conv.inboundCount - mine.count) : conv.inboundCount;
+    }
+    if (mine && mine.at >= (conv.lastInboundAt || 0)) return 0;
+    return legacy;
+};
+
 export interface CustomerGroup {
     id: string;
     name: string;
@@ -82,7 +103,8 @@ const uniqueChannels = (conversations: Conversation[]): Channel[] => {
  */
 export const groupConversations = (
     conversations: Conversation[],
-    myCompanyId?: string
+    myCompanyId?: string,
+    uid?: string
 ): CustomerGroup[] => {
     const parent = new Map<string, string>();
     const find = (key: string): string => {
@@ -126,7 +148,7 @@ export const groupConversations = (
             conversations: list,
             latest,
             channels: uniqueChannels(list),
-            unread: list.reduce((n, conv) => n + (Number(conv.unread) || 0), 0),
+            unread: list.reduce((n, conv) => n + unreadFor(conv, uid), 0),
             pending: list.some(conv => !!conv.pendingDraft),
             waiting: list.some(conv => !!conv.pendingQuestion),
             escalated: list.some(conv => !!conv.escalated),
@@ -230,12 +252,15 @@ export const conversationForChannel = (
     return origin || group.latest;
 };
 
-export const inboxWaitingCount = (conversations: Conversation[]): { pending: number; unread: number } => {
+export const inboxWaitingCount = (
+    conversations: Conversation[],
+    uid?: string
+): { pending: number; unread: number } => {
     let pending = 0;
     let unread = 0;
     conversations.forEach(conv => {
         if (conv.pendingDraft || conv.pendingQuestion || conv.escalated) pending += 1;
-        unread += Number(conv.unread) || 0;
+        unread += unreadFor(conv, uid);
     });
     return { pending, unread };
 };

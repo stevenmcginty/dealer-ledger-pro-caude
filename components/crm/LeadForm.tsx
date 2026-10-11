@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Input, Card } from '../ui';
-import { XMarkIcon } from '../icons';
+import { Button, Input } from '../ui';
+import Select from '../common/Select';
+import { SheetBody, SheetFooter, SheetFrame, SheetHeader } from './SheetParts';
+import { STAGE_LABEL, STAGE_ORDER } from './leadStage';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import { Lead, LeadStage, LeadSource, NewLead } from '../../types';
@@ -43,18 +45,18 @@ const LeadForm: React.FC<LeadFormProps> = ({ lead, onClose }) => {
         const newErrors: Record<string, string> = {};
 
         if (!formData.firstName.trim()) {
-            newErrors.firstName = 'First name is required';
+            newErrors.firstName = 'Enter their first name';
         }
         if (!formData.lastName.trim()) {
-            newErrors.lastName = 'Last name is required';
+            newErrors.lastName = 'Enter their last name';
         }
         if (!formData.email.trim()) {
-            newErrors.email = 'Email is required';
+            newErrors.email = 'Enter their email';
         } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-            newErrors.email = 'Invalid email format';
+            newErrors.email = "That email doesn’t look right. Check the @ and the dot.";
         }
         if (formData.value && isNaN(parseFloat(formData.value))) {
-            newErrors.value = 'Value must be a number';
+            newErrors.value = 'Enter the value as a number, like 8495';
         }
 
         setErrors(newErrors);
@@ -95,7 +97,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ lead, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error saving lead:', error);
-            setErrors({ submit: 'Failed to save lead. Please try again.' });
+            setErrors({ submit: "Couldn’t save the lead. Check your signal and try again." });
         } finally {
             setIsSubmitting(false);
         }
@@ -124,160 +126,138 @@ const LeadForm: React.FC<LeadFormProps> = ({ lead, onClose }) => {
     const availableVehicles = vehicles.filter(v => v.status !== 'Sold');
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <Card className="w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-                <Card.Header>
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-white">
-                            {isEditing ? 'Edit Lead' : 'Add New Lead'}
-                        </h2>
-                        <button
-                            onClick={onClose}
-                            className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700 transition-colors"
+        <SheetFrame as="form" onSubmit={handleSubmit}>
+            <SheetHeader
+                title={isEditing ? 'Edit lead' : 'Add a lead'}
+                description={isEditing ? `${lead!.firstName} ${lead!.lastName}` : "A walk-in, a phone call, anyone Dave hasn’t met yet."}
+                onClose={onClose}
+            />
+            <SheetBody className="space-y-4">
+                {errors.submit && (
+                    <p role="alert" className="rounded-control bg-danger-soft px-3.5 py-3 text-sm text-danger-ink">
+                        {errors.submit}
+                    </p>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
+                        id="lead-first-name"
+                        label="First name"
+                        autoComplete="off"
+                        value={formData.firstName}
+                        onChange={(e) => handleChange('firstName', e.target.value)}
+                        error={errors.firstName}
+                        required
+                    />
+                    <Input
+                        id="lead-last-name"
+                        label="Last name"
+                        autoComplete="off"
+                        value={formData.lastName}
+                        onChange={(e) => handleChange('lastName', e.target.value)}
+                        error={errors.lastName}
+                        required
+                    />
+                    <Input
+                        id="lead-email"
+                        label="Email"
+                        type="email"
+                        inputMode="email"
+                        value={formData.email}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        error={errors.email}
+                        required
+                    />
+                    <Input
+                        id="lead-phone"
+                        label="Mobile"
+                        type="tel"
+                        inputMode="tel"
+                        value={formData.phone}
+                        onChange={(e) => handleChange('phone', e.target.value)}
+                        className="num"
+                    />
+                </div>
+
+                <div>
+                    <label htmlFor="lead-source" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Where they found you</label>
+                    <Select
+                        id="lead-source"
+                        value={formData.source}
+                        onChange={(e) => handleChange('source', e.target.value)}
+                    >
+                        {LEAD_SOURCES.map(source => (
+                            <option key={source} value={source}>{source}</option>
+                        ))}
+                    </Select>
+                </div>
+
+                {availableVehicles.length > 0 && (
+                    <div>
+                        <label htmlFor="lead-vehicle" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">
+                            Car from your stock <span className="font-normal text-ink-3">(optional)</span>
+                        </label>
+                        <Select
+                            id="lead-vehicle"
+                            value={formData.vehicleId}
+                            onChange={(e) => handleVehicleSelect(e.target.value)}
                         >
-                            <XMarkIcon className="w-5 h-5" />
-                        </button>
+                            <option value="">No car picked</option>
+                            {availableVehicles.map(vehicle => (
+                                <option key={vehicle.id} value={vehicle.id}>
+                                    {vehicle.reg} · {vehicle.make} {vehicle.model}
+                                </option>
+                            ))}
+                        </Select>
                     </div>
-                </Card.Header>
+                )}
 
-                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-                    <Card.Body className="space-y-4">
-                        {errors.submit && (
-                            <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
-                                {errors.submit}
-                            </div>
-                        )}
+                <Input
+                    id="lead-interest"
+                    label="Car they asked about"
+                    value={formData.vehicleOfInterest}
+                    onChange={(e) => handleChange('vehicleOfInterest', e.target.value)}
+                    hint="In their words, e.g. “auto, under £8k, 5 doors”"
+                />
 
-                        {/* Name Row */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <Input
-                                label="First Name"
-                                value={formData.firstName}
-                                onChange={(e) => handleChange('firstName', e.target.value)}
-                                error={errors.firstName}
-                                required
-                            />
-                            <Input
-                                label="Last Name"
-                                value={formData.lastName}
-                                onChange={(e) => handleChange('lastName', e.target.value)}
-                                error={errors.lastName}
-                                required
-                            />
-                        </div>
-
-                        {/* Contact Row */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <Input
-                                label="Email"
-                                type="email"
-                                value={formData.email}
-                                onChange={(e) => handleChange('email', e.target.value)}
-                                error={errors.email}
-                                required
-                            />
-                            <Input
-                                label="Phone"
-                                type="tel"
-                                value={formData.phone}
-                                onChange={(e) => handleChange('phone', e.target.value)}
-                            />
-                        </div>
-
-                        {/* Source */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Input
+                        id="lead-value"
+                        label="Estimated value"
+                        type="number"
+                        inputMode="decimal"
+                        affix="£"
+                        value={formData.value}
+                        onChange={(e) => handleChange('value', e.target.value)}
+                        error={errors.value}
+                        className="num"
+                    />
+                    {isEditing && (
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                                Lead Source
-                            </label>
-                            <select
-                                value={formData.source}
-                                onChange={(e) => handleChange('source', e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                            <label htmlFor="lead-stage" className="mb-1.5 block text-sm font-semibold leading-5 text-ink">Stage</label>
+                            <Select
+                                id="lead-stage"
+                                value={formData.stage}
+                                onChange={(e) => handleChange('stage', e.target.value)}
                             >
-                                {LEAD_SOURCES.map(source => (
-                                    <option key={source} value={source}>{source}</option>
+                                {STAGE_ORDER.map(stage => (
+                                    <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </div>
+                    )}
+                </div>
+            </SheetBody>
 
-                        {/* Vehicle Selection */}
-                        {availableVehicles.length > 0 && (
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                                    Link to Vehicle (Optional)
-                                </label>
-                                <select
-                                    value={formData.vehicleId}
-                                    onChange={(e) => handleVehicleSelect(e.target.value)}
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                                >
-                                    <option value="">Select a vehicle...</option>
-                                    {availableVehicles.map(vehicle => (
-                                        <option key={vehicle.id} value={vehicle.id}>
-                                            {vehicle.make} {vehicle.model} - {vehicle.reg}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-
-                        {/* Vehicle of Interest (text) */}
-                        <Input
-                            label="Vehicle of Interest"
-                            value={formData.vehicleOfInterest}
-                            onChange={(e) => handleChange('vehicleOfInterest', e.target.value)}
-                            hint="Description of what the lead is interested in"
-                        />
-
-                        {/* Value and Stage Row */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <Input
-                                label="Estimated Value (£)"
-                                type="number"
-                                value={formData.value}
-                                onChange={(e) => handleChange('value', e.target.value)}
-                                error={errors.value}
-                            />
-                            {isEditing && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                                        Stage
-                                    </label>
-                                    <select
-                                        value={formData.stage}
-                                        onChange={(e) => handleChange('stage', e.target.value)}
-                                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                                    >
-                                        {Object.values(LeadStage).map(stage => (
-                                            <option key={stage} value={stage}>{stage}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-                    </Card.Body>
-
-                    {/* Footer */}
-                    <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={onClose}
-                            disabled={isSubmitting}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            variant="primary"
-                            disabled={isSubmitting}
-                        >
-                            {isSubmitting ? 'Saving...' : isEditing ? 'Save Changes' : 'Add Lead'}
-                        </Button>
-                    </div>
-                </form>
-            </Card>
-        </div>
+            <SheetFooter>
+                <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
+                    Cancel
+                </Button>
+                <Button type="submit" variant="primary" loading={isSubmitting}>
+                    {isEditing ? 'Save lead' : 'Add lead'}
+                </Button>
+            </SheetFooter>
+        </SheetFrame>
     );
 };
 

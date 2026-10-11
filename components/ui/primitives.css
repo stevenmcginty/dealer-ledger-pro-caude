@@ -1,0 +1,63 @@
+/* =====================================================================
+   Primitive motion (components/ui, components/common/Modal).
+   Keyframes and the few effects Tailwind can't express. Everything here
+   reads the token layer in /styles.css; nothing adds a colour.
+   Imported by the components that use it, so it ships only with them.
+   ===================================================================== */
+@keyframes fl-fade-in { from { opacity: 0; } }
+@keyframes fl-sheet-in { from { transform: translateY(100%); } }
+@keyframes fl-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes fl-toast-in { from { opacity: 0; transform: translateY(12px); } }
+@keyframes fl-toast-out { to { opacity: 0; transform: translateY(8px); } }
+@keyframes fl-drop-in { from { opacity: 0; transform: translateY(-16px) scale(.97); } }
+@keyframes fl-glow {
+  from { box-shadow: 0 0 0 0 rgb(var(--c-success) / .55); }
+  to { box-shadow: 0 0 0 14px rgb(var(--c-success) / 0); }
+}
+@keyframes fl-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* Modal: scrim fades; the panel is a bottom sheet under 640px (slides on
+   --ease-sheet) and a centred dialog above (lifts and fades). Once the entry
+   has run, data-settled drops the animation so a drag can move the sheet. */
+@keyframes fl-fade-out { to { opacity: 0; } }
+@keyframes fl-sheet-out { to { transform: translateY(100%); } }
+@keyframes fl-dialog-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
+.fl-scrim { animation: fl-fade-in var(--dur-3) var(--ease-out) both; }
+.fl-scrim[data-closing] { animation: fl-fade-out var(--dur-2) var(--ease-in) both; }
+.fl-panel { animation: fl-sheet-in var(--dur-4) var(--ease-sheet) both; }
+.fl-panel[data-settled] { animation: none; }
+.fl-panel[data-closing] { animation: fl-sheet-out var(--dur-3) var(--ease-in) both; }
+@media (min-width: 640px) {
+  .fl-panel { animation: fl-dialog-in var(--dur-3) var(--ease-out) both; }
+  .fl-panel[data-settled] { animation: none; }
+  .fl-panel[data-closing] { animation: fl-dialog-out var(--dur-2) var(--ease-in) both; }
+}
+
+.fl-toast-in { animation: fl-toast-in var(--dur-3) var(--ease-out) both; }
+.fl-toast-out { animation: fl-toast-out var(--dur-2) var(--ease-in) both; }
+.fl-drop-in { animation: fl-drop-in var(--dur-4) var(--ease-sheet) both; }
+.fl-glow { animation: fl-glow 1s var(--ease-out) 3; }
+
+/* Skeleton shimmer: a light band crossing the placeholder. */
+.fl-skeleton {
+  background: linear-gradient(90deg, rgb(var(--c-skel-1)) 0 40%, rgb(var(--c-skel-2)) 50%, rgb(var(--c-skel-1)) 60% 100%) 0 0 / 300% 100%;
+  animation: fl-shimmer 1.4s linear infinite;
+}
+
+/* Number inputs: no browser spin buttons on money. */
+.fl-no-spin { -moz-appearance: textfield; appearance: textfield; }
+.fl-no-spin::-webkit-inner-spin-button,
+.fl-no-spin::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Reduced motion: moving things fade instead, and the shimmer stops. */
+@media (prefers-reduced-motion: reduce) {
+  .fl-panel, .fl-toast-in, .fl-drop-in {
+    animation-name: fl-fade-in !important;
+    animation-duration: 160ms !important;
+  }
+  .fl-panel[data-closing], .fl-toast-out {
+    animation-name: fl-fade-out !important;
+    animation-duration: 160ms !important;
+  }
+  .fl-skeleton, .fl-glow { animation: none !important; }
+}

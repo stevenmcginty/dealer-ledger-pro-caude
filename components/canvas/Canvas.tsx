@@ -1,13 +1,15 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
 import * as ai from '../../utils/ai';
 import * as dataService from '../../services/dataService';
-import { ArrowUpTrayIcon, CheckCircleIcon, ExclamationTriangleIcon, SparklesIcon, ClipboardIcon } from '../icons';
+import { ArrowUpTrayIcon, SparklesIcon, ClipboardIcon, PlusIcon } from '../icons';
 import Spinner from '../common/Spinner';
-import { VehicleUpdate, NewCanvasItem } from '../../types';
+import { Alert, Button, EmptyState } from '../ui';
+import { cx } from '../ui/cx';
+import { CanvasItem, VehicleUpdate, NewCanvasItem } from '../../types';
 import { compressImage } from '../../utils/helpers';
 import CanvasCard from './CanvasCard';
 
@@ -15,7 +17,26 @@ type UploadStatus = 'idle' | 'uploading' | 'analyzing' | 'saving' | 'success' | 
 
 const Canvas = () => {
     const { companyId, userId, updateVehicle, vehicles, canvasItems, addCanvasItem } = useData();
-    const { openModal, setCanvasUploadTrigger } = useUI();
+    const { openModal } = useUI();
+    const [isAddingNote, setIsAddingNote] = useState(false);
+
+    // The canvas screen's one "Add note": a fresh note in a random colour, opened to type in.
+    const handleAddNote = async () => {
+        setIsAddingNote(true);
+        try {
+            const noteColors: Array<NonNullable<CanvasItem['color']>> = ['yellow', 'pink', 'blue', 'green'];
+            const newItemData: NewCanvasItem = {
+                itemType: 'note',
+                headline: 'New Note',
+                notes: '',
+                color: noteColors[Math.floor(Math.random() * noteColors.length)],
+            };
+            const newId = await addCanvasItem(newItemData);
+            openModal('canvasItem', { ...newItemData, id: newId, createdAt: Date.now() } as CanvasItem);
+        } finally {
+            setIsAddingNote(false);
+        }
+    };
     const [status, setStatus] = useState<UploadStatus>('idle');
     const [message, setMessage] = useState('');
     const [fileName, setFileName] = useState('');
@@ -29,21 +50,21 @@ const Canvas = () => {
             let fileToProcess = file;
             if (file.type.startsWith('image/')) {
                 setStatus('uploading');
-                setMessage('Compressing image...');
+                setMessage('Shrinking the photo…');
                 fileToProcess = await compressImage(file, { maxWidth: 1920, quality: 0.8 });
             }
             
             setStatus('uploading');
-            setMessage('Uploading file securely...');
+            setMessage('Uploading…');
             const fileUrl = await dataService.uploadFile(companyId, userId, fileToProcess, 'canvas');
             
             setStatus('analyzing');
-            setMessage('Scanning document with AI...');
+            setMessage('Reading it with AI…');
             const analysis = await ai.analyzeCanvasUpload(fileToProcess);
 
             if (analysis.documentType === 'V5C' && analysis.registrationNumber) {
                 setStatus('saving');
-                setMessage(`Found V5C for ${analysis.registrationNumber}. Linking to vehicle...`);
+                setMessage(`Found a V5C for ${analysis.registrationNumber}. Filing it to the car…`);
                 const targetReg = analysis.registrationNumber.replace(/\s/g, '').toLowerCase();
                 const vehicleToUpdate = vehicles.find(v => v.reg.replace(/\s/g, '').toLowerCase() === targetReg);
 
@@ -56,14 +77,14 @@ const Canvas = () => {
                     }
                     await updateVehicle(vehicleToUpdate.id, updatePayload);
                     setStatus('success');
-                    setMessage(`Success! V5C for ${vehicleToUpdate.reg} has been saved and linked.`);
+                    setMessage(`V5C filed to ${vehicleToUpdate.reg}.`);
                 } else {
                     setStatus('success');
-                    setMessage(`V5C for ${analysis.registrationNumber} uploaded. Vehicle not found, so it has not been linked. You can find the file in the Filing Cabinet.`);
+                    setMessage(`V5C for ${analysis.registrationNumber} uploaded, but that car isn't in stock, so it isn't linked to one. It's in the Filing cabinet.`);
                 }
             } else {
                 setStatus('saving');
-                setMessage('Saving to your canvas...');
+                setMessage('Pinning it to the board…');
 
                 const newItem: NewCanvasItem = {
                     itemType: 'file',
@@ -76,13 +97,13 @@ const Canvas = () => {
                 await addCanvasItem(newItem);
                 
                 setStatus('success');
-                setMessage(`Success! "${analysis.headline || file.name}" was added to your canvas.`);
+                setMessage(`Added "${analysis.headline || file.name}" to the canvas.`);
             }
 
         } catch (error: any) {
             console.error("Canvas processing failed:", error);
             setStatus('error');
-            setMessage(error.message || 'An unexpected error occurred.');
+            setMessage(error.message || "Something went wrong. Try the file again.");
         } finally {
             setTimeout(() => setStatus('idle'), 4000);
         }
@@ -94,77 +115,75 @@ const Canvas = () => {
         multiple: false,
     });
 
-    useEffect(() => {
-        setCanvasUploadTrigger(open);
-        return () => {
-            setCanvasUploadTrigger(null);
-        };
-    }, [open, setCanvasUploadTrigger]);
-
     const isWorking = status !== 'idle' && status !== 'success' && status !== 'error';
 
-    const StatusIndicator = () => {
-        if (status === 'idle') return null;
-
-        const baseClasses = 'p-4 rounded-lg flex items-center gap-3 transition-all duration-300 animate-in fade-in-0';
-        const statusConfig: Record<UploadStatus, { icon: React.ReactElement, text: string, bg: string }> = {
-            idle: { icon: <></>, text: '', bg: ''},
-            uploading: { icon: <Spinner />, text: message, bg: 'bg-gray-700/50' },
-            analyzing: { icon: <Spinner />, text: message, bg: 'bg-gray-700/50' },
-            saving: { icon: <Spinner />, text: message, bg: 'bg-gray-700/50' },
-            success: { icon: <CheckCircleIcon className="h-6 w-6 text-green-400" />, text: message, bg: 'bg-green-900/50' },
-            error: { icon: <ExclamationTriangleIcon className="h-6 w-6 text-red-400" />, text: message, bg: 'bg-red-900/50' },
-        };
-        const config = statusConfig[status];
-        if (!config) return null;
-
-        return (
-            <div className={`${baseClasses} ${config.bg}`}>
-                <div className="flex-shrink-0">{config.icon}</div>
-                <div>
-                    <p className="font-semibold text-white">{config.text}</p>
-                    {fileName && <p className="text-xs text-gray-400">{fileName}</p>}
-                </div>
-            </div>
-        )
-    };
-    
     return (
-        <div className="space-y-6">
-            <div 
+        <div className="space-y-5">
+            {/* The in-tray: drop or choose a file and the AI reads it. */}
+            <div
                 {...getRootProps()}
-                className={`relative flex flex-col items-center justify-center p-8 text-center border-4 border-dashed rounded-lg cursor-pointer transition-colors duration-300 
-                ${isDragActive ? 'border-brand-500 bg-brand-900/30' : 'border-gray-600 hover:border-gray-500 bg-gray-800/50'}`}
+                className={cx(
+                    'relative flex cursor-pointer flex-col gap-4 rounded-card border-2 border-dashed p-4 transition-colors duration-quick ease-out sm:flex-row sm:items-center sm:p-5',
+                    isDragActive ? 'border-accent bg-accent-soft' : 'border-line-strong bg-surface hover:border-ink-3',
+                    isWorking && 'pointer-events-none',
+                )}
             >
                 <input {...getInputProps()} />
-                 <div className="flex items-center gap-4">
-                    <div className="flex-shrink-0"><SparklesIcon className="h-10 w-10 text-purple-400" /></div>
-                    <div className="text-left">
-                        <p className="text-lg font-semibold text-white">Drop a file here or click to upload to your Canvas</p>
-                        <p className="mt-1 text-sm text-gray-400">Like a digital corkboard, drop any document here to save it as a note.</p>
-                    </div>
+                <span aria-hidden="true" className="grid h-12 w-12 flex-none place-items-center rounded-card bg-accent-soft text-accent-soft-ink">
+                    <SparklesIcon className="h-6 w-6" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className="text-base font-bold leading-6 text-ink">{isDragActive ? 'Drop it here' : <><span className="sm:hidden">Scan a photo or PDF</span><span className="hidden sm:inline">Drop a file to scan it</span></>}</p>
+                    <p className="mt-0.5 text-sm leading-5 text-ink-3">
+                        A photo or PDF. A V5C is filed to its car on its own; anything else is pinned here as a card with a headline.
+                    </p>
                 </div>
-                {isWorking && <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>}
+                <div className="flex flex-none gap-2" onClick={e => e.stopPropagation()}>
+                    <Button variant="secondary" icon={<ArrowUpTrayIcon />} onClick={open} disabled={isWorking} className="flex-1 sm:flex-none">
+                        Choose a file
+                    </Button>
+                    <Button variant="secondary" icon={<PlusIcon />} onClick={handleAddNote} loading={isAddingNote} className="flex-1 sm:flex-none">
+                        Add note
+                    </Button>
+                </div>
             </div>
 
-            <StatusIndicator />
+            {status !== 'idle' && (
+                isWorking ? (
+                    <div role="status" className="flex items-center gap-3 rounded-control border border-line bg-surface px-3.5 py-3">
+                        <Spinner className="h-5 w-5 flex-none text-accent-text" />
+                        <div className="min-w-0">
+                            <p className="font-semibold text-ink">{message}</p>
+                            {fileName && <p className="truncate font-mono text-xs text-ink-3">{fileName}</p>}
+                        </div>
+                    </div>
+                ) : (
+                    <Alert tone={status === 'error' ? 'danger' : 'success'} title={status === 'error' ? "Couldn't add that file" : undefined}>
+                        {message}
+                        {fileName && <span className="mt-0.5 block truncate font-mono text-xs opacity-80">{fileName}</span>}
+                    </Alert>
+                )
+            )}
 
             {canvasItems.length > 0 ? (
-                <div className="masonry-grid">
-                    {canvasItems.map(item => (
-                         <div key={item.id} className="mb-6 break-inside-avoid">
-                            <CanvasCard 
+                <div className="columns-1 gap-4 min-[480px]:columns-2 lg:columns-3 2xl:columns-4">
+                    {canvasItems.map((item, i) => (
+                        <div key={item.id} className="mb-4 break-inside-avoid">
+                            <CanvasCard
                                 item={item}
+                                index={i}
                                 onClick={() => openModal('canvasItem', item)}
                             />
                         </div>
                     ))}
                 </div>
             ) : (
-                 <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-                    <ClipboardIcon className="h-12 w-12 text-gray-500 mx-auto" />
-                    <h3 className="mt-4 text-lg font-medium text-white">Your Canvas is Empty</h3>
-                    <p className="mt-1 text-sm text-gray-400">Upload a document or add a note to get started.</p>
+                <div className="rounded-card border border-line bg-surface">
+                    <EmptyState
+                        icon={<ClipboardIcon />}
+                        title="Nothing on the canvas yet"
+                        description="It's a corkboard for loose paperwork: drop in a document and the AI gives it a headline, or jot a note."
+                    />
                 </div>
             )}
         </div>

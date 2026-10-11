@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { useData } from '../../hooks/useData';
-import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
+import { formatDate, toYYYYMMDD } from '../../utils/helpers';
 import { ArrowDownTrayIcon, DocumentTextIcon } from '../icons';
 import { JobInvoice } from '../../types';
 import UkDateInput from '../common/UkDateInput';
 import DatePresetButtons from './DatePresetButtons';
-import { useToast } from '../ui';
+import { useToast, Button, EmptyState, DataTable, THead, TBody, Th, Tr, Td } from '../ui';
+import { cx, eyebrow } from '../ui/cx';
+import { moneyText, FootCell } from './hubShared';
 
 interface ReportData {
     invoice: JobInvoice;
@@ -85,70 +87,68 @@ const JobsReport = ({ startDate: startProp, endDate: endProp, hidePeriodBar = fa
     };
 
     return (
-        <div className="space-y-6">
-            <div className={hidePeriodBar ? 'flex flex-wrap items-center justify-end gap-3' : 'p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4'}>
-                <div className={`flex items-center gap-4 flex-wrap ${hidePeriodBar ? 'hidden' : ''}`}>
-                    <div>
-                        <label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label>
-                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/>
+        <div className="min-w-0 space-y-4">
+            <div className="flex flex-col gap-3 print:hidden lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+                {!hidePeriodBar && (
+                    <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:flex">
+                            <div className="min-w-0">
+                                <label htmlFor="start-date" className={cx(eyebrow, 'mb-1.5 block')}>From</label>
+                                <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="sm:w-44" />
+                            </div>
+                            <span aria-hidden="true" className="pb-3.5 text-ink-3">–</span>
+                            <div className="min-w-0">
+                                <label htmlFor="end-date" className={cx(eyebrow, 'mb-1.5 block')}>To</label>
+                                <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="sm:w-44" />
+                            </div>
+                        </div>
+                        <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
                     </div>
-                    <div>
-                        <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
-                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
-                    </div>
-                     <div className="self-end">
-                         <DatePresetButtons onSelect={r => { setStartDate(r.start); setEndDate(r.end); }} />
-                     </div>
-                </div>
-                <button onClick={handleDownload} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                    <ArrowDownTrayIcon className="-ml-1 h-5 w-5" />
+                )}
+                <Button variant={hidePeriodBar ? 'secondary' : 'primary'} size="sm" onClick={handleDownload} icon={<ArrowDownTrayIcon />} className="self-start lg:ms-auto lg:self-auto">
                     Download CSV
-                </button>
+                </Button>
             </div>
-            
+
             {reportData.length === 0 ? (
-                 <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-                    <DocumentTextIcon className="h-12 w-12 text-gray-500 mx-auto" />
-                    <h3 className="mt-4 text-lg font-medium text-white">No Jobs Found</h3>
-                    <p className="mt-1 text-sm text-gray-400">There are no completed invoices in the selected date range.</p>
+                <div className="rounded-card border border-line bg-surface">
+                    <EmptyState icon={<DocumentTextIcon />} title="No invoices in these dates" description="Job invoices (not quotes) dated in the period show here with their net, VAT and total." />
                 </div>
             ) : (
-                <div className="overflow-x-auto bg-gray-800 rounded-lg shadow">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-900/50">
-                            <tr>
-                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-white sm:pl-6">Date</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Invoice #</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Customer</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Description</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">Net</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">VAT</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white sm:pr-6">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700/50">
-                            {reportData.map(item => (
-                                <tr key={item.invoice.id} className="even:bg-gray-800/50">
-                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-300 sm:pl-6">{formatDate(item.invoice.invoiceDate)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-400">{item.invoice.invoiceNumber}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-white">{item.invoice.customerDetails.name}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-300 max-w-sm truncate">{item.invoice.items.map(i => i.description).join(', ')}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-300">{formatCurrency(item.invoice.subtotal)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-300">{formatCurrency(item.invoice.vat)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right font-bold text-white sm:pr-6">{formatCurrency(item.invoice.total)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="bg-gray-900/50">
-                            <tr>
-                                <td colSpan={4} className="px-3 py-3.5 text-right text-sm font-bold text-white sm:pl-6">Totals</td>
-                                <td className="px-3 py-3.5 text-right text-sm font-bold text-white">{formatCurrency(totals.subtotal)}</td>
-                                <td className="px-3 py-3.5 text-right text-sm font-bold text-white">{formatCurrency(totals.vat)}</td>
-                                <td className="px-3 py-3.5 text-right text-sm font-bold text-white sm:pr-6">{formatCurrency(totals.total)}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
+                <DataTable ariaLabel="Jobs report" minWidth={820} className="print:overflow-visible">
+                    <THead>
+                        <tr>
+                            <Th className="ps-4">Date</Th>
+                            <Th>Invoice</Th>
+                            <Th>Customer</Th>
+                            <Th>Work</Th>
+                            <Th numeric>Net</Th>
+                            <Th numeric>VAT</Th>
+                            <Th numeric className="pe-4">Total</Th>
+                        </tr>
+                    </THead>
+                    <TBody>
+                        {reportData.map(item => (
+                            <Tr key={item.invoice.id}>
+                                <Td className="num ps-4 text-ink-2">{formatDate(item.invoice.invoiceDate)}</Td>
+                                <Td className="num text-ink-2">#{item.invoice.invoiceNumber}</Td>
+                                <Td className="font-semibold">{item.invoice.customerDetails.name}</Td>
+                                <Td className="max-w-[16rem] truncate text-ink-2" title={item.invoice.items.map(i => i.description).join(', ')}>{item.invoice.items.map(i => i.description).join(', ')}</Td>
+                                <Td numeric className="text-ink-2">{moneyText(item.invoice.subtotal)}</Td>
+                                <Td numeric className="text-ink-2">{moneyText(item.invoice.vat)}</Td>
+                                <Td numeric className="pe-4 font-bold">{moneyText(item.invoice.total)}</Td>
+                            </Tr>
+                        ))}
+                    </TBody>
+                    <tfoot>
+                        <tr>
+                            <FootCell colSpan={4} className="ps-4">Totals · <span className="num">{reportData.length}</span> {reportData.length === 1 ? 'invoice' : 'invoices'}</FootCell>
+                            <FootCell numeric>{moneyText(totals.subtotal)}</FootCell>
+                            <FootCell numeric>{moneyText(totals.vat)}</FootCell>
+                            <FootCell numeric className="pe-4">{moneyText(totals.total)}</FootCell>
+                        </tr>
+                    </tfoot>
+                </DataTable>
             )}
         </div>
     );

@@ -11,28 +11,28 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Spinner from '../../common/Spinner';
 import { CarIcon, MagnifyingGlassIcon, XMarkIcon } from '../../icons';
+import { Badge, Plate, StatusChip } from '../../ui';
+import type { ChipStatus } from '../../ui';
+import { controlFrame, controlInput } from '../../ui/cx';
 import { useData } from '../../../hooks/useData';
 import { fetchAgentStockForPicker, type CarCorrection } from '../../../services/salesAgentService';
 import {
     buildCarPickerRows,
-    formatReg,
     searchCarPicker,
     type CarPickerRow,
     type CarPickerStatus,
     type PickerStockItem,
 } from '../../../utils/carPickerSearch';
 
-/** A reg drawn like a number plate. */
+/** A reg drawn like a number plate (the app's Plate, small). */
 export const RegPlate: React.FC<{ reg: string; className?: string }> = ({ reg, className = '' }) => (
-    <span className={`inline-flex flex-shrink-0 items-center rounded-[4px] bg-yellow-300 px-1.5 py-px font-mono text-[11px] font-bold leading-tight tracking-wide text-gray-950 ${className}`}>
-        {formatReg(reg)}
-    </span>
+    <Plate reg={reg} size="sm" className={className} />
 );
 
-const STATUS_TAG: Record<CarPickerStatus, { label: string; cls: string }> = {
-    in_stock: { label: 'In stock', cls: 'bg-emerald-500/15 text-emerald-300' },
-    deposit: { label: 'Deposit', cls: 'bg-amber-400/15 text-amber-300' },
-    sold: { label: 'Sold', cls: 'bg-white/[0.06] text-gray-400' },
+const STATUS_TAG: Record<CarPickerStatus, { label: string; chip: ChipStatus }> = {
+    in_stock: { label: 'In stock', chip: 'stock' },
+    deposit: { label: 'Deposit', chip: 'reserved' },
+    sold: { label: 'Sold', chip: 'sold' },
 };
 
 type Option =
@@ -136,51 +136,56 @@ const CarPicker: React.FC<CarPickerProps> = ({ agentName, currentTitle, onPick, 
     };
 
     const optionClass = (index: number) =>
-        `flex min-h-[48px] w-full items-center gap-2.5 px-3 text-left text-[14px] transition-colors disabled:opacity-50 sm:min-h-[40px] sm:text-[13px] ${
-            index === highlight ? 'bg-white/[0.08]' : 'hover:bg-white/[0.05]'
+        `flex min-h-[52px] w-full items-center gap-2.5 px-4 text-start text-base transition-colors duration-quick ease-out focus-visible:[outline-offset:-3px] disabled:cursor-not-allowed disabled:text-ink-3 sm:min-h-[44px] sm:px-3 sm:text-sm ${
+            index === highlight ? 'bg-surface-2' : 'hover:bg-surface-2'
         }`;
 
     return (
         <>
-            <div className="fixed inset-0 z-40 bg-black/50 sm:bg-transparent" onClick={busy ? undefined : onClose} aria-hidden />
+            <div className="fixed inset-0 z-sheet bg-scrim sm:bg-transparent" onClick={busy ? undefined : onClose} aria-hidden />
             <div
                 role="dialog"
                 aria-label="Change car"
                 onKeyDown={onDialogKeyDown}
-                className="fixed inset-x-0 top-0 z-50 flex max-h-[85dvh] flex-col overflow-hidden rounded-b-2xl border-b border-white/10 bg-gray-900 pt-[env(safe-area-inset-top)] shadow-2xl shadow-black/60 sm:absolute sm:inset-x-auto sm:left-4 sm:top-full sm:mt-1 sm:max-h-[min(70vh,30rem)] sm:w-[26rem] sm:rounded-xl sm:border sm:border-white/[0.08] sm:pt-0 lg:left-[4.25rem]"
+                className="fixed inset-x-0 top-0 z-dialog flex max-h-[85dvh] flex-col overflow-hidden rounded-b-sheet border-b border-line bg-surface pt-[env(safe-area-inset-top)] shadow-e3 sm:absolute sm:inset-x-auto sm:start-4 sm:top-full sm:mt-1 sm:max-h-[min(70vh,32rem)] sm:w-[28rem] sm:rounded-card sm:border sm:pt-0 sm:shadow-e2 lg:start-[4.5rem]"
             >
-                <div className="flex items-center gap-2 border-b border-white/[0.06] px-3 py-2">
-                    <MagnifyingGlassIcon className="h-4 w-4 flex-shrink-0 text-gray-500" />
-                    <input
-                        value={query}
-                        onChange={e => { setQuery(e.target.value); setError(null); }}
-                        onKeyDown={onSearchKeyDown}
-                        autoFocus
-                        disabled={busy}
-                        placeholder="Type a reg, make or model"
-                        aria-label="Search the ledger's cars"
-                        autoComplete="off"
-                        spellCheck={false}
-                        className="min-w-0 flex-1 bg-transparent py-2 text-[16px] text-gray-100 placeholder:text-gray-500 focus:outline-none sm:text-[14px]"
-                    />
+                <div className="flex items-center gap-1 py-1 pe-1 ps-4">
+                    <p className="min-w-0 flex-1 text-base font-bold text-ink">Change car</p>
                     <button
                         type="button"
                         onClick={onClose}
                         disabled={busy}
                         aria-label="Close"
-                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                        className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-control text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink sm:h-10 sm:w-10"
                     >
                         <XMarkIcon className="h-5 w-5" />
                     </button>
                 </div>
 
-                {currentTitle && (
-                    <p className="border-b border-white/[0.06] px-3 py-1.5 text-[12px] text-gray-400">
-                        {agentName} has it as <span className="font-medium text-gray-200">{currentTitle}</span>
-                    </p>
-                )}
+                <div className="px-3 pb-2">
+                    <label className={`${controlFrame({ disabled: busy })} ps-3`}>
+                        <MagnifyingGlassIcon className="h-5 w-5 flex-shrink-0 text-ink-3" />
+                        <input
+                            value={query}
+                            onChange={e => { setQuery(e.target.value); setError(null); }}
+                            onKeyDown={onSearchKeyDown}
+                            autoFocus
+                            disabled={busy}
+                            placeholder="Type a reg, make or model"
+                            aria-label="Search the ledger's cars"
+                            autoComplete="off"
+                            spellCheck={false}
+                            className={`${controlInput} ps-2`}
+                        />
+                    </label>
+                    {currentTitle && (
+                        <p className="px-1 pt-2 text-sm text-ink-3">
+                            {agentName} has it as <span className="font-semibold text-ink">{currentTitle}</span>
+                        </p>
+                    )}
+                </div>
 
-                <ul ref={listRef} role="listbox" aria-label="Cars" className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+                <ul ref={listRef} role="listbox" aria-label="Cars" className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-line py-1">
                     {options.map((option, index) => (
                         <li key={option.key} role="option" aria-selected={index === highlight} data-index={index}>
                             <button
@@ -192,51 +197,51 @@ const CarPicker: React.FC<CarPickerProps> = ({ agentName, currentTitle, onPick, 
                             >
                                 {option.kind === 'none' && (
                                     <>
-                                        <XMarkIcon className="h-4 w-4 flex-shrink-0 text-gray-500" />
-                                        <span className="flex-1 text-gray-300">No car</span>
+                                        <XMarkIcon className="h-5 w-5 flex-shrink-0 text-ink-3" />
+                                        <span className="flex-1 font-semibold text-ink-2">No car</span>
                                     </>
                                 )}
                                 {option.kind === 'typed' && (
                                     <>
-                                        <CarIcon className="h-4 w-4 flex-shrink-0 text-gray-500" />
-                                        <span className="min-w-0 flex-1 truncate text-gray-100">Use “{option.text}”</span>
+                                        <CarIcon className="h-5 w-5 flex-shrink-0 text-ink-3" />
+                                        <span className="min-w-0 flex-1 truncate text-ink">Use “{option.text}”</span>
                                     </>
                                 )}
                                 {option.kind === 'car' && (
                                     <>
-                                        <span className="min-w-0 flex-1 truncate font-medium text-gray-100">{option.row.title}</span>
                                         {option.row.reg && <RegPlate reg={option.row.reg} />}
-                                        {option.row.otherLedger && (
-                                            <span className="flex-shrink-0 rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-sky-300">Other ledger</span>
-                                        )}
-                                        <span className={`flex-shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ${STATUS_TAG[option.row.status].cls}`}>
+                                        <span className="min-w-0 flex-1 truncate font-semibold text-ink">{option.row.title}</span>
+                                        {option.row.otherLedger && <Badge variant="info" size="sm">Other ledger</Badge>}
+                                        <StatusChip status={STATUS_TAG[option.row.status].chip}>
                                             {STATUS_TAG[option.row.status].label}
-                                        </span>
+                                        </StatusChip>
                                     </>
                                 )}
-                                {busyKey === option.key && <Spinner className="h-3.5 w-3.5 flex-shrink-0 text-gray-300" />}
+                                {busyKey === option.key && <Spinner className="h-4 w-4 flex-shrink-0 text-ink-2" />}
                             </button>
                         </li>
                     ))}
                     {!rows.length && (
-                        <li className="px-3 py-3 text-[12.5px] text-gray-500">No cars in the ledger yet.</li>
+                        <li className="px-4 py-3 text-sm text-ink-3">No cars in the ledger yet.</li>
                     )}
                 </ul>
 
                 {error && (
-                    <p role="alert" className="border-t border-red-500/20 bg-red-500/10 px-3 py-2 text-[12.5px] leading-snug text-red-300">{error}</p>
+                    <p role="alert" className="border-t border-danger bg-danger-soft px-4 py-2.5 text-sm leading-snug text-danger-ink">{error}</p>
                 )}
 
-                <div className="border-t border-white/[0.06] px-3 py-2">
-                    <input
-                        value={note}
-                        onChange={e => setNote(e.target.value)}
-                        disabled={busy}
-                        placeholder={`Note for ${agentName} (optional)`}
-                        aria-label={`Note for ${agentName} (optional)`}
-                        className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-[16px] text-gray-100 placeholder:text-gray-500 focus:border-brand-400/50 focus:outline-none focus:ring-2 focus:ring-brand-400/30 sm:text-[12.5px]"
-                    />
-                    <p className="mt-1.5 text-[11px] leading-snug text-gray-500">
+                <div className="border-t border-line px-3 pb-3 pt-3">
+                    <div className={controlFrame({ disabled: busy })}>
+                        <input
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            disabled={busy}
+                            placeholder={`Note for ${agentName} (optional)`}
+                            aria-label={`Note for ${agentName} (optional)`}
+                            className={controlInput}
+                        />
+                    </div>
+                    <p className="mt-2 px-1 text-xs leading-4 text-ink-3">
                         {agentName} re-pins the thread and bins the draft. A car on the other ledger moves the thread to them.
                     </p>
                 </div>

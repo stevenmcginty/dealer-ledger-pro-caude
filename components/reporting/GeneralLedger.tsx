@@ -5,7 +5,9 @@ import { CalculatorIcon, ArrowDownTrayIcon } from '../icons';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { useData } from '../../hooks/useData';
 import UkDateInput from '../common/UkDateInput';
-import { useToast } from '../ui';
+import { useToast, Button, Segmented, EmptyState, DataTable, THead, TBody, Th, Tr, Td } from '../ui';
+import { cx, eyebrow } from '../ui/cx';
+import { Money, moneyText, FootCell } from '../accountant/hubShared';
 import { readDirectorSalaries, salaryMonthEnds, salaryPaymentOwner } from '../../utils/accounting/directorSalary';
 import { dayOf } from '../../utils/accounting/yearEnd';
 
@@ -209,69 +211,88 @@ const GeneralLedger = ({ startDate: startProp, endDate: endProp, hidePeriodBar =
         document.body.removeChild(link);
     };
 
-    return (
-        <div className="space-y-6">
-            <div className={hidePeriodBar ? 'flex flex-wrap items-center justify-end gap-3' : 'p-4 bg-gray-800 rounded-lg shadow-md flex flex-wrap items-center justify-between gap-4'}>
-                <div className={`flex items-center gap-4 flex-wrap ${hidePeriodBar ? 'hidden' : ''}`}>
-                    <div>
-                        <label htmlFor="start-date" className="block text-sm font-medium text-gray-400">Start Date</label>
-                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1"/>
-                    </div>
-                    <div>
-                        <label htmlFor="end-date" className="block text-sm font-medium text-gray-400">End Date</label>
-                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1"/>
-                    </div>
-                </div>
+    const totals = useMemo(() => filteredEntries.reduce((t, e) => ({ debit: t.debit + e.debit, credit: t.credit + e.credit, vat: t.vat + e.vat }), { debit: 0, credit: 0, vat: 0 }), [filteredEntries]);
+    const blank = (n: number) => (n > 0 ? <Money value={n} /> : <span className="sr-only">none</span>);
 
-                <div className="flex items-center gap-x-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400">Filter by Account</label>
-                        <div className="mt-1 flex items-center space-x-2 rounded-lg bg-gray-700/60 p-1">
-                            <button onClick={() => setAccountFilter('all')} className={`flex-1 justify-center gap-x-2 inline-flex items-center py-2 px-4 text-sm font-semibold rounded-md transition-colors ${accountFilter === 'all' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>All</button>
-                            <button onClick={() => setAccountFilter('Bank')} className={`flex-1 justify-center gap-x-2 inline-flex items-center py-2 px-4 text-sm font-semibold rounded-md transition-colors ${accountFilter === 'Bank' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Bank</button>
-                            <button onClick={() => setAccountFilter('Credit Card')} className={`flex-1 justify-center gap-x-2 inline-flex items-center py-2 px-4 text-sm font-semibold rounded-md transition-colors ${accountFilter === 'Credit Card' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Credit Card</button>
+    return (
+        <div className="min-w-0 space-y-4">
+            <div className="flex flex-col gap-3 print:hidden lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+                {!hidePeriodBar && (
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 sm:flex">
+                        <div className="min-w-0">
+                            <label htmlFor="start-date" className={cx(eyebrow, 'mb-1.5 block')}>From</label>
+                            <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="sm:w-44" />
+                        </div>
+                        <span aria-hidden="true" className="pb-3.5 text-ink-3">–</span>
+                        <div className="min-w-0">
+                            <label htmlFor="end-date" className={cx(eyebrow, 'mb-1.5 block')}>To</label>
+                            <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="sm:w-44" />
                         </div>
                     </div>
-                    <button onClick={handleDownload} className="self-end inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500">
-                        <ArrowDownTrayIcon className="-ml-1 h-5 w-5" />
-                        Download CSV
-                    </button>
+                )}
+                <div className="flex min-w-0 flex-wrap items-end gap-3 lg:ms-auto">
+                    <div className="min-w-0">
+                        <p className={cx(eyebrow, 'mb-1.5')} id="ledger-account-label">Account</p>
+                        <Segmented
+                            ariaLabel="Filter by account"
+                            value={accountFilter}
+                            onChange={setAccountFilter}
+                            options={[{ value: 'all', label: 'All' }, { value: 'Bank', label: 'Bank' }, { value: 'Credit Card', label: 'Credit card' }]}
+                        />
+                    </div>
+                    <Button onClick={handleDownload} icon={<ArrowDownTrayIcon />}>Download CSV</Button>
                 </div>
             </div>
 
             {filteredEntries.length === 0 ? (
-                <div className="text-center py-16 px-6 bg-gray-800 rounded-lg shadow-inner">
-                    <CalculatorIcon className="h-12 w-12 text-gray-500 mx-auto" />
-                    <h3 className="mt-4 text-lg font-medium text-white">No Ledger Entries</h3>
-                    <p className="mt-1 text-sm text-gray-400">There are no financial records in the selected date range or for the selected filter.</p>
+                <div className="rounded-card border border-line bg-surface">
+                    <EmptyState
+                        icon={<CalculatorIcon />}
+                        title="No ledger entries"
+                        description="Nothing is booked in these dates for this account. Car purchases, sales and reconciled bank lines show here."
+                    />
                 </div>
             ) : (
-                <div className="overflow-x-auto bg-gray-800 rounded-lg shadow">
-                    <table className="min-w-full divide-y divide-gray-700">
-                        <thead className="bg-gray-900/50">
+                <>
+                    <p className="text-sm text-ink-3">
+                        <span className="num">{filteredEntries.length}</span> {filteredEntries.length === 1 ? 'entry' : 'entries'} · {formatDate(startDate)} to {formatDate(endDate)} · figures net of VAT
+                    </p>
+                    <DataTable ariaLabel="General ledger" compact minWidth={760} maxHeight="70vh" className="print:max-h-none print:overflow-visible">
+                        <THead>
                             <tr>
-                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-white sm:pl-6">Date</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Details</th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-white">Account</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">Debit (Net)</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white">Credit (Net)</th>
-                                <th scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-white sm:pr-6">VAT</th>
+                                <Th className="ps-4">Date</Th>
+                                <Th>Details</Th>
+                                <Th>Account</Th>
+                                <Th numeric>Debit</Th>
+                                <Th numeric>Credit</Th>
+                                <Th numeric className="pe-4">VAT</Th>
                             </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700/50">
+                        </THead>
+                        <TBody>
                             {filteredEntries.map((entry, index) => (
-                                <tr key={`${entry.sourceId}-${entry.sourceType}-${index}`} className="even:bg-gray-800/50">
-                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-white sm:pl-6">{formatDate(entry.date)}</td>
-                                    <td className="px-3 py-4 text-sm text-gray-300 max-w-sm truncate" title={entry.details}>{entry.details}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-400">{entry.account}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-green-400">{entry.debit > 0 ? formatCurrency(entry.debit) : ''}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-red-400">{entry.credit > 0 ? formatCurrency(entry.credit) : ''}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-gray-400 sm:pr-6">{entry.vat > 0 ? formatCurrency(entry.vat) : ''}</td>
-                                </tr>
+                                <Tr key={`${entry.sourceId}-${entry.sourceType}-${index}`}>
+                                    <Td className="num ps-4 text-ink-2">{formatDate(entry.date)}</Td>
+                                    <Td className="max-w-[22rem] py-1.5">
+                                        <span className="block truncate text-ink" title={entry.details}>{entry.details}</span>
+                                        <span className="num block text-xs text-ink-3">{entry.ref}</span>
+                                    </Td>
+                                    <Td className="max-w-[16rem] truncate text-ink-2" title={entry.account}>{entry.account}</Td>
+                                    <Td numeric>{blank(entry.debit)}</Td>
+                                    <Td numeric>{blank(entry.credit)}</Td>
+                                    <Td numeric className="pe-4 text-ink-2">{blank(entry.vat)}</Td>
+                                </Tr>
                             ))}
-                        </tbody>
-                    </table>
-                </div>
+                        </TBody>
+                        <tfoot className="sticky bottom-0 z-sticky">
+                            <tr>
+                                <FootCell colSpan={3} className="ps-4">Totals</FootCell>
+                                <FootCell numeric>{moneyText(totals.debit)}</FootCell>
+                                <FootCell numeric>{moneyText(totals.credit)}</FootCell>
+                                <FootCell numeric className="pe-4">{moneyText(totals.vat)}</FootCell>
+                            </tr>
+                        </tfoot>
+                    </DataTable>
+                </>
             )}
         </div>
     );

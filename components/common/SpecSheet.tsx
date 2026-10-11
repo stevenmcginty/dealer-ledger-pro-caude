@@ -18,7 +18,7 @@ import React from 'react';
 export const SheetPage = ({ id, children }: { id: string; children: React.ReactNode }) => (
     <div
         id={id}
-        className="bg-white w-full max-w-4xl mx-auto font-sans text-gray-900 shadow-lg print:shadow-none print:max-w-none"
+        className="bg-white w-full max-w-4xl mx-auto font-paper text-gray-900 shadow-lg print:shadow-none print:max-w-none"
         style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
     >
         {children}

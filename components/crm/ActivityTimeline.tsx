@@ -21,56 +21,56 @@ const ACTIVITY_CONFIG: Record<ActivityType, {
 }> = {
     'EMAIL_IN': {
         icon: EnvelopeIcon,
-        color: 'text-blue-400',
-        bgColor: 'bg-blue-500/20',
+        color: 'text-info-ink',
+        bgColor: 'bg-info-soft',
         label: 'Email received',
     },
     'EMAIL_OUT': {
         icon: EnvelopeIcon,
-        color: 'text-green-400',
-        bgColor: 'bg-green-500/20',
+        color: 'text-success-ink',
+        bgColor: 'bg-success-soft',
         label: 'Email sent',
     },
     'SMS_IN': {
         icon: ChatBubbleLeftIcon,
-        color: 'text-blue-400',
-        bgColor: 'bg-blue-500/20',
+        color: 'text-info-ink',
+        bgColor: 'bg-info-soft',
         label: 'SMS received',
     },
     'SMS_OUT': {
         icon: ChatBubbleLeftIcon,
-        color: 'text-green-400',
-        bgColor: 'bg-green-500/20',
+        color: 'text-success-ink',
+        bgColor: 'bg-success-soft',
         label: 'SMS sent',
     },
     'WHATSAPP_IN': {
         icon: ChatBubbleLeftIcon,
-        color: 'text-emerald-400',
-        bgColor: 'bg-emerald-500/20',
+        color: 'text-success-ink',
+        bgColor: 'bg-success-soft',
         label: 'WhatsApp received',
     },
     'WHATSAPP_OUT': {
         icon: ChatBubbleLeftIcon,
-        color: 'text-emerald-400',
-        bgColor: 'bg-emerald-500/20',
+        color: 'text-success-ink',
+        bgColor: 'bg-success-soft',
         label: 'WhatsApp sent',
     },
     'CALL_LOG': {
         icon: PhoneIcon,
-        color: 'text-amber-400',
-        bgColor: 'bg-amber-500/20',
+        color: 'text-warning-ink',
+        bgColor: 'bg-warning-soft',
         label: 'Call logged',
     },
     'NOTE': {
         icon: DocumentTextIcon,
-        color: 'text-purple-400',
-        bgColor: 'bg-purple-500/20',
+        color: 'text-accent-soft-ink',
+        bgColor: 'bg-accent-soft',
         label: 'Note added',
     },
     'SYSTEM': {
         icon: SparklesIcon,
-        color: 'text-gray-400',
-        bgColor: 'bg-gray-500/20',
+        color: 'text-ink-2',
+        bgColor: 'bg-surface-2',
         label: 'System',
     },
 };
@@ -107,10 +107,10 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, maxItem
 
     if (activities.length === 0) {
         return (
-            <div className="text-center py-8">
-                <p className="text-gray-500 text-sm">No activity yet</p>
-                <p className="text-gray-600 text-xs mt-1">
-                    Activities will appear here as you interact with this lead
+            <div className="py-2">
+                <p className="text-base font-semibold text-ink">Nothing logged yet</p>
+                <p className="mt-1 text-sm text-ink-3">
+                    Emails, WhatsApps, calls and notes with this lead show up here, newest first.
                 </p>
             </div>
         );
@@ -118,7 +118,7 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, maxItem
 
     return (
         <div className="flow-root">
-            <ul className="-mb-8">
+            <ul className="-mb-6">
                 {displayActivities.map((activity, idx) => {
                     const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG['SYSTEM'];
                     const Icon = config.icon;
@@ -126,35 +126,33 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, maxItem
 
                     return (
                         <li key={activity.id || idx}>
-                            <div className="relative pb-8">
-                                {/* Connecting line */}
+                            <div className="relative pb-6">
+                                {/* Hairline rail joining the entries */}
                                 {!isLast && (
                                     <span
-                                        className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-700"
+                                        className="absolute start-4 top-9 -ms-px h-[calc(100%-2.25rem)] w-px bg-line-strong"
                                         aria-hidden="true"
                                     />
                                 )}
 
-                                <div className="relative flex items-start space-x-3">
-                                    {/* Icon */}
-                                    <div className={`relative flex h-8 w-8 items-center justify-center rounded-full ${config.bgColor}`}>
-                                        <Icon className={`h-4 w-4 ${config.color}`} />
+                                <div className="relative flex items-start gap-3">
+                                    <div className={`relative flex h-8 w-8 flex-none items-center justify-center rounded-full ${config.bgColor}`}>
+                                        <Icon className={`h-4 w-4 ${config.color}`} aria-hidden="true" />
                                     </div>
 
-                                    {/* Content */}
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-xs text-gray-500">
+                                    <div className="min-w-0 flex-1 pt-1">
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <p className="min-w-0 truncate text-xs font-semibold text-ink-2">
                                                 {config.label}
                                                 {activity.performedBy && (
-                                                    <span className="ml-1">by {activity.performedBy}</span>
+                                                    <span className="font-normal text-ink-3"> by {activity.performedBy}</span>
                                                 )}
                                             </p>
-                                            <time className="text-xs text-gray-600">
+                                            <time dateTime={activity.timestamp} className="num flex-none text-xs text-ink-3">
                                                 {formatTimestamp(activity.timestamp)}
                                             </time>
                                         </div>
-                                        <p className="mt-1 text-sm text-gray-300 whitespace-pre-wrap">
+                                        <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
                                             {activity.content}
                                         </p>
                                     </div>
@@ -167,7 +165,7 @@ const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, maxItem
 
             {maxItems && sortedActivities.length > maxItems && (
                 <div className="mt-4 text-center">
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-ink-3">
                         Showing {maxItems} of {sortedActivities.length} activities
                     </p>
                 </div>

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { NewToDoItem, ToDoItem, Vehicle, ToDoItemUpdate } from '../../types';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { useToast } from '../ui';
-import { XMarkIcon } from '../icons';
-import Spinner from '../common/Spinner';
+import { useToast, Button, Field, Segmented } from '../ui';
+import EditorFrame, { FrameInput, FrameTextarea, VehicleSuggestions } from '../work-sheets/EditorFrame';
 import UkDateInput from '../common/UkDateInput';
 
 interface ToDoEditorProps {
@@ -185,85 +184,77 @@ const ToDoEditor = ({ type, editingTodo, prefillData }: ToDoEditorProps) => {
 
 
     const getTitle = () => {
-        const action = isEditing ? 'Edit' : 'Add';
         switch (type) {
-            case 'general': return `${action} General Task`;
-            case 'prep': return `${action} Prep Task`;
-            case 'warranty': return `${action} Warranty Claim`;
+            case 'general': return isEditing ? 'Edit task' : 'New task';
+            case 'prep': return isEditing ? 'Edit prep job' : 'New prep job';
+            case 'warranty': return isEditing ? 'Edit warranty claim' : 'New warranty claim';
         }
     };
-    
+
+    const saveLabel = isEditing ? 'Save changes' : type === 'general' ? 'Add task' : type === 'prep' ? 'Add prep job' : 'Add claim';
+
     return (
-        <form onSubmit={handleSubmit} className="w-full flex flex-col h-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white">{getTitle()}</h2>
-                <button type="button" onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><XMarkIcon className="h-6 w-6" /></button>
-            </header>
-            <div className="p-4 space-y-4 flex-1 overflow-y-auto">
-                {showVehicleSelector && (
-                    <div className="relative" ref={suggestionBoxRef}>
-                        <label htmlFor="vehicleReg" className="block text-sm font-medium text-gray-300">Vehicle</label>
-                        <input 
+        <EditorFrame
+            title={getTitle()}
+            onClose={closeModal}
+            formId="todo-editor-form"
+            onSubmit={handleSubmit}
+            footer={<>
+                <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
+                <Button type="submit" form="todo-editor-form" loading={isSubmitting}>{saveLabel}</Button>
+            </>}
+        >
+            {showVehicleSelector && (
+                <div className="relative" ref={suggestionBoxRef}>
+                    <Field label="Vehicle" optional={!isPrep} htmlFor="vehicleReg" hint={isWarranty ? 'Sold cars only. Or type a reg that isn’t on the books.' : undefined}>
+                        <FrameInput
                             type="text"
                             id="vehicleReg"
                             value={regInput}
                             onChange={handleRegInputChange}
                             required={isPrep}
-                            placeholder={isPrep ? 'Search by Reg, Make, Model...' : 'Search or enter Reg (Optional)'}
-                            className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white uppercase"
+                            placeholder={isPrep ? 'Search reg, make or model' : 'Search or type a reg'}
+                            className="font-mono uppercase tracking-[0.06em]"
                             autoComplete="off"
                         />
-                         {showSuggestions && suggestions.length > 0 && (
-                            <ul className="absolute z-10 mt-1 w-full bg-gray-600 border border-gray-500 rounded-md shadow-lg max-h-60 overflow-auto">
-                                {suggestions.map(v => (
-                                    <li key={v.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSuggestionClick(v)}
-                                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-brand-600"
-                                        >
-                                            <span className="font-bold">{v.reg}</span> - {v.make} {v.model}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                )}
-                <div>
-                    <label htmlFor="description" className="block text-sm font-medium text-gray-300">{type === 'warranty' ? 'Issue & Action Plan' : 'Task Description'}</label>
-                    <textarea 
-                        id="description" 
-                        value={description} 
-                        onChange={e => setDescription(e.target.value)} 
-                        required 
-                        rows={isEditing ? 4 : 8}
-                        className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white" 
-                        placeholder={type === 'warranty' ? "Describe the issue, what you will do..." : "Task details... You can add multiple tasks by putting each on a new line."}
+                    </Field>
+                    {showSuggestions && suggestions.length > 0 && (
+                        <VehicleSuggestions vehicles={suggestions} onPick={handleSuggestionClick} showStatus={false} />
+                    )}
+                </div>
+            )}
+            <Field
+                label={type === 'warranty' ? 'Issue and what you’ll do' : isPrep ? 'Prep jobs' : 'Task'}
+                htmlFor="description"
+                hint={!isEditing && type !== 'warranty' ? 'Put each one on its own line to add several at once.' : undefined}
+            >
+                <FrameTextarea
+                    id="description"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    required
+                    rows={isEditing ? 4 : 6}
+                    placeholder={type === 'warranty' ? 'Describe the issue and what you will do' : isPrep ? 'e.g. Valet inside and out' : 'e.g. Ring the auction house'}
+                />
+            </Field>
+            {type === 'general' && (
+                <Field label="Due date" htmlFor="dueDate">
+                    <UkDateInput id="dueDate" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+                </Field>
+            )}
+            {(isPrep || isWarranty) && (
+                <div className="flex flex-col gap-1.5">
+                    <span className="text-sm font-semibold text-ink">Priority</span>
+                    <Segmented
+                        ariaLabel="Priority"
+                        full
+                        value={priority}
+                        onChange={v => setPriority(v)}
+                        options={[{ value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }]}
                     />
                 </div>
-                {type === 'general' && (
-                    <div>
-                        <label htmlFor="dueDate" className="block text-sm font-medium text-gray-300">Due Date</label>
-                        <UkDateInput id="dueDate" value={dueDate} onChange={e => setDueDate(e.target.value)} className="mt-1" required/>
-                    </div>
-                )}
-                {(isPrep || isWarranty) && (
-                     <div>
-                        <label className="block text-sm font-medium text-gray-300">Priority</label>
-                        <div className="mt-2 flex items-center space-x-2 rounded-lg bg-gray-700 p-1">
-                            <button type="button" onClick={() => setPriority('normal')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${priority === 'normal' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>Normal</button>
-                            <button type="button" onClick={() => setPriority('high')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${priority === 'high' ? 'bg-brand-600 text-white shadow' : 'text-gray-300 hover:bg-gray-600'}`}>High</button>
-                        </div>
-                    </div>
-                )}
-            </div>
-            <footer className="p-4 border-t border-gray-700 flex justify-end">
-                <button type="submit" disabled={isSubmitting} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50">
-                    {isSubmitting ? <Spinner /> : (isEditing ? 'Update Task' : 'Add Task')}
-                </button>
-            </footer>
-        </form>
+            )}
+        </EditorFrame>
     );
 };
 

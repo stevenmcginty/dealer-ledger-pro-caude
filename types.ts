@@ -1046,6 +1046,8 @@ export interface DataContextState {
     deleteExpenseCategory: (id: string) => Promise<boolean>;
     updateExpenseCategories: (categories: ExpenseCategory[]) => Promise<void>;
     updateBusinessDetails: (data: BusinessDetails) => Promise<void>;
+    /** Brand colour for the whole company: writes businessDetails/theme only. */
+    updateTheme: (theme: string) => Promise<void>;
     addYearEndAdjustment: (data: NewYearEndAdjustment) => Promise<void>;
     updateYearEndAdjustment: (id: string, data: Partial<NewYearEndAdjustment>) => Promise<void>;
     deleteYearEndAdjustment: (id: string) => Promise<void>;

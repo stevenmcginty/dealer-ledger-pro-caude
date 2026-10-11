@@ -22,35 +22,34 @@ const ActivityIndicator: React.FC<ActivityIndicatorProps> = ({ activity, onClose
     if (activity.status === 'idle') return null;
 
     return (
-        <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 w-[90%] max-w-md animate-in slide-in-from-bottom-5 fade-in-0 duration-300">
-            <div className={`
-                glass-panel p-4 rounded-xl shadow-2xl border border-white/10 flex items-center gap-4
-                ${activity.status === 'error' ? 'bg-red-900/80 border-red-500/30' : 'bg-gray-900/80'}
-            `}>
+        <div className="anim-pop-in fixed inset-x-4 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-toast mx-auto max-w-md md:bottom-6" role="status">
+            <div className={`flex items-center gap-4 rounded-card border p-4 shadow-e2 ${
+                activity.status === 'error' ? 'border-danger bg-danger-soft' : 'border-line bg-surface'
+            }`}>
                 <div className="flex-shrink-0">
                     {activity.status === 'running' && (
                         <div className="relative">
-                            <Spinner className="h-6 w-6 text-brand-500" />
+                            <Spinner className="h-6 w-6 text-accent-text" />
                         </div>
                     )}
-                    {activity.status === 'success' && <CheckCircleIcon className="h-6 w-6 text-green-400" />}
-                    {activity.status === 'error' && <ExclamationTriangleIcon className="h-6 w-6 text-red-400" />}
+                    {activity.status === 'success' && <CheckCircleIcon className="h-6 w-6 text-success" />}
+                    {activity.status === 'error' && <ExclamationTriangleIcon className="h-6 w-6 text-danger" />}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold truncate ${activity.status === 'error' ? 'text-red-200' : 'text-white'}`}>
+                    <p className={`text-sm font-semibold truncate ${activity.status === 'error' ? 'text-danger-ink' : 'text-ink'}`}>
                         {activity.message}
                     </p>
                     {activity.status === 'running' && activity.total !== undefined && activity.total > 0 && (
-                        <div className="w-full bg-gray-700/50 rounded-full h-1.5 mt-2 overflow-hidden">
+                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
                             <div 
-                                className="bg-brand-500 h-1.5 rounded-full transition-all duration-300 ease-out" 
+                                className="bg-accent h-1.5 rounded-full transition-all duration-300 ease-out" 
                                 style={{ width: `${((activity.current || 0) / activity.total) * 100}%` }}
                             ></div>
                         </div>
                     )}
                     {activity.status === 'running' && activity.total === undefined && (
-                         <p className="text-xs text-gray-400 mt-0.5">Please wait...</p>
+                         <p className="mt-0.5 text-xs text-ink-3">Working on it…</p>
                     )}
                 </div>
             </div>

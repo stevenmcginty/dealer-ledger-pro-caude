@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useData } from '../../hooks/useData';
 import { storage } from '../../services/firebase';
 import Spinner from '../common/Spinner';
-import { CheckCircleIcon, ExclamationTriangleIcon } from '../icons';
+import { Alert, Button } from '../ui';
+import { Panel, PanelSection } from './SettingsKit';
 
 type HealthCheckStatus = {
     status: 'idle' | 'running' | 'success' | 'error';
@@ -21,7 +22,7 @@ const FirebaseHealthCheckCard = () => {
         }
 
         let currentStep: HealthCheckStatus['step'] = 'write';
-        setCheckStatus({ status: 'running', message: 'Starting health check...', step: '' });
+        setCheckStatus({ status: 'running', message: 'Starting the check…', step: '' });
         const testPath = `${companyId}/${userId}/health_check/test.txt`;
         const testRef = storage.ref(testPath);
         const testBlob = new Blob(['health-check'], { type: 'text/plain' });
@@ -29,65 +30,53 @@ const FirebaseHealthCheckCard = () => {
         try {
             // 1. Write Test
             currentStep = 'write';
-            setCheckStatus({ status: 'running', message: 'Testing write permissions...', step: currentStep });
+            setCheckStatus({ status: 'running', message: 'Testing upload…', step: currentStep });
             await testRef.put(testBlob);
 
             // 2. Read Test
             currentStep = 'read';
-            setCheckStatus({ status: 'running', message: 'Testing read permissions...', step: currentStep });
+            setCheckStatus({ status: 'running', message: 'Testing download…', step: currentStep });
             await testRef.getDownloadURL();
 
             // 3. Cleanup
             currentStep = 'cleanup';
-            setCheckStatus({ status: 'running', message: 'Cleaning up test file...', step: currentStep });
+            setCheckStatus({ status: 'running', message: 'Removing the test file…', step: currentStep });
             await testRef.delete();
 
-            setCheckStatus({ status: 'success', message: 'Success! Your Firebase security rules are configured correctly.' });
+            setCheckStatus({ status: 'success', message: 'Storage rules are set up correctly. Uploads and downloads both work.' });
 
         } catch (error: any) {
             console.error("Firebase Health Check Failed:", error);
-            let userMessage = `An unexpected error occurred: ${error.message}`;
+            let userMessage = `Something went wrong: ${error.message}`;
             if (error.code === 'storage/unauthorized') {
                 if (currentStep === 'write') {
-                    userMessage = "Write permission denied. Your rules are not allowing the app to upload files. Please ensure the 'allow write' line in your Storage Rules is correct.";
+                    userMessage = "Upload was refused. The Storage rules aren't letting the app save files; check the 'allow write' line.";
                 } else if (currentStep === 'read') {
-                     userMessage = "Read permission denied. The app could write a file but not read it back. Please check the 'allow read' line in your Storage Rules.";
+                     userMessage = "Download was refused. The app could save a file but not read it back; check the 'allow read' line in the Storage rules.";
                 }
             }
             setCheckStatus({ status: 'error', message: userMessage, step: currentStep });
         }
     };
-    
+
     const isWorking = checkStatus.status === 'running';
 
     return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h2 className="text-lg font-semibold text-white">Firebase Storage Health Check</h2>
-            <p className="text-sm text-gray-400 mt-1">This tool tests if your storage security rules are configured correctly by attempting a test upload.</p>
-            <div className="mt-4">
-                <button 
-                    onClick={handleRunCheck}
-                    disabled={isWorking}
-                    className="w-full inline-flex items-center justify-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50"
-                >
-                    {isWorking ? <Spinner className="h-5 w-5" /> : 'Run Health Check'}
-                </button>
-            </div>
-            {checkStatus.status !== 'idle' && (
-                <div className={`mt-4 p-3 rounded-lg flex items-center gap-3 ${
-                    checkStatus.status === 'success' ? 'bg-green-900/50' :
-                    checkStatus.status === 'error' ? 'bg-red-900/50' :
-                    'bg-gray-700/50'
-                }`}>
-                    <div className="flex-shrink-0">
-                        {checkStatus.status === 'running' && <Spinner className="h-5 w-5 text-brand-400" />}
-                        {checkStatus.status === 'success' && <CheckCircleIcon className="h-5 w-5 text-green-400" />}
-                        {checkStatus.status === 'error' && <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />}
-                    </div>
-                    <p className="text-sm text-gray-300">{checkStatus.message}</p>
-                </div>
-            )}
-        </div>
+        <Panel ariaLabel="Storage check">
+            <PanelSection
+                title="Storage check"
+                description="Uploads a small test file, reads it back and deletes it, to prove the storage rules work."
+                action={<Button variant="secondary" onClick={handleRunCheck} loading={isWorking}>Run check</Button>}
+            >
+                {checkStatus.status === 'running' && (
+                    <p className="flex items-center gap-2 text-sm text-ink-2" role="status">
+                        <Spinner className="h-4 w-4" /> {checkStatus.message}
+                    </p>
+                )}
+                {checkStatus.status === 'success' && <Alert tone="success">{checkStatus.message}</Alert>}
+                {checkStatus.status === 'error' && <Alert tone="danger">{checkStatus.message}</Alert>}
+            </PanelSection>
+        </Panel>
     );
 };
 

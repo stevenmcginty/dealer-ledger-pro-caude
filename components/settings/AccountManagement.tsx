@@ -1,13 +1,12 @@
-
-
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { FinancialAccount, NewFinancialAccount } from '../../types';
-import { BanknotesIcon, CreditCardIcon, PlusIcon, TrashIcon, CheckCircleIcon, EditIcon, XMarkIcon, ViewColumnsIcon } from '../icons';
+import { FinancialAccount } from '../../types';
+import { BanknotesIcon, ChevronDownIcon, CreditCardIcon, PlusIcon, TrashIcon, EditIcon, ViewColumnsIcon, ArchiveBoxIcon } from '../icons';
 import { isMappingComplete } from '../../utils/csvMapping';
-import Spinner from '../common/Spinner';
 import Select from '../common/Select';
+import { Badge, Button, EmptyState, Field, Input } from '../ui';
+import { Panel, PanelSection, IconTile, dangerQuiet } from './SettingsKit';
 
 // FIX: Extracted props to a named interface to resolve 'key' prop error.
 interface AccountRowProps {
@@ -19,23 +18,38 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
     const [name, setName] = useState(account.name);
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    // Blur and submit can both fire for one rename; save it once.
+    const savingRef = useRef(false);
 
     const hasMapping = isMappingComplete(account.columnMapping);
 
     const handleSave = async () => {
+        if (savingRef.current) return;
         if (name.trim() === '' || name.trim() === account.name) {
             setIsEditing(false);
             setName(account.name);
             return;
         }
+        savingRef.current = true;
         setIsSaving(true);
-        await updateFinancialAccount(account.id, { name: name.trim() });
-        setIsSaving(false);
+        try {
+            await updateFinancialAccount(account.id, { name: name.trim() });
+        } finally {
+            savingRef.current = false;
+            setIsSaving(false);
+        }
         setIsEditing(false);
     };
-    
+
+    // Tapping away saves the name, as before. Moving to Save name or Cancel does not.
+    const handleFormBlur = (e: React.FocusEvent<HTMLFormElement>) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) handleSave();
+    };
+    // Keep focus in the field while Save name or Cancel is pressed, so the blur save does not run first.
+    const keepFieldFocus = (e: React.MouseEvent) => e.preventDefault();
+
     const handleDelete = () => {
-        if (window.confirm(`Are you sure you want to delete the account "${account.name}"? This cannot be undone.`)) {
+        if (window.confirm(`Delete the account "${account.name}"? You can't undo this.`)) {
             deleteFinancialAccount(account.id);
         }
     }
@@ -50,63 +64,70 @@ const AccountRow: React.FC<AccountRowProps> = ({ account }) => {
 
     const Icon = account.type === 'Bank' ? BanknotesIcon : CreditCardIcon;
 
-    return (
-        <li className="flex items-center justify-between p-3 bg-gray-900/50 rounded-md">
-            <div className="flex items-center gap-3">
-                <Icon className="h-6 w-6 text-gray-400" />
-                {isEditing ? (
-                    <input 
-                        type="text" 
-                        value={name} 
-                        onChange={(e) => setName(e.target.value)} 
-                        className="bg-gray-700 border-gray-600 rounded-md py-1 px-2 text-white"
+    const statusLine = (
+        <span className="block truncate text-sm leading-5 text-ink-3">
+            {account.type === 'Bank' ? 'Bank account' : 'Credit card'}
+            {' · '}
+            {hasMapping
+                ? <span className="text-success">Statement format set</span>
+                : <span className="font-semibold text-warning">Statement format not set up</span>}
+        </span>
+    );
+
+    if (isEditing) {
+        return (
+            <li className="px-4 py-3.5 sm:px-5">
+                <form onSubmit={e => { e.preventDefault(); handleSave(); }} onBlur={handleFormBlur} className="flex flex-wrap items-end gap-2">
+                    <Input
+                        id={`account-name-${account.id}`}
+                        label="Account name"
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
                         autoFocus
-                        onBlur={handleSave}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                        wrapperClassName="min-w-[12rem] flex-1"
                     />
-                ) : (
-                    <div>
-                        <p className="font-semibold text-white">{account.name}</p>
-                        <div className="flex items-center gap-2 text-xs">
-                            <span className="text-gray-500">{account.type}</span>
-                            {account.closed && <><span className="text-gray-600">·</span><span className="font-semibold text-gray-300">Closed</span></>}
-                            <span className="text-gray-600">·</span>
-                            {hasMapping ? (
-                                <span className="inline-flex items-center gap-1 text-green-400"><CheckCircleIcon className="h-3.5 w-3.5" /> Statement format set</span>
-                            ) : (
-                                <span className="text-amber-400">Statement format not set up</span>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-            <div className="flex items-center gap-2">
-                {isEditing ? (
-                    <>
-                        <button onClick={handleSave} disabled={isSaving} className="p-2 text-green-400 hover:text-green-300">
-                            {isSaving ? <Spinner className="h-5 w-5"/> : <CheckCircleIcon className="h-5 w-5"/>}
-                        </button>
-                        <button onClick={() => { setIsEditing(false); setName(account.name); }} className="p-2 text-gray-400 hover:text-white">
-                            <XMarkIcon className="h-5 w-5"/>
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <button
-                            onClick={() => openModal('statementMapping', { account })}
-                            title="Set up / re-map this account's statement format"
-                            className={`p-2 ${hasMapping ? 'text-gray-400 hover:text-white' : 'text-amber-400 hover:text-amber-300'}`}
-                        >
-                            <ViewColumnsIcon className="h-5 w-5"/>
-                        </button>
-                        <button onClick={() => setIsEditing(true)} className="p-2 text-gray-400 hover:text-white"><EditIcon className="h-5 w-5"/></button>
-                        <button onClick={handleToggleClosed} disabled={isSaving} className="px-2 py-1 text-xs font-medium text-gray-300 hover:text-white rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50">
-                            {account.closed ? 'Reopen' : 'Mark as closed'}
-                        </button>
-                        <button onClick={handleDelete} className="p-2 text-gray-400 hover:text-red-400"><TrashIcon className="h-5 w-5"/></button>
-                    </>
-                )}
-            </div>
+                    <Button type="submit" loading={isSaving} onMouseDown={keepFieldFocus}>Save name</Button>
+                    <Button type="button" variant="ghost" onMouseDown={keepFieldFocus} onClick={() => { setIsEditing(false); setName(account.name); }}>Cancel</Button>
+                </form>
+            </li>
+        );
+    }
+
+    // Tap the row to show what you can do with it: detail in the disclosure, not a third line.
+    return (
+        <li>
+            <details className="group">
+                <summary className="flex min-h-[64px] cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors duration-quick ease-out hover:bg-surface-2 active:bg-surface-3 sm:px-5 [&::-webkit-details-marker]:hidden">
+                    <IconTile><Icon /></IconTile>
+                    <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2 text-base font-semibold leading-6 text-ink">
+                            <span className="min-w-0 truncate">{account.name}</span>
+                            {account.closed && <Badge size="sm">Closed</Badge>}
+                        </span>
+                        {statusLine}
+                    </span>
+                    <ChevronDownIcon className="h-5 w-5 flex-none text-ink-3 transition-transform duration-quick ease-out group-open:rotate-180" />
+                </summary>
+                <div className="flex flex-wrap gap-2 px-4 pb-4 pt-1 sm:px-5 sm:ps-[72px]">
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<ViewColumnsIcon />}
+                        onClick={() => openModal('statementMapping', { account })}
+                        title="Set up or re-map this account's statement format"
+                    >
+                        {hasMapping ? 'Statement format' : 'Set up statement format'}
+                    </Button>
+                    <Button size="sm" variant="secondary" icon={<EditIcon />} onClick={() => setIsEditing(true)}>Rename</Button>
+                    <Button size="sm" variant="secondary" icon={<ArchiveBoxIcon />} onClick={handleToggleClosed} disabled={isSaving}>
+                        {account.closed ? 'Reopen' : 'Mark as closed'}
+                    </Button>
+                    <button type="button" onClick={handleDelete} className={`${dangerQuiet} min-h-[36px] px-3 text-sm [@media(pointer:coarse)]:min-h-[44px] [&_svg]:h-4 [&_svg]:w-4`}>
+                        <TrashIcon /> Delete
+                    </button>
+                </div>
+            </details>
         </li>
     );
 };
@@ -127,49 +148,49 @@ const AccountManagement = () => {
     };
 
     return (
-        <div className="space-y-6 max-w-3xl mx-auto">
-            <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                <h2 className="text-lg font-semibold text-white">Financial Accounts</h2>
-                <p className="text-sm text-gray-400 mt-1">Manage the bank and credit card accounts you upload statements for.</p>
-                <div className="mt-6">
-                    {financialAccounts.length > 0 ? (
-                        <ul className="space-y-3">
-                            {financialAccounts.map(acc => <AccountRow key={acc.id} account={acc} />)}
-                        </ul>
-                    ) : (
-                         <p className="text-center text-gray-400 py-4">No accounts configured.</p>
-                    )}
-                </div>
-                 <form onSubmit={handleSubmit} className="mt-6 pt-6 border-t border-gray-700 space-y-4">
-                    <h3 className="text-base font-semibold text-white">Add New Account</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                         <div className="sm:col-span-2">
-                            <label htmlFor="newName" className="block text-sm font-medium text-gray-300">Account Name</label>
-                            <input
-                                id="newName"
-                                type="text"
-                                value={newName}
-                                onChange={e => setNewName(e.target.value)}
-                                placeholder="e.g., HSBC Current, Amex Gold"
-                                required
-                                className="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-2 px-3 text-white"
-                            />
-                        </div>
-                         <div>
-                            <label htmlFor="newType" className="block text-sm font-medium text-gray-300">Type</label>
-                             <Select id="newType" value={newType} onChange={e => setNewType(e.target.value as any)} wrapperClassName="mt-1">
-                                <option value="Bank">Bank Account</option>
-                                <option value="Credit Card">Credit Card</option>
+        <div className="space-y-6">
+            <Panel ariaLabel="Accounts">
+                <PanelSection
+                    title="Your accounts"
+                    description="Tap an account to set its statement format, rename or close it. Closed accounts drop out of Expenses and the upload menu; their lines still count in every report."
+                />
+                {financialAccounts.length > 0 ? (
+                    <ul className="m-0 list-none divide-y divide-line p-0">
+                        {financialAccounts.map(acc => <AccountRow key={acc.id} account={acc} />)}
+                    </ul>
+                ) : (
+                    <EmptyState
+                        icon={<BanknotesIcon />}
+                        title="No accounts yet"
+                        description="Add the bank and card accounts you upload statements for. Each one learns its statement format once."
+                    />
+                )}
+            </Panel>
+
+            <Panel ariaLabel="Add an account">
+                <PanelSection title="Add an account">
+                    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                        <Input
+                            id="newName"
+                            label="Account name"
+                            type="text"
+                            value={newName}
+                            onChange={e => setNewName(e.target.value)}
+                            placeholder="Lloyds current, Amex Gold"
+                            required
+                        />
+                        <Field label="Type" htmlFor="newType">
+                            <Select id="newType" value={newType} onChange={e => setNewType(e.target.value as any)}>
+                                <option value="Bank">Bank account</option>
+                                <option value="Credit Card">Credit card</option>
                             </Select>
+                        </Field>
+                        <div className="flex justify-end sm:col-span-2">
+                            <Button type="submit" loading={isAdding} icon={<PlusIcon />} className="w-full sm:w-auto">Add account</Button>
                         </div>
-                    </div>
-                     <div className="text-right">
-                        <button type="submit" disabled={isAdding} className="inline-flex items-center gap-x-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50">
-                            {isAdding ? <Spinner/> : <><PlusIcon className="h-5 w-5" /> Add Account</>}
-                        </button>
-                    </div>
-                </form>
-            </div>
+                    </form>
+                </PanelSection>
+            </Panel>
         </div>
     );
 };

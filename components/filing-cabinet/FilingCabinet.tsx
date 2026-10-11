@@ -3,17 +3,61 @@ import React, { useState, useMemo } from 'react';
 import { formatCurrency, formatDate, toYYYYMMDD } from '../../utils/helpers';
 import * as dataService from '../../services/dataService';
 import Drawer from './Drawer';
-import DocumentListItem from './DocumentListItem';
+import DocumentListItem, { ReceiptChip } from './DocumentListItem';
 import { useData } from '../../hooks/useData';
 import { useUI } from '../../hooks/useUI';
-import { useToast } from '../ui';
+import { Button, DocChip, EmptyState, IconButton, Plate, Search, useToast } from '../ui';
+import type { DocKind } from '../ui';
+import { cx, eyebrow } from '../ui/cx';
 import { ArchiveBoxIcon, DocumentTextIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from '../icons';
-import { SalesDocument } from '../../types';
+import { DocumentType, SalesDocument } from '../../types';
 import UkDateInput from '../common/UkDateInput';
 import Select from '../common/Select';
 import JSZip from 'jszip';
 import ActivityIndicator, { ActivityState } from '../common/ActivityIndicator';
 
+
+const DOC_KIND: Record<DocumentType, DocKind> = {
+    'Sales Invoice': 'SI',
+    'Proforma Invoice': 'PF',
+    'Deposit Slip': 'DS',
+    'Purchase Invoice': 'PI',
+};
+
+type Period = 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter';
+const PERIODS: { id: Period; label: string }[] = [
+    { id: 'this_month', label: 'This month' },
+    { id: 'last_month', label: 'Last month' },
+    { id: 'this_quarter', label: 'This quarter' },
+    { id: 'last_quarter', label: 'Last quarter' },
+];
+
+const periodRange = (period: Period) => {
+    const today = new Date();
+    let start, end;
+
+    switch (period) {
+        case 'this_month':
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+            end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            break;
+        case 'last_month':
+            start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            end = new Date(today.getFullYear(), today.getMonth(), 0);
+            break;
+        case 'this_quarter':
+            const quarter = Math.floor(today.getMonth() / 3);
+            start = new Date(today.getFullYear(), quarter * 3, 1);
+            end = new Date(today.getFullYear(), quarter * 3 + 3, 0);
+            break;
+        case 'last_quarter':
+            const currentQuarter = Math.floor(today.getMonth() / 3);
+            start = new Date(today.getFullYear(), (currentQuarter - 1) * 3, 1);
+            end = new Date(today.getFullYear(), currentQuarter * 3, 0);
+            break;
+    }
+    return { start: toYYYYMMDD(start), end: toYYYYMMDD(end) };
+};
 
 interface SalesDocListItemProps {
     doc: SalesDocument;
@@ -30,7 +74,7 @@ const SalesDocListItem: React.FC<SalesDocListItemProps> = ({ doc }) => {
         } else if (doc.documentType === 'Deposit Slip') {
             openModal('undoDepositConfirm', doc);
         } else { // Proforma or Purchase Invoice
-            if (window.confirm(`Are you sure you want to delete this ${doc.documentType.toLowerCase()}? This cannot be undone.`)) {
+            if (window.confirm(`Delete ${doc.documentType.toLowerCase()} ${doc.invoiceNumber}? You can't undo this.`)) {
                 if (deleteSalesDocument) {
                     deleteSalesDocument(doc.id);
                 }
@@ -39,30 +83,28 @@ const SalesDocListItem: React.FC<SalesDocListItemProps> = ({ doc }) => {
     };
 
     return (
-        <li className="flex items-center justify-between p-3 bg-gray-900/30 hover:bg-gray-800/50 rounded-xl transition-colors border border-white/5">
-            <div>
-                <p className="text-sm font-semibold text-white truncate" title={`${doc.documentType} #${doc.invoiceNumber}`}>
-                    {doc.documentType} #{doc.invoiceNumber}
+        <li className="flex min-h-[64px] items-center gap-3 py-2 pe-1.5 ps-3.5 sm:ps-4">
+            <DocChip kind={DOC_KIND[doc.documentType]} label={null} />
+            <div className="min-w-0 flex-1">
+                <p className="flex min-w-0 items-center gap-2 text-base font-semibold leading-6 text-ink" title={`${doc.documentType} #${doc.invoiceNumber}`}>
+                    {vehicle?.reg && <Plate reg={vehicle.reg} size="sm" />}
+                    <span className="num truncate">{doc.invoiceNumber}</span>
                 </p>
-                <p className="text-xs text-gray-400">
-                    {formatDate(doc.invoiceDate)} - {vehicle?.reg || doc.customerName} - {formatCurrency(doc.subtotal)}
+                <p className="truncate text-sm leading-5 text-ink-3">
+                    <span className="num text-ink-2">{formatCurrency(doc.subtotal)}</span> · <span className="num">{formatDate(doc.invoiceDate)}</span> · {doc.customerName}
                 </p>
             </div>
-            <div className="flex-shrink-0 ml-4 flex items-center gap-2">
-                <button
+            <div className="flex flex-none items-center">
+                <IconButton
+                    label={`View ${doc.documentType.toLowerCase()} ${doc.invoiceNumber}`}
+                    icon={<DocumentTextIcon />}
                     onClick={() => openModal('invoice', { viewOnly: true, document: doc })}
-                    className="p-2 rounded-lg text-gray-400 hover:bg-brand-500/20 hover:text-brand-300 transition-colors"
-                    title="View Document"
-                >
-                    <DocumentTextIcon className="h-5 w-5" />
-                </button>
-                <button
+                />
+                <IconButton
+                    label={`Delete ${doc.documentType.toLowerCase()} ${doc.invoiceNumber}`}
+                    icon={<TrashIcon />}
                     onClick={handleDelete}
-                    className="p-2 rounded-lg text-gray-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
-                    title="Delete Document"
-                >
-                    <TrashIcon className="h-5 w-5" />
-                </button>
+                />
             </div>
         </li>
     );
@@ -84,36 +126,16 @@ const FilingCabinet = () => {
     // Activity State for Progress Bar
     const [activity, setActivity] = useState<ActivityState>({ status: 'idle', message: '' });
 
-    const setPeriod = (period: 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter') => {
-        const today = new Date();
-        let start, end;
-    
-        switch (period) {
-            case 'this_month':
-                start = new Date(today.getFullYear(), today.getMonth(), 1);
-                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                break;
-            case 'last_month':
-                start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                end = new Date(today.getFullYear(), today.getMonth(), 0);
-                break;
-            case 'this_quarter':
-                const quarter = Math.floor(today.getMonth() / 3);
-                start = new Date(today.getFullYear(), quarter * 3, 1);
-                end = new Date(today.getFullYear(), quarter * 3 + 3, 0);
-                break;
-            case 'last_quarter':
-                const currentQuarter = Math.floor(today.getMonth() / 3);
-                start = new Date(today.getFullYear(), (currentQuarter - 1) * 3, 1);
-                end = new Date(today.getFullYear(), currentQuarter * 3, 0);
-                break;
-        }
-        if (start && end) {
-            setStartDate(toYYYYMMDD(start));
-            setEndDate(toYYYYMMDD(end));
-        }
+    const setPeriod = (period: Period) => {
+        const { start, end } = periodRange(period);
+        setStartDate(start);
+        setEndDate(end);
     };
-    
+    const activePeriod = PERIODS.find(p => {
+        const r = periodRange(p.id);
+        return r.start === startDate && r.end === endDate;
+    })?.id;
+
     const {
         filteredSalesInvoices,
         filteredPurchaseInvoicesFromDocs,
@@ -213,11 +235,11 @@ const FilingCabinet = () => {
         const totalFiles = filteredReceipts.length + filteredPurchaseInvoicesFromVehicles.length;
         
         if (totalFiles === 0) {
-            toast.info("No downloadable files found in current view.");
+            toast.info("No files to download in these dates.");
             return;
         }
 
-        setActivity({ status: 'running', message: 'Preparing download...', total: totalFiles, current: 0 });
+        setActivity({ status: 'running', message: 'Getting the files ready…', total: totalFiles, current: 0 });
         
         const zip = new JSZip();
         const filesFolder = zip.folder("files");
@@ -239,7 +261,7 @@ const FilingCabinet = () => {
                         console.error("Error fetching receipt", e); 
                     }
                     processedCount++;
-                    setActivity(prev => ({ ...prev, message: `Processing Receipts...`, current: processedCount }));
+                    setActivity(prev => ({ ...prev, message: `Adding receipts…`, current: processedCount }));
                 }
             }
 
@@ -257,11 +279,11 @@ const FilingCabinet = () => {
                         console.error("Error fetching invoice", e); 
                     }
                     processedCount++;
-                    setActivity(prev => ({ ...prev, message: `Processing Invoices...`, current: processedCount }));
+                    setActivity(prev => ({ ...prev, message: `Adding invoices…`, current: processedCount }));
                 }
             }
 
-            setActivity(prev => ({ ...prev, message: 'Compressing archive...' }));
+            setActivity(prev => ({ ...prev, message: 'Zipping…' }));
             
             const content = await zip.generateAsync({ type: "blob" });
             const link = document.createElement("a");
@@ -271,12 +293,12 @@ const FilingCabinet = () => {
             link.click();
             document.body.removeChild(link);
 
-            setActivity({ status: 'success', message: 'Download Complete' });
+            setActivity({ status: 'success', message: 'Files downloaded' });
             setTimeout(() => setActivity({ status: 'idle', message: '' }), 3000);
 
         } catch (error) {
             console.error(error);
-            setActivity({ status: 'error', message: 'Download failed. Please try again.' });
+            setActivity({ status: 'error', message: "Download didn't finish. Check your signal and try again." });
             setTimeout(() => setActivity({ status: 'idle', message: '' }), 3000);
         }
     };
@@ -290,7 +312,7 @@ const FilingCabinet = () => {
         filteredSalesInvoices.forEach(s => itemsToArchive.push({ type: 'salesDoc', id: s.id, data: s })); // Sales docs don't have fileUrls stored, just data
         
         if (itemsToArchive.length === 0) {
-            toast.info("No items to archive in current view.");
+            toast.info("Nothing to archive in these dates.");
             return;
         }
 
@@ -306,115 +328,163 @@ const FilingCabinet = () => {
     const purchaseInvoicesFromVehicles = filteredPurchaseInvoicesFromVehicles;
     const receipts = filteredReceipts;
     
+    const total = salesInvoices.length + purchaseInvoicesFromDocs.length + purchaseInvoicesFromVehicles.length + receipts.length;
+
     return (
-        <div className="space-y-6 pb-24"> {/* Added padding bottom for floating ActivityIndicator */}
+        <div className="space-y-5 pb-24"> {/* Room for the floating ActivityIndicator */}
             <ActivityIndicator activity={activity} />
-            
-            <div className="glass-card p-4 rounded-xl flex flex-col xl:flex-row items-center gap-4">
-                <div className="relative w-full xl:w-auto xl:flex-1">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                        <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" /></svg>
-                    </div>
-                    <input
-                        type="search"
+
+            {/* ---- Find: search, dates, order ---- */}
+            <section aria-label="Find documents" className="space-y-3 rounded-card border border-line bg-surface p-2.5 sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <Search
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full rounded-xl border-0 bg-gray-900/50 py-2.5 pl-10 pr-3 text-white ring-1 ring-inset ring-gray-700 placeholder:text-gray-500 focus:ring-2 focus:ring-inset focus:ring-brand-500 sm:text-sm"
-                        placeholder="Search documents..."
+                        onChange={setSearchTerm}
+                        label="Search documents"
+                        placeholder="Name, invoice number or reg"
+                        shortcut="/"
+                        className="sm:flex-1"
+                    />
+                    <Select
+                        aria-label="Order"
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
+                        wrapperClassName="sm:w-44 sm:flex-none"
+                    >
+                        <option value="newest">Newest first</option>
+                        <option value="oldest">Oldest first</option>
+                    </Select>
+                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] lg:w-[28rem] lg:flex-none">
+                        <label htmlFor="start-date" className="text-sm font-semibold text-ink">From</label>
+                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                        <label htmlFor="end-date" className="text-sm font-semibold text-ink">To</label>
+                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                    </div>
+                    <div className="-mx-2.5 flex gap-2 overflow-x-auto px-2.5 pb-0.5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 lg:flex-1 [&::-webkit-scrollbar]:hidden" role="group" aria-label="Quick dates">
+                        {PERIODS.map(p => (
+                            <button
+                                key={p.id}
+                                type="button"
+                                aria-pressed={activePeriod === p.id}
+                                onClick={() => setPeriod(p.id)}
+                                className={cx(
+                                    'min-h-[44px] flex-none whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition-colors duration-quick ease-out',
+                                    activePeriod === p.id
+                                        ? 'border-transparent bg-accent-soft text-accent-soft-ink'
+                                        : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink',
+                                )}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* ---- What's here, and what you can do with it ---- */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-ink-3" role="status">
+                    <span className="num text-base font-semibold text-ink">{total}</span> {total === 1 ? 'document' : 'documents'} from <span className="num">{formatDate(startDate)}</span> to <span className="num">{formatDate(endDate)}</span>
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+                    <Button
+                        variant="secondary"
+                        icon={<ArrowDownTrayIcon />}
+                        onClick={handleDownloadVisible}
+                        loading={activity.status === 'running'}
+                        className="col-span-2 sm:col-span-1"
+                    >
+                        Download files
+                    </Button>
+                    <Button variant="secondary" icon={<ArrowUpTrayIcon />} onClick={handleRestore}>
+                        Restore
+                    </Button>
+                    <button
+                        type="button"
+                        onClick={handleArchivePeriod}
+                        className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control border border-line-strong bg-surface px-5 text-base font-semibold text-danger transition-[background-color,color,transform] duration-quick ease-out hover:bg-danger-soft hover:text-danger-ink active:scale-[.97] active:duration-press [&_svg]:h-5 [&_svg]:w-5"
+                    >
+                        <ArchiveBoxIcon /> Archive
+                    </button>
+                </div>
+            </div>
+
+            {total === 0 ? (
+                <div className="rounded-card border border-line bg-surface">
+                    <EmptyState
+                        icon={<ArchiveBoxIcon />}
+                        title="Nothing filed in these dates"
+                        description="Sales documents you make and receipts you upload are filed here. Try a wider date range or clear the search."
+                        actionLabel={activePeriod === 'this_quarter' ? 'Show last quarter' : 'Show this quarter'}
+                        onAction={() => setPeriod(activePeriod === 'this_quarter' ? 'last_quarter' : 'this_quarter')}
                     />
                 </div>
-                <div className="flex items-center gap-4 flex-wrap w-full xl:w-auto justify-end">
-                    <div className="flex items-center gap-2">
-                        <UkDateInput id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-36" />
-                        <span className="text-gray-400 text-sm">to</span>
-                        <UkDateInput id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-36" />
+            ) : (
+                <section aria-label="Filing cabinet">
+                    <p className={cx(eyebrow, 'px-1 pb-1.5')}>Cabinet</p>
+                    {/* The cabinet: a frame with the drawers stacked inside it. */}
+                    <div className="space-y-1.5 rounded-card border border-line-strong bg-surface-2 p-1.5">
+                        {salesInvoices.length > 0 && (
+                            <Drawer title="Sales documents" count={salesInvoices.length}>
+                                {salesInvoices.map(doc => <SalesDocListItem key={doc.id} doc={doc} />)}
+                            </Drawer>
+                        )}
+
+                        {(purchaseInvoicesFromDocs.length > 0 || purchaseInvoicesFromVehicles.length > 0) && (
+                            <Drawer
+                                title="Purchase invoices"
+                                count={purchaseInvoicesFromDocs.length + purchaseInvoicesFromVehicles.length}
+                            >
+                                {purchaseInvoicesFromDocs.map(doc => <SalesDocListItem key={doc.id} doc={doc} />)}
+                                {purchaseInvoicesFromVehicles.map(file => {
+                                    const v = vehicles.find(veh => veh.id === file.id);
+                                    return (
+                                        <DocumentListItem
+                                            key={file.id}
+                                            name={file.name}
+                                            updated={file.date}
+                                            size={0} // Don't have size info here
+                                            downloadUrl={file.downloadUrl}
+                                            code={<DocChip kind="PI" label={null} />}
+                                            title={v ? <><Plate reg={v.reg} size="sm" /><span className="truncate">{v.make} {v.model}</span></> : undefined}
+                                            meta="Uploaded file"
+                                            onDelete={() => {
+                                                if (!companyId) return;
+                                                if (window.confirm(`Delete the purchase invoice file for ${file.name}? The car's record stays.`)) {
+                                                    dataService.deleteVehiclePurchaseInvoice(companyId, file.id);
+                                                }
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </Drawer>
+                        )}
+
+                        {receipts.length > 0 && (
+                            <Drawer title="Receipts" count={receipts.length}>
+                                {receipts.map(receipt => (
+                                    <DocumentListItem
+                                        key={receipt.id}
+                                        name={`${receipt.vendor} - ${formatCurrency(receipt.amount)}`}
+                                        updated={receipt.date}
+                                        size={0} // No size info
+                                        downloadUrl={receipt.receiptUrl!}
+                                        code={<ReceiptChip />}
+                                        title={<span className="truncate">{receipt.vendor}</span>}
+                                        meta={<><span className="num text-ink-2">{formatCurrency(receipt.amount)}</span>{receipt.category ? ` · ${receipt.category}` : ''}</>}
+                                        onDelete={() => {
+                                            if (window.confirm(`Delete the receipt file for ${receipt.vendor}? The expense stays.`)) {
+                                                deleteReceiptFileOnly(receipt.id);
+                                            }
+                                        }}
+                                    />
+                                ))}
+                            </Drawer>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setPeriod('this_month')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors">This Month</button>
-                        <button onClick={() => setPeriod('last_quarter')} className="px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors">Last Qtr</button>
-                    </div>
-                    <div>
-                        <Select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}>
-                            <option value="newest">Newest First</option>
-                            <option value="oldest">Oldest First</option>
-                        </Select>
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3 justify-end">
-                <button onClick={handleRestore} className="inline-flex items-center gap-x-2 rounded-xl bg-gray-800/50 border border-gray-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-gray-700 transition-all">
-                    <ArrowUpTrayIcon className="-ml-1 h-5 w-5 text-gray-400" /> Restore Archive
-                </button>
-                <button onClick={handleDownloadVisible} disabled={activity.status === 'running'} className="inline-flex items-center gap-x-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-900/20 hover:bg-brand-500 transition-all disabled:opacity-50">
-                    <ArrowDownTrayIcon className="-ml-1 h-5 w-5" /> Download Visible
-                </button>
-                <button onClick={handleArchivePeriod} className="inline-flex items-center gap-x-2 rounded-xl bg-red-900/50 border border-red-800/50 px-4 py-2.5 text-sm font-semibold text-red-200 shadow-sm hover:bg-red-800/50 transition-all">
-                    <ArchiveBoxIcon className="-ml-1 h-5 w-5" /> Wipe & Archive Period
-                </button>
-            </div>
-
-            {salesInvoices.length === 0 && purchaseInvoicesFromDocs.length === 0 && purchaseInvoicesFromVehicles.length === 0 && receipts.length === 0 && (
-                <div className="text-center py-20 px-6 glass-card rounded-2xl">
-                    <ArchiveBoxIcon className="h-16 w-16 text-gray-600 mx-auto" />
-                    <h3 className="mt-4 text-xl font-bold text-white">Filing Cabinet is Empty</h3>
-                    <p className="mt-2 text-gray-400">Your generated invoices and uploaded receipts will appear here.</p>
-                </div>
-            )}
-
-            {salesInvoices.length > 0 && (
-                <Drawer
-                    title="Sales Invoices"
-                    count={salesInvoices.length}
-                >
-                    {salesInvoices.map(doc => <SalesDocListItem key={doc.id} doc={doc} />)}
-                </Drawer>
-            )}
-
-            {(purchaseInvoicesFromDocs.length > 0 || purchaseInvoicesFromVehicles.length > 0) && (
-                 <Drawer
-                    title="Purchase Invoices"
-                    count={purchaseInvoicesFromDocs.length + purchaseInvoicesFromVehicles.length}
-                >
-                    {purchaseInvoicesFromDocs.map(doc => <SalesDocListItem key={doc.id} doc={doc} />)}
-                    {purchaseInvoicesFromVehicles.map(file => (
-                        <DocumentListItem
-                            key={file.id}
-                            name={file.name}
-                            updated={file.date}
-                            size={0} // Don't have size info here
-                            downloadUrl={file.downloadUrl}
-                            onDelete={() => {
-                                if (!companyId) return;
-                                if (window.confirm(`Are you sure you want to delete the purchase invoice for ${file.name}? The file will be removed but the vehicle record will be kept.`)) {
-                                    dataService.deleteVehiclePurchaseInvoice(companyId, file.id);
-                                }
-                            }}
-                        />
-                    ))}
-                </Drawer>
-            )}
-
-            {receipts.length > 0 && (
-                <Drawer
-                    title="Receipts"
-                    count={receipts.length}
-                >
-                    {receipts.map(receipt => (
-                        <DocumentListItem
-                            key={receipt.id}
-                            name={`${receipt.vendor} - ${formatCurrency(receipt.amount)}`}
-                            updated={receipt.date}
-                            size={0} // No size info
-                            downloadUrl={receipt.receiptUrl!}
-                             onDelete={() => {
-                                if (window.confirm(`Are you sure you want to delete the file for ${receipt.vendor}? The expense record will be kept.`)) {
-                                    deleteReceiptFileOnly(receipt.id);
-                                }
-                            }}
-                        />
-                    ))}
-                </Drawer>
+                </section>
             )}
         </div>
     );

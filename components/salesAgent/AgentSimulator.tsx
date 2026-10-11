@@ -22,12 +22,12 @@ const clockTime = (at: number) =>
 /** The three dots WhatsApp shows while the other end is typing. */
 const TypingBubble = () => (
     <div className="flex justify-start">
-        <div className="rounded-2xl rounded-tl-sm bg-[#202c33] px-4 py-3 shadow">
+        <div className="rounded-[16px] rounded-es-[4px] bg-bubble-in px-4 py-3">
             <div className="flex items-center gap-1">
                 {[0, 150, 300].map(delay => (
                     <span
                         key={delay}
-                        className="h-2 w-2 rounded-full bg-gray-400 animate-bounce"
+                        className="h-2 w-2 rounded-full bg-ink-3 motion-safe:animate-bounce"
                         style={{ animationDelay: `${delay}ms` }}
                     />
                 ))}
@@ -110,24 +110,24 @@ const AgentSimulator: React.FC<{ companyId: string; dealershipName?: string }> =
     return (
         <div className="w-full max-w-sm">
             {/* ---- the handset -------------------------------------------- */}
-            <div className="rounded-[2.5rem] bg-gray-950 p-3 shadow-2xl shadow-black/60 ring-1 ring-gray-700/60">
-                <div className="relative overflow-hidden rounded-[2rem] bg-[#0b141a]">
+            <div className="rounded-[2.5rem] border border-line-strong bg-bg p-3">
+                <div className="relative overflow-hidden rounded-[2rem] bg-bg">
                     {/* notch */}
-                    <div className="absolute left-1/2 top-0 z-20 h-6 w-32 -translate-x-1/2 rounded-b-2xl bg-gray-950" />
+                    <div className="absolute left-1/2 top-0 z-20 h-6 w-32 -translate-x-1/2 rounded-b-2xl bg-bg" />
 
                     {/* header */}
-                    <div className="relative z-10 flex items-center gap-3 bg-[#075e54] px-3 pb-3 pt-8">
-                        <ChevronLeftIcon className="h-5 w-5 text-white/80 flex-shrink-0" />
-                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-semibold text-white">
+                    <div className="relative z-10 flex items-center gap-3 border-b border-line bg-surface px-3 pb-3 pt-8">
+                        <ChevronLeftIcon className="h-5 w-5 flex-shrink-0 text-ink-2" />
+                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-3 font-mono text-sm font-bold text-ink">
                             {(dealershipName || 'RC').slice(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-white">
+                            <p className="truncate text-sm font-semibold text-ink">
                                 {dealershipName || 'Radlett Car Sales'}
                             </p>
-                            <p className="text-[11px] text-white/70">{waiting ? 'typing…' : 'online'}</p>
+                            <p className="text-xs text-ink-3">{waiting ? 'typing…' : 'online'}</p>
                         </div>
-                        <PhoneIcon className="h-5 w-5 text-white/80 flex-shrink-0" />
+                        <PhoneIcon className="h-5 w-5 flex-shrink-0 text-ink-2" />
                     </div>
 
                     {/* thread */}
@@ -138,15 +138,15 @@ const AgentSimulator: React.FC<{ companyId: string; dealershipName?: string }> =
                             // The faint criss-cross WhatsApp puts behind messages, cheap enough
                             // to draw in CSS rather than ship a texture for.
                             backgroundImage:
-                                'radial-gradient(circle at 25% 25%, rgba(255,255,255,0.03) 1px, transparent 1px), radial-gradient(circle at 75% 75%, rgba(255,255,255,0.03) 1px, transparent 1px)',
+                                'radial-gradient(circle at 25% 25%, rgb(var(--c-ink) / 0.03) 1px, transparent 1px), radial-gradient(circle at 75% 75%, rgb(var(--c-ink) / 0.03) 1px, transparent 1px)',
                             backgroundSize: '24px 24px',
                         }}
                     >
                         {!messages.length && !waiting && (
-                            <div className="mx-auto mt-6 max-w-[15rem] rounded-lg bg-[#182229] px-3 py-2 text-center">
-                                <p className="text-[11px] leading-relaxed text-gray-400">
+                            <div className="mx-auto mt-6 max-w-[15rem] rounded-control bg-surface-2 px-3 py-2 text-center">
+                                <p className="text-sm leading-5 text-ink-2">
                                     Say something a customer would say. Try
-                                    <span className="text-gray-300"> "is the black Focus still available?"</span>
+                                    <span className="text-ink-2"> "is the black Focus still available?"</span>
                                 </p>
                             </div>
                         )}
@@ -157,14 +157,14 @@ const AgentSimulator: React.FC<{ companyId: string; dealershipName?: string }> =
                                 className={`flex ${message.from === 'customer' ? 'justify-end' : 'justify-start'}`}
                             >
                                 <div
-                                    className={`max-w-[80%] px-3 py-2 shadow ${
+                                    className={`max-w-[80%] px-3 py-2 ${
                                         message.from === 'customer'
-                                            ? 'rounded-2xl rounded-tr-sm bg-[#005c4b] text-white'
-                                            : 'rounded-2xl rounded-tl-sm bg-[#202c33] text-gray-100'
+                                            ? 'rounded-[16px] rounded-ee-[4px] bg-bubble-out text-ink'
+                                            : 'rounded-[16px] rounded-es-[4px] bg-bubble-in text-ink'
                                     }`}
                                 >
-                                    <p className="whitespace-pre-wrap break-words text-sm leading-snug">{message.text}</p>
-                                    <p className="mt-1 text-right text-[10px] text-white/50">{clockTime(message.at)}</p>
+                                    <p className="whitespace-pre-wrap break-words text-base leading-[1.4]">{message.text}</p>
+                                    <p className="mt-1 text-end font-mono text-xs text-ink-3">{clockTime(message.at)}</p>
                                 </div>
                             </div>
                         ))}
@@ -173,22 +173,22 @@ const AgentSimulator: React.FC<{ companyId: string; dealershipName?: string }> =
                     </div>
 
                     {/* composer */}
-                    <div className="flex items-center gap-2 bg-[#111b21] px-3 py-3">
+                    <div className="flex items-center gap-2 border-t border-line bg-surface px-3 py-2">
                         <input
                             value={draft}
                             onChange={e => setDraft(e.target.value)}
                             onKeyDown={onKeyDown}
                             placeholder="Message"
                             aria-label="Message to the agent"
-                            className="min-w-0 flex-1 rounded-full bg-[#2a3942] px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                            className="min-h-[44px] min-w-0 flex-1 rounded-full border border-line-strong bg-surface px-4 text-base text-ink placeholder:text-ink-3"
                         />
                         <button
                             onClick={send}
                             disabled={!draft.trim() || waiting}
                             aria-label="Send"
-                            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-opacity disabled:opacity-40"
+                            className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-full bg-accent text-on-accent transition-colors duration-quick ease-out hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-3"
                         >
-                            <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                            <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 rtl:-scale-x-100" aria-hidden>
                                 <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
                             </svg>
                         </button>
@@ -199,9 +199,9 @@ const AgentSimulator: React.FC<{ companyId: string; dealershipName?: string }> =
             {/* ---- what the agent decided, which the phone deliberately hides -- */}
             <div className="mt-4 space-y-3">
                 {error && (
-                    <div className="flex items-start gap-2 rounded-lg bg-red-900/40 p-3">
-                        <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
-                        <p className="text-sm text-gray-300">{error}</p>
+                    <div className="flex items-start gap-2 rounded-control border border-danger bg-danger-soft p-3 text-danger-ink">
+                        <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <p className="text-sm">{error}</p>
                     </div>
                 )}
 
@@ -209,8 +209,7 @@ const AgentSimulator: React.FC<{ companyId: string; dealershipName?: string }> =
                     {stage && <Badge variant="primary">Stage: {STAGE_LABELS[stage] || stage}</Badge>}
                     {escalated && <Badge variant="warning">Would ping you</Badge>}
                     {handoff && <Badge variant="danger">Would hand over</Badge>}
-                    <Button size="sm" variant="ghost" onClick={reset} className="ml-auto">
-                        <ArrowPathIcon className="h-4 w-4" />
+                    <Button size="sm" variant="ghost" onClick={reset} className="ms-auto" icon={<ArrowPathIcon />}>
                         Reset
                     </Button>
                 </div>

@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { ArrowDownTrayIcon, TrashIcon } from '../icons';
 import { formatBytes, formatDate } from '../../utils/helpers';
+import { IconButton } from '../ui';
 
 interface DocumentListItemProps {
   name: string;
@@ -9,9 +9,27 @@ interface DocumentListItemProps {
   size: number;
   downloadUrl: string;
   onDelete: () => void;
+  /** Leading type chip (DocChip, ReceiptChip). */
+  code?: React.ReactNode;
+  /** First line; defaults to the name. */
+  title?: React.ReactNode;
+  /** Second line, before the date. */
+  meta?: React.ReactNode;
 }
 
-const DocumentListItem: React.FC<DocumentListItemProps> = ({ name, updated, size, downloadUrl, onDelete }) => {
+/**
+ * The receipt counterpart of ui/DocChip: same shape, a two-letter mono code
+ * on a neutral block. Local until DocChip learns an "RC" kind.
+ */
+export const ReceiptChip: React.FC = () => (
+  <span className="inline-flex h-[26px] flex-none items-stretch overflow-hidden whitespace-nowrap rounded-chip border border-line-strong text-xs font-semibold" title="Receipt">
+    <b className="grid place-items-center bg-surface-2 px-1.5 font-mono font-semibold text-ink-2">RC</b>
+    <span className="sr-only">Receipt</span>
+  </span>
+);
+
+/** A filed file: what it is, then its facts; download and delete on the end. */
+const DocumentListItem: React.FC<DocumentListItemProps> = ({ name, updated, size, downloadUrl, onDelete, code, title, meta }) => {
 
     const handleDownload = () => {
         const link = document.createElement('a');
@@ -24,31 +42,20 @@ const DocumentListItem: React.FC<DocumentListItemProps> = ({ name, updated, size
     };
 
     return (
-        <li className="flex items-center justify-between p-3 bg-gray-900/30 hover:bg-gray-800/50 rounded-xl transition-colors border border-white/5">
-            <div>
-                <p className="text-sm font-semibold text-white truncate" title={name}>{name}</p>
-                <p className="text-xs text-gray-400">
-                    Updated: {formatDate(updated)}
-                    {size > 0 && (
-                        <span className="ml-2 text-gray-500">({formatBytes(size)})</span>
-                    )}
+        <li className="flex min-h-[64px] items-center gap-3 py-2 pe-1.5 ps-3.5 sm:ps-4">
+            {code}
+            <div className="min-w-0 flex-1">
+                <p className="flex min-w-0 items-center gap-2 text-base font-semibold leading-6 text-ink" title={name}>
+                    {title ?? <span className="truncate">{name}</span>}
+                </p>
+                <p className="truncate text-sm leading-5 text-ink-3">
+                    {meta}{meta ? ' · ' : ''}<span className="num">{formatDate(updated)}</span>
+                    {size > 0 && <span className="num"> · {formatBytes(size)}</span>}
                 </p>
             </div>
-            <div className="flex-shrink-0 ml-4 flex items-center gap-2">
-                <button
-                    onClick={handleDownload}
-                    className="p-2 rounded-lg text-gray-400 hover:bg-brand-500/20 hover:text-brand-300 transition-colors"
-                    title="Download File"
-                >
-                    <ArrowDownTrayIcon className="h-5 w-5" />
-                </button>
-                <button
-                    onClick={onDelete}
-                    className="p-2 rounded-lg text-gray-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
-                    title="Delete File"
-                >
-                    <TrashIcon className="h-5 w-5" />
-                </button>
+            <div className="flex flex-none items-center">
+                <IconButton label={`Download ${name}`} icon={<ArrowDownTrayIcon />} onClick={handleDownload} />
+                <IconButton label={`Delete the file for ${name}`} icon={<TrashIcon />} onClick={onDelete} />
             </div>
         </li>
     );

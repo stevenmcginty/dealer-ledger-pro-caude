@@ -30,20 +30,20 @@ class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-center">
-          <div className="bg-gray-800 p-8 rounded-xl shadow-2xl border border-red-500/30 max-w-lg w-full">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-900/50 mb-6">
-                <ExclamationTriangleIcon className="h-8 w-8 text-red-400" />
+        <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-full max-w-lg rounded-card border border-line bg-surface p-6 text-start">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-danger-soft">
+                <ExclamationTriangleIcon className="h-8 w-8 text-danger-ink" />
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">Something went wrong</h1>
-            <p className="text-gray-400 mb-6">The application encountered an unexpected error and cannot continue.</p>
+            <h1 className="mb-2 text-xl font-bold text-ink">Something went wrong</h1>
+            <p className="mb-5 text-base text-ink-2">The app hit an error it can’t recover from. Reload to start again; your saved work is safe.</p>
             
-            <div className="bg-gray-900 rounded-lg p-4 mb-6 text-left overflow-auto max-h-48">
-              <p className="text-red-400 font-mono text-sm break-all">
+            <div className="mb-5 max-h-48 overflow-auto rounded-control bg-surface-2 p-3 text-start">
+              <p className="text-danger font-mono text-sm break-all">
                 {this.state.error && this.state.error.toString()}
               </p>
               {this.state.errorInfo && (
-                <pre className="text-gray-500 font-mono text-xs mt-2">
+                <pre className="text-ink-3 font-mono text-xs mt-2">
                   {this.state.errorInfo.componentStack}
                 </pre>
               )}
@@ -51,9 +51,9 @@ class ErrorBoundary extends Component<Props, State> {
 
             <button
               onClick={() => window.location.reload()}
-              className="w-full py-3 px-4 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg transition-colors"
+              className="min-h-[48px] w-full rounded-control bg-accent px-4 text-base font-semibold text-on-accent transition-colors duration-quick hover:bg-accent-hover active:bg-accent-press"
             >
-              Reload Application
+              Reload app
             </button>
           </div>
         </div>

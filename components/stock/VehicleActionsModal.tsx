@@ -4,7 +4,8 @@ import React from 'react';
 import { Vehicle, SalesDocument, DocumentType, PDI } from '../../types';
 import { useUI } from '../../hooks/useUI';
 import { useData } from '../../hooks/useData';
-import { XMarkIcon, EditIcon, UndoIcon, DocumentTextIcon, ShieldCheckIcon } from '../icons';
+import { PanelHeader } from './parts';
+import { EditIcon, UndoIcon, DocumentTextIcon, ShieldCheckIcon } from '../icons';
 
 interface VehicleActionsModalProps {
     data: {
@@ -24,7 +25,7 @@ type ActionButtonProps = {
 const ActionButton: React.FC<ActionButtonProps> = ({ onClick, children, className = '' }) => (
     <button
         onClick={onClick}
-        className={`w-full text-left p-4 text-sm font-medium rounded-lg transition-colors flex items-center gap-3 ${className}`}
+        className={`flex min-h-[56px] w-full items-center gap-3 rounded-control px-4 text-start text-base font-semibold transition-colors duration-quick ease-out active:bg-surface-3 ${className}`}
     >
         {children}
     </button>
@@ -58,36 +59,28 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
 
     return (
         <div className="w-full">
-            <header className="p-4 border-b border-gray-700 flex items-center justify-between">
-                <div>
-                    <h2 className="text-lg font-bold text-white">Actions for {vehicle.reg}</h2>
-                    <p className="text-sm text-gray-400">{vehicle.make} {vehicle.model}</p>
-                </div>
-                <button onClick={closeModal} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white">
-                    <XMarkIcon className="h-6 w-6" />
-                </button>
-            </header>
-            <div className="p-4 space-y-2">
-                <ActionButton onClick={onEditClick} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                    <EditIcon className="h-5 w-5" />
-                    <span>Edit Vehicle Details</span>
+            <PanelHeader title={<>Car <span className="num">#{vehicle.stockNumber}</span></>} subtitle={`${vehicle.reg} · ${vehicle.make} ${vehicle.model}`} onClose={closeModal} />
+            <div className="space-y-1 p-2">
+                <ActionButton onClick={onEditClick} className="text-ink hover:bg-surface-2">
+                    <EditIcon className="h-5 w-5 text-ink-2" />
+                    <span>Edit car details</span>
                 </ActionButton>
 
                 {latestPdi ? (
                     <>
-                        <ActionButton onClick={() => onViewPdiClick(latestPdi)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <ShieldCheckIcon className="h-5 w-5 text-emerald-400" />
+                        <ActionButton onClick={() => onViewPdiClick(latestPdi)} className="text-ink hover:bg-surface-2">
+                            <ShieldCheckIcon className="h-5 w-5 text-ink-2" />
                             <span>View PDI #{latestPdi.pdiNumber}</span>
                         </ActionButton>
-                        <ActionButton onClick={onNewPdiClick} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <ShieldCheckIcon className="h-5 w-5 text-emerald-400" />
+                        <ActionButton onClick={onNewPdiClick} className="text-ink hover:bg-surface-2">
+                            <ShieldCheckIcon className="h-5 w-5 text-ink-2" />
                             <span>New PDI</span>
                         </ActionButton>
                     </>
                 ) : (
-                    <ActionButton onClick={onNewPdiClick} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                        <ShieldCheckIcon className="h-5 w-5 text-emerald-400" />
-                        <span>Create PDI</span>
+                    <ActionButton onClick={onNewPdiClick} className="text-ink hover:bg-surface-2">
+                        <ShieldCheckIcon className="h-5 w-5 text-ink-2" />
+                        <span>Start PDI</span>
                     </ActionButton>
                 )}
 
@@ -95,41 +88,41 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                     <>
                         {salesDoc && (
                             <>
-                                <p className="text-xs text-yellow-300">This vehicle is in stock but still has a sales invoice attached — it will show as sold in reports.</p>
-                                <ActionButton onClick={() => onViewDocClick(salesDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <DocumentTextIcon className="h-5 w-5 text-green-400" />
-                                    <span>View Sales Invoice</span>
+                                <p className="px-4 py-2 text-sm font-semibold text-warning-ink">This vehicle is in stock but still has a sales invoice attached — it will show as sold in reports.</p>
+                                <ActionButton onClick={() => onViewDocClick(salesDoc)} className="text-ink hover:bg-surface-2">
+                                    <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                    <span>View sales invoice</span>
                                 </ActionButton>
-                                <ActionButton onClick={() => onUndoClick(salesDoc)} className="bg-red-900/50 hover:bg-red-800 text-red-300">
+                                <ActionButton onClick={() => onUndoClick(salesDoc)} className="text-danger hover:bg-danger-soft">
                                     <UndoIcon className="h-5 w-5" />
-                                    <span>Remove Stray Sales Invoice</span>
+                                    <span>Remove stray sales invoice</span>
                                 </ActionButton>
                             </>
                         )}
-                        <ActionButton onClick={() => onActionClick('Deposit Slip')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <DocumentTextIcon className="h-5 w-5 text-cyan-400" />
-                            <span>Create Deposit Slip</span>
+                        <ActionButton onClick={() => onActionClick('Deposit Slip')} className="text-ink hover:bg-surface-2">
+                            <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                            <span>Take a deposit</span>
                         </ActionButton>
                         {proformaDoc ? (
                             <>
-                                <ActionButton onClick={() => onViewDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
-                                    <span>View Proforma</span>
+                                <ActionButton onClick={() => onViewDocClick(proformaDoc)} className="text-ink hover:bg-surface-2">
+                                    <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                    <span>View proforma</span>
                                 </ActionButton>
-                                <ActionButton onClick={() => onEditDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <EditIcon className="h-5 w-5" />
-                                    <span>Edit Proforma</span>
+                                <ActionButton onClick={() => onEditDocClick(proformaDoc)} className="text-ink hover:bg-surface-2">
+                                    <EditIcon className="h-5 w-5 text-ink-2" />
+                                    <span>Edit proforma</span>
                                 </ActionButton>
                             </>
                         ) : (
-                            <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
-                                <span>Create Proforma</span>
+                            <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="text-ink hover:bg-surface-2">
+                                <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                <span>Make a proforma</span>
                             </ActionButton>
                         )}
-                        <ActionButton onClick={() => onActionClick('Sales Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                           <DocumentTextIcon className="h-5 w-5 text-green-400" />
-                           <span>Create Sales Invoice</span>
+                        <ActionButton onClick={() => onActionClick('Sales Invoice')} className="text-ink hover:bg-surface-2">
+                           <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                           <span>Sell this car</span>
                         </ActionButton>
                     </>
                 )}
@@ -137,42 +130,42 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                 {vehicle.status === 'Deposit Paid' && (
                     <>
                         {depositDoc && (
-                             <ActionButton onClick={() => onViewDocClick(depositDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                <DocumentTextIcon className="h-5 w-5 text-cyan-400" />
-                                <span>View Deposit Slip</span>
+                             <ActionButton onClick={() => onViewDocClick(depositDoc)} className="text-ink hover:bg-surface-2">
+                                <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                <span>View deposit slip</span>
                             </ActionButton>
                         )}
                         {depositDoc && (
-                             <ActionButton onClick={() => onEditDocClick(depositDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                <EditIcon className="h-5 w-5" />
-                                <span>Edit Deposit Slip</span>
+                             <ActionButton onClick={() => onEditDocClick(depositDoc)} className="text-ink hover:bg-surface-2">
+                                <EditIcon className="h-5 w-5 text-ink-2" />
+                                <span>Edit deposit slip</span>
                             </ActionButton>
                         )}
                         {proformaDoc ? (
                             <>
-                                <ActionButton onClick={() => onViewDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
-                                    <span>View Proforma</span>
+                                <ActionButton onClick={() => onViewDocClick(proformaDoc)} className="text-ink hover:bg-surface-2">
+                                    <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                    <span>View proforma</span>
                                 </ActionButton>
-                                <ActionButton onClick={() => onEditDocClick(proformaDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <EditIcon className="h-5 w-5" />
-                                    <span>Edit Proforma</span>
+                                <ActionButton onClick={() => onEditDocClick(proformaDoc)} className="text-ink hover:bg-surface-2">
+                                    <EditIcon className="h-5 w-5 text-ink-2" />
+                                    <span>Edit proforma</span>
                                 </ActionButton>
                             </>
                         ) : (
-                            <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                <DocumentTextIcon className="h-5 w-5 text-yellow-400" />
-                                <span>Create Proforma</span>
+                            <ActionButton onClick={() => onActionClick('Proforma Invoice')} className="text-ink hover:bg-surface-2">
+                                <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                <span>Make a proforma</span>
                             </ActionButton>
                         )}
-                        <ActionButton onClick={() => onActionClick('Sales Invoice')} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                            <DocumentTextIcon className="h-5 w-5 text-green-400" />
-                            <span>Finalise Sale</span>
+                        <ActionButton onClick={() => onActionClick('Sales Invoice')} className="text-ink hover:bg-surface-2">
+                            <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                            <span>Finish sale</span>
                         </ActionButton>
                         {depositDoc && (
-                             <ActionButton onClick={() => onUndoDepositClick(depositDoc)} className="bg-red-900/50 hover:bg-red-800 text-red-300">
+                             <ActionButton onClick={() => onUndoDepositClick(depositDoc)} className="text-danger hover:bg-danger-soft">
                                 <UndoIcon className="h-5 w-5" />
-                                <span>Undo Deposit</span>
+                                <span>Undo deposit</span>
                             </ActionButton>
                         )}
                     </>
@@ -182,23 +175,23 @@ const VehicleActionsModal = ({ data }: VehicleActionsModalProps) => {
                      <>
                         {salesDoc ? (
                              <>
-                                <ActionButton onClick={() => onViewDocClick(salesDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <DocumentTextIcon className="h-5 w-5 text-green-400" />
-                                    <span>View Sales Invoice</span>
+                                <ActionButton onClick={() => onViewDocClick(salesDoc)} className="text-ink hover:bg-surface-2">
+                                    <DocumentTextIcon className="h-5 w-5 text-ink-2" />
+                                    <span>View sales invoice</span>
                                 </ActionButton>
-                                <ActionButton onClick={() => onEditDocClick(salesDoc)} className="bg-gray-700/50 hover:bg-gray-700 text-white">
-                                    <EditIcon className="h-5 w-5" />
-                                    <span>Edit Sales Invoice</span>
+                                <ActionButton onClick={() => onEditDocClick(salesDoc)} className="text-ink hover:bg-surface-2">
+                                    <EditIcon className="h-5 w-5 text-ink-2" />
+                                    <span>Edit sales invoice</span>
                                 </ActionButton>
-                                <ActionButton onClick={() => onUndoClick(salesDoc)} className="bg-red-900/50 hover:bg-red-800 text-red-300">
+                                <ActionButton onClick={() => onUndoClick(salesDoc)} className="text-danger hover:bg-danger-soft">
                                     <UndoIcon className="h-5 w-5" />
-                                    <span>Undo Sale</span>
+                                    <span>Undo sale</span>
                                 </ActionButton>
                             </>
                         ) : (
-                            <ActionButton onClick={() => onForceUndoClick(vehicle)} className="bg-yellow-900/50 hover:bg-yellow-800 text-yellow-300">
+                            <ActionButton onClick={() => onForceUndoClick(vehicle)} className="text-warning-ink bg-warning-soft hover:bg-warning-soft">
                                 <UndoIcon className="h-5 w-5" />
-                                <span>Fix Sale Status</span>
+                                <span>Fix sale status</span>
                             </ActionButton>
                         )}
                     </>

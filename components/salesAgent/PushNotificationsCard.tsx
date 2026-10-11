@@ -3,6 +3,7 @@ import { Badge, Button, Card, useToast } from '../ui';
 import { BellIcon, CheckCircleIcon, ExclamationTriangleIcon } from '../icons';
 import { PushStatus, currentPushToken, disablePush, enablePush, readPushStatus } from '../../services/pushService';
 import { saveSalesAgentSettings, sendTestPush } from '../../services/salesAgentService';
+import { SettingSwitch } from './settingParts';
 
 /**
  * Getting Dave's alerts onto the phone in Steve's pocket.
@@ -19,37 +20,7 @@ import { saveSalesAgentSettings, sendTestPush } from '../../services/salesAgentS
  */
 
 /** Matches the switch on the settings page it sits inside. */
-const Switch: React.FC<{
-    checked: boolean;
-    onChange: (next: boolean) => void;
-    label: string;
-    hint?: string;
-    disabled?: boolean;
-}> = ({ checked, onChange, label, hint, disabled }) => (
-    <label className={`flex items-start gap-3 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
-        <button
-            type="button"
-            role="switch"
-            aria-checked={checked}
-            aria-label={label}
-            disabled={disabled}
-            onClick={() => onChange(!checked)}
-            className={`mt-0.5 relative inline-flex h-6 w-11 flex-shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500/50 ${
-                checked ? 'bg-brand-600' : 'bg-gray-600'
-            }`}
-        >
-            <span
-                className={`inline-block h-5 w-5 mt-0.5 transform rounded-full bg-white shadow transition-transform duration-200 ${
-                    checked ? 'translate-x-[1.375rem]' : 'translate-x-0.5'
-                }`}
-            />
-        </button>
-        <span className="min-w-0">
-            <span className="block text-sm font-medium text-gray-200">{label}</span>
-            {hint && <span className="block text-xs text-gray-500 mt-0.5">{hint}</span>}
-        </span>
-    </label>
-);
+const Switch = SettingSwitch;
 
 /** What each state means, in the words somebody would use about their own phone. */
 const DEVICE_STATE: Record<PushStatus, { label: string; detail: string; variant: 'success' | 'warning' | 'default' }> = {
@@ -204,20 +175,20 @@ const PushNotificationsCard: React.FC<PushNotificationsCardProps> = ({ companyId
                         onChange={handleToggle}
                     />
 
-                    <div className="flex flex-wrap items-start justify-between gap-4 rounded-lg bg-gray-900/40 border border-gray-700/50 p-4">
-                        <div className="flex items-start gap-3 min-w-0">
-                            <div className={`p-2 rounded-lg ${status === 'enabled' ? 'bg-emerald-500/20' : 'bg-gray-700/60'}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-4 rounded-card border border-line bg-surface-2 p-4">
+                        <div className="flex min-w-0 items-start gap-3">
+                            <div className={`grid h-10 w-10 flex-shrink-0 place-items-center rounded-control ${status === 'enabled' ? 'bg-success-soft' : 'bg-surface'}`}>
                                 {status === 'blocked' || status === 'needs-install' ? (
-                                    <ExclamationTriangleIcon className="w-5 h-5 text-amber-400" />
+                                    <ExclamationTriangleIcon className="w-5 h-5 text-warning" />
                                 ) : status === 'enabled' ? (
-                                    <CheckCircleIcon className="w-5 h-5 text-emerald-400" />
+                                    <CheckCircleIcon className="w-5 h-5 text-success" />
                                 ) : (
-                                    <BellIcon className="w-5 h-5 text-gray-400" />
+                                    <BellIcon className="w-5 h-5 text-ink-3" />
                                 )}
                             </div>
                             <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-200">This device</p>
-                                <p className="text-sm text-gray-500 mt-0.5 max-w-xl">
+                                <p className="text-sm font-semibold text-ink">This device</p>
+                                <p className="mt-0.5 max-w-xl text-sm leading-5 text-ink-2">
                                     {state ? state.detail : 'Checking what this device can do…'}
                                 </p>
                             </div>
@@ -244,11 +215,11 @@ const PushNotificationsCard: React.FC<PushNotificationsCardProps> = ({ companyId
                     </div>
 
                     {testResult && (
-                        <p className="text-sm text-gray-300">{testResult}</p>
+                        <p className="text-sm text-ink-2">{testResult}</p>
                     )}
 
                     {pushOn === false && (
-                        <p className="text-sm text-amber-400">
+                        <p className="text-sm font-semibold text-warning-ink">
                             Push alerts are switched off for the whole company, so nothing will reach any
                             device until the toggle above is back on.
                         </p>
