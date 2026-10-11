@@ -125,6 +125,7 @@ const AppShell: React.FC<AppShellProps> = ({ children, notifications, onLogout, 
             backLabel="Back to stock"
             onOpenSearch={() => setSearchOpen(true)}
             searchRef={searchRef}
+            showPrepMic={view !== 'settings' && !flags.isServiceBusiness}
         />
     );
 

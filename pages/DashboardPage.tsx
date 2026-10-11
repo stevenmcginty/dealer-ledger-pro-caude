@@ -10,7 +10,6 @@ import Calendar from '../components/common/Calendar';
 import Spinner from '../components/common/Spinner';
 import { toYYYYMMDD, formatCurrency, formatDate } from '../utils/helpers';
 import DayTasksList, { ToDoItemRow } from '../components/todo/ToDoList';
-import PrepDictation from '../components/work-prep/PrepDictation';
 import { IconButton, Plate, StatusChip, EmptyState, Skeleton, SkeletonList, Checkbox } from '../components/ui';
 import { cx } from '../components/ui/cx';
 
@@ -427,7 +426,6 @@ const VehiclePrepView = () => {
     return (
         <section aria-labelledby="today-prep" className="[grid-area:prep] min-w-0">
             <SectionHead id="today-prep" title="Prep" count={open}>
-                <PrepDictation />
                 <IconButton label="Add prep job" icon={<PlusIcon />} onClick={() => openModal('todo', { type: 'prep' })} />
             </SectionHead>
             <div className="mt-1">

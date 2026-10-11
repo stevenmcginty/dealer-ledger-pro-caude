@@ -5,6 +5,7 @@ import { cx } from '../ui/cx';
 import { Breakpoint } from './hooks';
 import { NavFlags } from './navModel';
 import SearchBody from './GlobalSearch';
+import PrepDictation from '../work-prep/PrepDictation';
 import { ChevronLeftIcon, MagnifyingGlassIcon } from '../icons';
 
 interface AppHeaderProps {
@@ -20,16 +21,18 @@ interface AppHeaderProps {
     onOpenSearch: () => void;
     /** Desktop: the inline search field, so "/" can focus it. */
     searchRef: React.RefObject<HTMLInputElement | null>;
+    /** The prep dictation mic, beside Search on every page but Settings. */
+    showPrepMic?: boolean;
 }
 
 const iconBtn =
     'grid h-12 w-12 flex-none place-items-center rounded-control text-ink-2 transition-colors duration-quick ease-out hover:bg-surface-2 hover:text-ink active:bg-surface-3';
 
 /**
- * The slim header: where you are, then Search and Alerts. Nothing else; the
- * create button is Add, app updates are a banner.
+ * The slim header: where you are, then the prep mic, Search and Alerts.
+ * Nothing else; the create button is Add, app updates are a banner.
  */
-const AppHeader: React.FC<AppHeaderProps> = ({ bp, title, subtitle, flags, notifications, onBack, backLabel, onOpenSearch, searchRef }) => {
+const AppHeader: React.FC<AppHeaderProps> = ({ bp, title, subtitle, flags, notifications, onBack, backLabel, onOpenSearch, searchRef, showPrepMic }) => {
     const desktop = bp === 'desktop';
     return (
         <header
@@ -48,6 +51,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ bp, title, subtitle, flags, notif
                 <h1 className={cx('truncate font-bold leading-tight text-ink', desktop ? 'text-2xl tracking-[-0.01em]' : 'text-xl')}>{title}</h1>
                 {subtitle && !desktop && <p className="truncate text-sm leading-snug text-ink-3">{subtitle}</p>}
             </div>
+            {showPrepMic && <PrepDictation />}
             {desktop ? (
                 <div className="me-1">
                     <SearchBody flags={flags} variant="field" inputRef={searchRef} />
