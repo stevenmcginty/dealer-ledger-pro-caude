@@ -392,6 +392,21 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
                         )}
                     </Field>
 
+                    {/* Sits under Supplier so it shows without scrolling; picked from the supplier's past expenses. */}
+                    <div role="group" aria-labelledby="expense-paid-label" className="flex flex-col gap-1.5">
+                        <span id="expense-paid-label" className="text-sm font-semibold leading-5 text-ink">How it was paid</span>
+                        <Segmented
+                            ariaLabel="How it was paid"
+                            value={(formData.paymentType || 'Direct') as 'Direct' | 'On Account'}
+                            onChange={v => setFormData(p => ({ ...p, paymentType: v }))}
+                            options={[
+                                { value: 'Direct', label: 'Paid direct' },
+                                { value: 'On Account', label: 'On supplier account' },
+                            ]}
+                            full
+                        />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                         <Field label={label('Total', 'amount')} htmlFor="amount">
                             <CurrencyInput id="amount" value={amountStr} onChange={e => { setAmountStr(e.target.value); touch('amount'); }} required />
@@ -420,20 +435,6 @@ const ExpenseEditor = ({ companyId, userId, onSubmit, editingReceipt, prefillDat
                             {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                         </Select>
                     </Field>
-
-                    <div role="group" aria-labelledby="expense-paid-label" className="flex flex-col gap-1.5">
-                        <span id="expense-paid-label" className="text-sm font-semibold leading-5 text-ink">How it was paid</span>
-                        <Segmented
-                            ariaLabel="How it was paid"
-                            value={(formData.paymentType || 'Direct') as 'Direct' | 'On Account'}
-                            onChange={v => setFormData(p => ({ ...p, paymentType: v }))}
-                            options={[
-                                { value: 'Direct', label: 'Paid direct' },
-                                { value: 'On Account', label: 'On supplier account' },
-                            ]}
-                            full
-                        />
-                    </div>
                 </div>
 
                 {editingReceipt && (

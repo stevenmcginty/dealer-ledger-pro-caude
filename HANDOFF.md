@@ -1,5 +1,11 @@
 # Handoff
 
+## 12 Oct 2026 — New expense: "How it was paid" moved under Supplier: LIVE
+
+- Steve could not see "On supplier account" on a scanned Autobitz expense; the switch sat below Category, off-screen on his phone. It saved correctly as On Account (receipt `-P3jib6M5vmc4CDBv42Y`), picked from the supplier's history (79 of 86 Autobitz expenses are On Account).
+- The switch now sits straight under Supplier in `components/expenses/ExpenseEditor.tsx`. The scan still does not read "on account" from the paper; a new supplier starts on "Paid direct".
+- Checks: `tsc` clean, 374/374 tests, `vite build` OK, hosting deployed, live bundle checked.
+
 ## 12 Oct 2026 — Car page: "Take a deposit" button is amber: LIVE
 
 - Steve said the deposit button did not stand out. It now uses a new Button variant `deposit` (amber: `warning-soft` fill, `warning` border, `warning-ink` text) with a banknote icon. "Make a proforma" stays grey; "Sell this car" stays green.
