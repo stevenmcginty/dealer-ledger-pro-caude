@@ -90,6 +90,10 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
     // attach the contact to yet.
     const canSendToCustomer = !isPreview && !!doc.id && doc.id !== 'temp-id';
 
+    // A purchase invoice is the car we bought: the other party is the seller, and our
+    // bank details and sales warranty terms don't belong on it.
+    const isPurchase = doc.documentType === 'Purchase Invoice';
+
     // Page 2 (terms + cancellation form) is offered when the company has set it up,
     // and added only when the desk ticks it for this view. Off every time the view opens.
     const [addTermsPage, setAddTermsPage] = useState(false);
@@ -180,7 +184,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                     </header>
                     <section className="grid grid-cols-2 gap-6 mb-3">
                         <div className="border border-black p-2 text-black">
-                            <h3 className="font-bold text-black uppercase tracking-wider text-xs mb-1">Invoice To:</h3>
+                            <h3 className="font-bold text-black uppercase tracking-wider text-xs mb-1">{isPurchase ? 'Purchased From:' : 'Invoice To:'}</h3>
                             <p className="font-semibold text-base text-black">{doc.customerName}</p>
                             <p className="whitespace-pre-line text-black text-sm leading-snug">{doc.customerAddress}</p>
                         </div>
@@ -269,7 +273,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                         {/* Payment Details (left) + Signature/Date (right) */}
                         <div className="flex justify-between items-start border-t border-black pt-2 mb-2">
                             <div className="w-1/2 pr-4">
-                                {businessDetails?.bankDetails && (
+                                {!isPurchase && businessDetails?.bankDetails && (
                                     <>
                                         <h2 className="font-bold text-[10px] mb-0.5 text-black">Payment Details</h2>
                                         <p className="text-[9px] text-black whitespace-pre-line leading-tight">{businessDetails.bankDetails}</p>
@@ -279,7 +283,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                             <div className="w-2/5">
                                 <div className="mb-6">
                                     <div className="border-b border-black" style={{ height: '20px' }}></div>
-                                    <p className="text-[9px] text-black mt-0.5">Customer Signature</p>
+                                    <p className="text-[9px] text-black mt-0.5">{isPurchase ? 'Seller Signature' : 'Customer Signature'}</p>
                                 </div>
                                 <div>
                                     <div className="border-b border-black" style={{ height: '20px' }}></div>
@@ -288,7 +292,7 @@ const PrintableView: React.FC<PrintableViewProps> = ({ document: doc, businessDe
                             </div>
                         </div>
                         {/* Warranty terms */}
-                        {businessDetails?.invoiceTerms && (
+                        {!isPurchase && businessDetails?.invoiceTerms && (
                             <p className="text-[7px] leading-tight text-black whitespace-pre-line mb-2">{businessDetails.invoiceTerms}</p>
                         )}
                         {/* Company details */}

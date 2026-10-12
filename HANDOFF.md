@@ -1,5 +1,13 @@
 # Handoff
 
+## 12 Oct 2026 — First purchase invoice made (#5034 Audi A5) + printed purchase invoices name the seller: LIVE
+
+- Steve needed to print a purchase invoice. The app only offers "Make a purchase invoice" when a car is first added (not on edit, not for SOR), and the ledger had never had one. Steve chose a one-off: I wrote it straight to RTDB.
+- Doc `salesDocuments/-P3kLxC8ekTkzH0VkyUu`: Purchase Invoice #5034, 12 Oct 2026, £18,445.94, seller Mr Nicholas Foster, 2 Halliday Close, Radlett, Hertfordshire WD7 9JZ, car `-P3kKaUMdYgt61pFqNa5` (MT67 VYL). Same shape as `addVehicle` makes. It shows in More › Filing cabinet (not on the Car page).
+- `components/sales/PrintableView.tsx`: on a purchase invoice, "Invoice To" reads "Purchased From", "Customer Signature" reads "Seller Signature", and our bank details and sales warranty terms are left off.
+- Not done (Steve's option 1, offered): a "Purchase invoice" button on the Car page for cars already in stock, and showing purchase invoices in the Car page Documents list.
+- Checks: `tsc` clean, 374/374 tests, `vite build` OK, hosting deployed, live bundle checked.
+
 ## 12 Oct 2026 — New expense: "How it was paid" moved under Supplier: LIVE
 
 - Steve could not see "On supplier account" on a scanned Autobitz expense; the switch sat below Category, off-screen on his phone. It saved correctly as On Account (receipt `-P3jib6M5vmc4CDBv42Y`), picked from the supplier's history (79 of 86 Autobitz expenses are On Account).
