@@ -59,7 +59,7 @@ function Segmented<V extends string = string>({ options, value, onChange, ariaLa
       {box.ready && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute rounded-[6px] bg-surface shadow-e1 ring-1 ring-line transition-[left,width] duration-base ease-sheet"
+          className="pointer-events-none absolute rounded-[6px] bg-accent-soft shadow-e1 ring-1 ring-accent/60 transition-[left,width] duration-base ease-sheet"
           style={{ left: box.left, width: box.width, top: box.top, height: box.height }}
         />
       )}
@@ -79,7 +79,7 @@ function Segmented<V extends string = string>({ options, value, onChange, ariaLa
               'relative z-[1] min-h-[48px] min-w-[48px] md:[@media(pointer:fine)]:min-h-[40px] whitespace-nowrap rounded-[6px] px-3.5 text-sm font-semibold leading-none transition-colors duration-quick ease-out',
               'disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-60',
               full && 'flex-1',
-              checked ? 'text-ink' : 'text-ink-2 hover:text-ink',
+              checked ? 'text-accent-soft-ink' : 'text-ink-2 hover:text-ink',
             )}
           >
             {o.label}

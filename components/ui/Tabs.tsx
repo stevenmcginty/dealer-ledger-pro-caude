@@ -80,7 +80,7 @@ const Tabs: React.FC<TabsProps> = ({
           className={cx(
             'pointer-events-none absolute transition-[left,width] duration-base ease-sheet',
             pills
-              ? 'rounded-[6px] bg-surface shadow-e1 ring-1 ring-line'
+              ? 'rounded-[6px] bg-accent-soft shadow-e1 ring-1 ring-accent/60'
               : 'bottom-0 h-[3px] rounded-t-[3px] bg-accent',
           )}
           style={pills
@@ -103,7 +103,7 @@ const Tabs: React.FC<TabsProps> = ({
             className={cx(
               'relative z-[1] inline-flex flex-none items-center gap-1.5 whitespace-nowrap text-sm font-semibold leading-none transition-colors duration-quick ease-out [&_svg]:h-5 [&_svg]:w-5',
               pills
-                ? cx('min-h-[48px] min-w-[48px] md:[@media(pointer:fine)]:min-h-[40px] rounded-[6px] px-3.5', selected ? 'text-ink' : 'text-ink-2 hover:text-ink')
+                ? cx('min-h-[48px] min-w-[48px] md:[@media(pointer:fine)]:min-h-[40px] rounded-[6px] px-3.5', selected ? 'text-accent-soft-ink' : 'text-ink-2 hover:text-ink')
                 : cx('min-h-[48px] min-w-[48px] justify-center px-3', selected ? 'text-accent-text' : 'text-ink-3 hover:text-ink'),
             )}
           >
