@@ -1,5 +1,10 @@
 # Handoff
 
+## 12 Oct 2026 — Car page: "Take a deposit" button is amber: LIVE
+
+- Steve said the deposit button did not stand out. It now uses a new Button variant `deposit` (amber: `warning-soft` fill, `warning` border, `warning-ink` text) with a banknote icon. "Make a proforma" stays grey; "Sell this car" stays green.
+- Checks: `tsc` clean, 374/374 tests, `vite build` OK, hosting deployed.
+
 ## 11 Oct 2026 (late) — Inbox: email clean-up, WhatsApp-green buttons, WhatsApp-only badge: LIVE, commits 4fcaa49 + ef44825, pushed
 
 - Steve's rule: the inbox list downloaded every message on each open (1.4 MB, still growing). So email messages are now cleared 30 days after a thread's last activity, on both ledgers, and "needs you" threads are cleared too. Gmail keeps every email: the app never trashes mail, and replies go through the Gmail API. WhatsApp messages are kept for ever.

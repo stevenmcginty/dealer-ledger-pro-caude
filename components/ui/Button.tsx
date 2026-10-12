@@ -2,7 +2,7 @@ import React from 'react';
 import Spinner from '../common/Spinner';
 import { cx } from './cx';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'whatsapp';
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' | 'whatsapp' | 'deposit';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -28,6 +28,9 @@ const VARIANT: Record<ButtonVariant, string> = {
   danger: 'bg-danger text-on-danger border-transparent hover:bg-danger-hover active:bg-danger-hover',
   // Start or send a WhatsApp: WhatsApp's own green, same in every brand.
   whatsapp: 'bg-whatsapp text-on-whatsapp border-transparent hover:bg-whatsapp-hover active:bg-whatsapp-press',
+  // Taking a deposit: amber, so it stands apart from the grey buttons
+  // without fighting the green main action.
+  deposit: 'bg-warning-soft text-warning-ink border-warning hover:border-warning-ink active:border-warning-ink',
 };
 
 // 36 / 48 / 56. Small is 44 on phones and touch screens so it stays

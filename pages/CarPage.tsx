@@ -5,7 +5,7 @@ import { useUI } from '../hooks/useUI';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import {
     ChevronDownIcon, ChevronRightIcon, DocumentTextIcon, EditIcon, PlusIcon, ShieldCheckIcon,
-    UndoIcon, ArrowTopRightOnSquareIcon, CarIcon,
+    UndoIcon, ArrowTopRightOnSquareIcon, CarIcon, BanknotesIcon,
 } from '../components/icons';
 import { Alert, Button, DocChip, EmptyState, IconButton, Plate, StatusChip } from '../components/ui';
 import type { DocKind } from '../components/ui';
@@ -438,7 +438,7 @@ const CarPage: React.FC<{ vehicleId: string }> = ({ vehicleId }) => {
                         {!isSold && (
                             <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
                                 {vehicle.status === 'Available' && (
-                                    <Button size="sm" variant="secondary" onClick={() => newDoc('Deposit Slip')}>Take a deposit</Button>
+                                    <Button size="sm" variant="deposit" icon={<BanknotesIcon />} onClick={() => newDoc('Deposit Slip')}>Take a deposit</Button>
                                 )}
                                 {!proformaDoc && (
                                     <Button size="sm" variant="secondary" onClick={() => newDoc('Proforma Invoice')}>Make a proforma</Button>
