@@ -1,8 +1,8 @@
 /**
- * Gmail-style swipe on one inbox row: drag it left or right with a finger and
- * a red Delete panel shows behind it. Let go far enough (or flick) and the row
- * slides off, folds away, then calls onDelete. Touch and pen only — a mouse
- * does nothing here, desktop keeps the delete in the thread header.
+ * Gmail-style swipe on one inbox row: drag it left or right and a red Delete
+ * panel shows behind it. Let go far enough (or flick) and the row slides off,
+ * folds away, then calls onDelete. Works with a finger, a pen, a mouse drag
+ * (left button), and a two-finger sideways swipe on a laptop touchpad.
  *
  * With `enabled` false the row renders the same but does not swipe.
  *
@@ -19,6 +19,8 @@ const COLLAPSE_MS = 180;
 const SPRING_MS = 200;
 /** A click straight after a sideways drag is the drag ending, not a tap. */
 const SWALLOW_CLICK_MS = 400;
+/** A touchpad swipe has no "let go" event: it ends when the wheel goes quiet. */
+const WHEEL_IDLE_MS = 160;
 
 type Side = 'left' | 'right' | null;
 
@@ -54,6 +56,10 @@ const SwipeToDelete: React.FC<{ enabled: boolean; onDelete: () => void; children
     const swallowUntil = useRef(0);
     const onDeleteRef = useRef(onDelete);
     onDeleteRef.current = onDelete;
+    const enabledRef = useRef(enabled);
+    enabledRef.current = enabled;
+    /** One touchpad gesture: which way it locked, and how far it has gone. */
+    const wheel = useRef<{ axis: SwipeAxis; dx: number; timer: number } | null>(null);
 
     /** Which edge the red panel is showing on (swipe right reveals the left edge). */
     const [side, setSide] = useState<Side>(null);
@@ -136,6 +142,49 @@ const SwipeToDelete: React.FC<{ enabled: boolean; onDelete: () => void; children
         }, SPRING_MS);
     };
 
+    // Touchpad: a sideways two-finger swipe arrives as wheel events. React's
+    // onWheel is passive, so this listener is added by hand to stop the browser
+    // treating the swipe as Back/Forward.
+    useEffect(() => {
+        const wrap = wrapRef.current;
+        if (!wrap) return;
+        const end = () => {
+            const w = wheel.current;
+            wheel.current = null;
+            if (!w || w.axis !== 'x' || removing.current) return;
+            const outcome = releaseOutcome({ dx: w.dx, width: wrap.offsetWidth || 0, velocity: 0 });
+            if (outcome === 'cancel') springBack();
+            else remove(outcome === 'delete-right' ? 'right' : 'left');
+        };
+        const onWheel = (e: WheelEvent) => {
+            if (!enabledRef.current || drag.current) return;
+            if (removing.current) {
+                if (wheel.current?.axis === 'x') e.preventDefault();
+                return;
+            }
+            let w = wheel.current;
+            if (!w) {
+                w = { axis: Math.abs(e.deltaX) > Math.abs(e.deltaY) ? 'x' : 'y', dx: 0, timer: 0 };
+                wheel.current = w;
+            }
+            window.clearTimeout(w.timer);
+            w.timer = window.setTimeout(end, WHEEL_IDLE_MS);
+            if (w.axis !== 'x') return;
+            e.preventDefault();
+            const step = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? wrap.offsetWidth : 1;
+            // Fingers move left → deltaX goes up → the row follows the fingers left.
+            w.dx -= e.deltaX * step;
+            moveTo(w.dx);
+            showSide(w.dx > 0 ? 'right' : w.dx < 0 ? 'left' : sideRef.current);
+            showArmed(pastThreshold(w.dx, wrap.offsetWidth || 0));
+        };
+        wrap.addEventListener('wheel', onWheel, { passive: false });
+        return () => {
+            wrap.removeEventListener('wheel', onWheel);
+            if (wheel.current) window.clearTimeout(wheel.current.timer);
+        };
+    }, []);
+
     useEffect(() => () => {
         timers.current.forEach(id => window.clearTimeout(id));
         timers.current = [];
@@ -148,7 +197,7 @@ const SwipeToDelete: React.FC<{ enabled: boolean; onDelete: () => void; children
 
     const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
         if (!enabled) return;
-        if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         if (removing.current || drag.current) return;
         swallowUntil.current = 0;
         drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null, dx: 0, samples: [{ x: e.clientX, t: e.timeStamp }] };
@@ -206,8 +255,9 @@ const SwipeToDelete: React.FC<{ enabled: boolean; onDelete: () => void; children
     return (
         <div
             ref={wrapRef}
-            className="group relative overflow-hidden"
+            className={`group relative overflow-hidden ${enabled ? 'select-none' : ''}`}
             style={enabled ? { touchAction: 'pan-y' } : undefined}
+            onDragStart={enabled ? e => e.preventDefault() : undefined}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
