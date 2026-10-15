@@ -538,6 +538,18 @@ export const subscribeToAgentMessages = (
     return () => ref.off('value', listener);
 };
 
+/**
+ * True when any message in the thread went out or came in on WhatsApp. The list
+ * strips messages, and an outbound WhatsApp on an email thread leaves its channel
+ * as email, so only the messages themselves can tell. The ledger is the only copy
+ * of WhatsApp, so a quick delete checks this first.
+ */
+export const conversationHasWhatsApp = async (companyId: string, convId: string): Promise<boolean> => {
+    const snap = await db.ref(`${agentRoot(companyId)}/conversations/${convId}/messages`).once('value');
+    const raw = (snap.val() || {}) as Record<string, { channel?: string }>;
+    return Object.values(raw).some(message => message?.channel === 'whatsapp');
+};
+
 // --- Writes the client owns ------------------------------------------------
 
 /** Settings are client-editable by design; only `private` is off limits. */

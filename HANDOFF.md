@@ -1,5 +1,19 @@
 # Handoff
 
+## 15 Oct 2026 — Inbox: swipe an email row left or right to delete it (ledger only): LIVE
+
+- Steve wants Gmail-style swipe on the Inbox list. The delete is ledger only: Gmail keeps every email. A new email in the same Gmail thread makes a new row later.
+- Email only. Steve has no WhatsApp app (Cloud API only), so the ledger is the only copy of WhatsApp. Rows in the WhatsApp section, the WhatsApp tab and WhatsApp-only people do not swipe. A mixed person loses only the email part. Email threads that carry a WhatsApp opener (`whatsappOpenerAt` / `originChannel`) are excluded too, and just before the real delete the app reads the thread's messages and keeps it if any message is WhatsApp (toast "Kept: this thread has WhatsApp messages.").
+- Touch/pen only; mouse does nothing (desktop keeps the delete in the thread header). The row hides at once, toast "Deleted from the inbox. Still in Gmail." with Undo; the real delete runs after 7 s, or at once when the app is hidden/closed.
+- Files: `components/salesAgent/inbox/SwipeToDelete.tsx` (gesture), `utils/swipeToDelete.ts` (+ `tests/swipeToDelete.test.ts`, 18 tests), `ThreadList.tsx`, `AgentInboxPage.tsx`, `services/salesAgentService.ts` (`conversationHasWhatsApp`).
+- Checks: `tsc` clean, 392/392 tests, `vite build` OK, hosting deployed, live bundle checked. Gesture checked headless at 390 px with demo data; hide/Undo/commit not yet seen with real data (needs Steve's phone).
+- "Other ledger" email rows swipe too, and that removes them from Chris's inbox as well.
+
+## 15 Oct 2026 — SW65 FBK MINI Paceman (#5032) sold on finance (data fix, no code change)
+
+- From the Car Finance 247 invoice 6515391 (6 Oct 2026). Added Sales Invoice #95681 (`salesDocuments/-P3zMxcWCCINotc5HGKi`), 6 Oct 2026, to "car finance 247 ltd" (the saved finance company, so Edit still sees it as a finance deal), deliver to Hayley Trickey, 25 Western Road, Deal, CT14 6RX. Price £7,390, margin VAT £662.50, payments Deposit £1,000 + Finance £6,390, balance 0. Car set to Sold. Backup of the car: session scratchpad `sw65\vehicle_before.json`.
+- No October bank lines yet, so neither payment is linked to a bank line. Match them when the October statement goes in.
+
 ## 12 Oct 2026 — First purchase invoice made (#5034 Audi A5) + printed purchase invoices name the seller: LIVE
 
 - Steve needed to print a purchase invoice. The app only offers "Make a purchase invoice" when a car is first added (not on edit, not for SOR), and the ledger had never had one. Steve chose a one-off: I wrote it straight to RTDB.

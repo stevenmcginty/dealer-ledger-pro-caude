@@ -14,6 +14,7 @@ import type { CustomerGroup, InboxFilter } from '../../../utils/agentInboxGroups
 import { needsReasonOf, type InboxSections, type NeedsReason } from '../../../utils/agentInboxSections';
 import { titleHasReg } from '../../../utils/carPickerSearch';
 import { RegPlate } from './CarPicker';
+import SwipeToDelete from './SwipeToDelete';
 import { Avatar, ChannelIcon, WhatsAppMark } from './parts';
 
 /** The car the thread is about, and its reg when the title does not already say it. */
@@ -50,7 +51,7 @@ const ThreadRow: React.FC<{
             type="button"
             onClick={onClick}
             aria-current={active ? 'true' : undefined}
-            className={`group relative flex w-full items-start gap-3 ps-4 text-start transition-colors duration-quick ease-out focus-visible:[outline-offset:-3px] ${
+            className={`relative flex w-full items-start gap-3 ps-4 text-start transition-colors duration-quick ease-out focus-visible:[outline-offset:-3px] ${
                 active ? 'bg-surface-2' : 'hover:bg-surface-2 active:bg-surface-3'
             }`}
         >
@@ -135,6 +136,10 @@ export interface ThreadListProps {
     needsYouTotal: number;
     unreadTotal: number;
     onStartWhatsApp: () => void;
+    /** A row swiped off on a phone. The page hides it and offers Undo. */
+    onDeleteGroup: (group: CustomerGroup) => void;
+    /** Whether a row may be swiped off. Only email goes; WhatsApp chats are never deleted this way. */
+    canDelete: (group: CustomerGroup) => boolean;
 }
 
 const ThreadList: React.FC<ThreadListProps> = ({
@@ -155,6 +160,8 @@ const ThreadList: React.FC<ThreadListProps> = ({
     needsYouTotal,
     unreadTotal,
     onStartWhatsApp,
+    onDeleteGroup,
+    canDelete,
 }) => {
     const [earlierOpen, setEarlierOpen] = useState(false);
     const searching = !!query.trim();
@@ -175,16 +182,18 @@ const ThreadList: React.FC<ThreadListProps> = ({
         { id: 'email', label: 'Email' },
     ];
 
-    const rows = (list: CustomerGroup[], muted = false) => list.map(group => (
-        <ThreadRow
-            key={group.id}
-            group={group}
-            active={activeGroupId === group.id}
-            reason={needsReasonOf(group, now)}
-            agentName={agentName}
-            muted={muted}
-            onClick={() => onOpen(group)}
-        />
+    // The WhatsApp section never swipes: those customers have a live WhatsApp chat.
+    const rows = (list: CustomerGroup[], muted = false, swipeable = true) => list.map(group => (
+        <SwipeToDelete key={group.id} enabled={swipeable && canDelete(group)} onDelete={() => onDeleteGroup(group)}>
+            <ThreadRow
+                group={group}
+                active={activeGroupId === group.id}
+                reason={needsReasonOf(group, now)}
+                agentName={agentName}
+                muted={muted}
+                onClick={() => onOpen(group)}
+            />
+        </SwipeToDelete>
     ));
 
     return (
@@ -304,7 +313,7 @@ const ThreadList: React.FC<ThreadListProps> = ({
                         {sections.whatsapp.length > 0 && (
                             <section aria-label="WhatsApp">
                                 <SectionLabel tone="whatsapp" count={sections.whatsapp.length}>WhatsApp</SectionLabel>
-                                <div>{rows(sections.whatsapp)}</div>
+                                <div>{rows(sections.whatsapp, false, false)}</div>
                             </section>
                         )}
 

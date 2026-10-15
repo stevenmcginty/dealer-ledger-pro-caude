@@ -28,6 +28,7 @@ import {
     conversationName,
     correctThreadCar,
     detachAgentMessage,
+    conversationHasWhatsApp,
     deleteAgentConversation,
     deleteAgentMessage,
     discardAgentDraft,
@@ -69,6 +70,7 @@ import {
 } from '../../utils/agentInboxGroups';
 import { needsReasonOf, sectionGroups } from '../../utils/agentInboxSections';
 import { dismissConversationNotifications } from '../../utils/inboxNotify';
+import { swipeDeletableConversations } from '../../utils/swipeToDelete';
 import {
     WHATSAPP_ACCEPT,
     classifyWhatsAppFile,
@@ -167,6 +169,10 @@ const AgentInboxPage = () => {
         { kind: 'thread'; conv: Conversation } | { kind: 'message'; message: AgentMessage; conv: Conversation } | null
     >(null);
     const [deleting, setDeleting] = useState(false);
+    /** Swiped off on a phone: hidden at once, deleted for real once the Undo has had its chance. */
+    const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
+    const swipeDeletes = useRef(new Map<string, { convs: Conversation[]; home: string; timer: number }>());
+    const swipeSeq = useRef(0);
     const [composeOpen, setComposeOpen] = useState(false);
     const [attachment, setAttachment] = useState<File | null>(null);
     const [sendStatus, setSendStatus] = useState<string | null>(null);
@@ -262,19 +268,20 @@ const AgentInboxPage = () => {
     }, [companyId]);
 
     const conversations = useMemo(() => {
+        const visible = (conv: Conversation) => !hiddenKeys.has(conversationRefKey(conv));
         const list = own || [];
-        if (!shared.length) return list;
+        if (!shared.length) return hiddenKeys.size ? list.filter(visible) : list;
         const seen = new Set<string>();
         const merged: Conversation[] = [];
         [...shared, ...list].forEach(conv => {
             const key = conversationRefKey(conv);
-            if (seen.has(key)) return;
+            if (seen.has(key) || hiddenKeys.has(key)) return;
             seen.add(key);
             merged.push(conv);
         });
         merged.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         return merged;
-    }, [own, shared]);
+    }, [own, shared, hiddenKeys]);
 
     const allGroups = useMemo(
         () => groupConversations(conversations, companyId || undefined, userId),
@@ -702,6 +709,91 @@ const AgentInboxPage = () => {
         }
     }, [companyId, pendingDelete, deleting, activeConvId, toast]);
 
+    const unhide = useCallback((keys: string[]) => {
+        setHiddenKeys(prev => {
+            const next = new Set(prev);
+            keys.forEach(key => next.delete(key));
+            return next;
+        });
+    }, []);
+
+    // Ledger only: Gmail keeps the email. A failed delete brings its row back.
+    const commitSwipeDelete = useCallback(async (id: string) => {
+        const entry = swipeDeletes.current.get(id);
+        if (!entry) return;
+        swipeDeletes.current.delete(id);
+        window.clearTimeout(entry.timer);
+        for (const conv of entry.convs) {
+            try {
+                if (await conversationHasWhatsApp(homeOf(conv, entry.home), conv.id)) {
+                    unhide([conversationRefKey(conv)]);
+                    toast.info('Kept: this thread has WhatsApp messages.');
+                    continue;
+                }
+                await deleteAgentConversation(homeOf(conv, entry.home), conv);
+                void dismissConversationNotifications(conv.id);
+            } catch (err: any) {
+                toast.error(err?.message || 'That could not be deleted.');
+                unhide([conversationRefKey(conv)]);
+            }
+        }
+    }, [toast, unhide]);
+    const commitSwipeDeleteRef = useRef(commitSwipeDelete);
+    commitSwipeDeleteRef.current = commitSwipeDelete;
+
+    const handleSwipeDelete = useCallback((group: CustomerGroup) => {
+        if (!companyId) return;
+        // Email only. Any WhatsApp in the group stays: the ledger is the only copy of it.
+        const convs = swipeDeletableConversations(group, filter);
+        if (!convs.length) return;
+        const keys = convs.map(conversationRefKey);
+        setHiddenKeys(prev => {
+            const next = new Set(prev);
+            keys.forEach(key => next.add(key));
+            return next;
+        });
+        if (activeGroupId === group.id || convs.some(conv => conv.id === activeConvId)) {
+            setActiveConvId(null);
+            setActiveGroupId(null);
+        }
+        swipeSeq.current += 1;
+        const id = `${group.id}#${swipeSeq.current}`;
+        const timer = window.setTimeout(() => { void commitSwipeDeleteRef.current(id); }, 7000);
+        swipeDeletes.current.set(id, { convs, home: companyId, timer });
+        toast.success('Deleted from the inbox. Still in Gmail.', {
+            label: 'Undo',
+            onClick: () => {
+                const entry = swipeDeletes.current.get(id);
+                if (!entry) return;
+                window.clearTimeout(entry.timer);
+                swipeDeletes.current.delete(id);
+                unhide(keys);
+            },
+        });
+    }, [companyId, filter, activeGroupId, activeConvId, toast, unhide]);
+
+    const canSwipeDelete = useCallback(
+        (group: CustomerGroup) => swipeDeletableConversations(group, filter).length > 0,
+        [filter]
+    );
+
+    // Closing the app inside the Undo window must not lose the delete.
+    useEffect(() => {
+        const flush = () => {
+            [...swipeDeletes.current.keys()].forEach(id => { void commitSwipeDeleteRef.current(id); });
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') flush();
+        };
+        window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.removeEventListener('pagehide', flush);
+            document.removeEventListener('visibilitychange', onVisibility);
+            flush();
+        };
+    }, []);
+
     const handleDiscardDraft = useCallback(async () => {
         if (!companyId || !draftHost || draftBusy) return;
         setDraftBusy('discard');
@@ -985,6 +1077,8 @@ const AgentInboxPage = () => {
                     needsYouTotal={summary.needsYou}
                     unreadTotal={summary.unread}
                     onStartWhatsApp={() => setComposeOpen(true)}
+                    onDeleteGroup={handleSwipeDelete}
+                    canDelete={canSwipeDelete}
                 />
             </aside>
 
