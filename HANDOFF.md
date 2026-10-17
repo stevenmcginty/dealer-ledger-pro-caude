@@ -1,5 +1,38 @@
 # Handoff
 
+## 17 Oct 2026 — EO15 RVN Peugeot RCZ (#5020) sold on First Response finance (data only, no code change)
+
+- From the First Response Finance emails in radlettcars@gmail.com (Legal Dealer Pack + Payout Confirmation, app E0679A63, agreement 74178799-9, 16 Oct 2026). Customer Mr Richard Pascal Martinez, 21 Summerleaze Road, Maidenhead, Berkshire, SL6 8EW, 07881 952205, richardmartinez1202@gmail.com.
+- Added Sales Invoice #57834 (`salesDocuments/-P48_HztKWrZiBUNTmtX`), 16 Oct 2026, to the saved finance company "First Response Finance Ltd", deliver to Richard. Price £5,995, margin VAT £580.50. Payments: Deposit £99 (paid before 29 Sep, per Richard) + Finance £5,595 (paid out 16 Oct to Lloyds ****8760). Balance £301 = rest of the £400 deposit on the finance deal; Richard says he will pay it next week. Add it as a payment when it lands.
+- New customer `customers/-P48_HztKWrZiBUNTmtW`. Car set to Sold. Backup: session scratchpad `eo15\vehicle_before.json`.
+- Mileage: stock book 71,544 (kept, per protocol); First Response papers say 71,600.
+- Not booked: the £300 timing chain (parts and labour) Richard pays separately. Steve, 17 Oct: no charge on it for now.
+- Work sheet #3845 (`workSheets/-P48jsBcm8wU9wL10dn-`), Internal, 29 Sep 2026, no amounts: "Oil and filter service" + "Febi timing chain kit (Febi 33162) - supply and fit". Handout PDF for Richard = that work record + the Parts in Motion invoice (order 7587576, 25 Sep 2026, Febi 33162, £75.55; DLP receipt £67.99 after eBay coupon): `C:\Users\steve\Desktop\radlett cars\EO15 RVN - Work record and timing chain invoice.pdf`. Made with a Node copy of the app's worksheet PDF code (session scratchpad `chain\make-sheet-pdf.cjs`).
+- App bug FIXED + LIVE same day: the worksheet "Download PDF" (`components/work-sheets/PrintableWorkSheet.tsx`, `addSection`) put each section heading on top of the last row above it. Now 5 mm is left before every section after the first (same as the handout copy). Checks: `tsc` clean, 392/392 tests, `vite build` OK, hosting deployed.
+- No October bank lines yet, so nothing linked to a bank line.
+- Same day: BV17 OSY white Astra GTC auto (#5012, already Sold in DLP) set to SOLD in Car Dealer 5; gone from radlettcarsales.com.
+
+## 17 Oct 2026 — Header search crashed the app: FIXED, LIVE (e84af85)
+
+- Typing in the search crashed DLP with `TypeError: (h.stockNumber || "").toLowerCase is not a function`. About 30 old imported cars (e.g. #234 FH57TFX, #4966 NJ62 RJZ) have `stockNumber` saved as a number, not text.
+- `components/shell/GlobalSearch.tsx` and `components/work-prep/WorkPrepLedger.tsx` now wrap it in `String()`, like the other lists. Data left as is.
+- Checks: `tsc` clean, 392/392 tests, `vite build` OK, hosting deployed, live bundle checked.
+
+## 17 Oct 2026 — Luv Cars: bank details letter on letterhead (in place of a paying-in slip)
+
+- Luv asked for a "GIRO / paying-in slip". Made a bank-details letter on Radlett Cars letterhead: Allica Bank, EASYWAYTOSELLMYCAR LTD t/a Radlett Cars, 04-13-76, 00647875 (from `businessDetails/bankDetails`; sort code matches the Lloyds FPO transfers to Allica). Ref YL16 WKA / Mark Hamilton / proforma 56384.
+- Files: `C:\Users\steve\Desktop\radlett cars\letterhead\Radlett-Cars-Bank-Details-Luv-YL16WKA.html` (source, reuse for other finance houses) + `.pdf` (Chrome headless print).
+- Gmail draft `r-4093015377732541604` in radlettcars@gmail.com, to payouts@luvcars.com, in the proforma thread, PDF attached. Not sent: Steve sends it.
+- Still owed to Luv: signed Terms of Business, photo of the customer with the car.
+
+## 16 Oct 2026 — YL16 WKA Astra VXR (#5025) on Luv Cars finance: proforma sent (data only, no code change)
+
+- Luv Cars (Numero Group Limited) asked for an invoice (email from case@luvcars.com, a no-reply; documents go to payouts@luvcars.com). Customer Mark Hamilton, 4 Grenadier Close, Stockton-On-Tees, Durham, TS18 4QJ. Cash £14,995, deposit £695, balance to finance £14,300, no PX, no admin fee.
+- New finance company `financeCompanies/-P44Ugtydg1FC1T_p3Kf` = "Numero Group Limited t/a Luv Cars", White Collar Factory, 1 Old Street Yard, London, EC1Y 2AS.
+- Proforma Invoice #56384 (`salesDocuments/-P44UgtzTVqjb6r0JaA9`), 16 Oct 2026: Deposit £695 listed, balance due £14,300, margin VAT £662.50. Car details = stock book exactly (model "ASTRA"; the copy emailed to Luv said "ASTRA VXR" because I overrode it, fixed in the ledger after, not resent: Steve "it's done now"). Mileage 25,171 from the stock book (Luv's email said 25,000). Car stays Available (proformas do not change status).
+- Proforma PDF emailed to payouts@luvcars.com from radlettcars@gmail.com (Gmail id 1a145820f9f4e5f8). Luv's Terms of Business filled in (all but signature + stamp) and sent to Steve's phone by Taildrop; Steve prints, signs and sends it back.
+- Still owed to Luv before payout: signed Terms of Business, photo of the customer with the car. When the car goes, turn the proforma into a Sales Invoice (Deposit £695 + Finance £14,300).
+
 ## 15 Oct 2026 — Inbox: swipe an email row left or right to delete it (ledger only): LIVE
 
 - Steve wants Gmail-style swipe on the Inbox list. The delete is ledger only: Gmail keeps every email. A new email in the same Gmail thread makes a new row later.

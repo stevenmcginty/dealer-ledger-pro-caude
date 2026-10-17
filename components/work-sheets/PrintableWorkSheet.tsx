@@ -118,7 +118,11 @@ const PrintableWorkSheet = ({ sheet, businessDetails, onClose, isPreview, onConf
             y = 42;
         };
 
+        let sectionCount = 0;
         const addSection = (title: string) => {
+            // The heading is drawn above the cursor, so leave room under the
+            // row before it or the two print on top of each other.
+            if (sectionCount++ > 0) y += 5;
             addPageIfNeeded(12);
             pdf.setDrawColor(190, 190, 190);
             pdf.setLineWidth(0.25);
