@@ -47,7 +47,7 @@ const WorkPrepLedger = () => {
                 (vehicle.reg || '').toLowerCase().includes(lowercasedTerm) ||
                 (vehicle.make || '').toLowerCase().includes(lowercasedTerm) ||
                 (vehicle.model || '').toLowerCase().includes(lowercasedTerm) ||
-                (vehicle.stockNumber || '').toLowerCase().includes(lowercasedTerm)
+                String(vehicle.stockNumber || '').toLowerCase().includes(lowercasedTerm)
             );
         }
 

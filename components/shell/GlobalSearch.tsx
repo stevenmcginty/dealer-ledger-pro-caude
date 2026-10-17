@@ -47,7 +47,7 @@ const useResults = (query: string, flags: NavFlags): { groups: Array<{ title: st
             : vehicles
                 .filter(v => {
                     const hay = `${v.make || ''} ${v.model || ''}`.toLowerCase();
-                    return squash(v.reg || '').includes(qs) || hay.includes(q) || (v.stockNumber || '').toLowerCase().replace(/^#/, '') === q.replace(/^#/, '');
+                    return squash(v.reg || '').includes(qs) || hay.includes(q) || String(v.stockNumber || '').toLowerCase().replace(/^#/, '') === q.replace(/^#/, '');
                 })
                 .slice(0, 6)
                 .map(v => ({
@@ -56,7 +56,7 @@ const useResults = (query: string, flags: NavFlags): { groups: Array<{ title: st
                     vehicleId: v.id,
                     reg: v.reg || '',
                     title: [v.make, v.model].filter(Boolean).join(' ') || 'Car',
-                    meta: [v.stockNumber ? `#${v.stockNumber.replace(/^#/, '')}` : '', v.status === 'Sold' ? 'Sold' : v.status === 'Deposit Paid' ? 'Reserved' : 'In stock'].filter(Boolean).join(' · '),
+                    meta: [v.stockNumber ? `#${String(v.stockNumber).replace(/^#/, '')}` : '', v.status === 'Sold' ? 'Sold' : v.status === 'Deposit Paid' ? 'Reserved' : 'In stock'].filter(Boolean).join(' · '),
                 }));
 
         const people: Result[] = leads
